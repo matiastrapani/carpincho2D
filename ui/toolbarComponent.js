@@ -177,7 +177,7 @@ class CADToolbarComponent {
               </div>
 
               <div id="optDivideDist" class="flyout-item" data-tool="divide_dist">
-                <i class="fa-solid fa-ruler-horizontal text-zinc-400 text-xs w-4 text-center"></i>
+                <span class="iconify" data-width="24" data-icon="custom:dividelength"></span>
                 <div class="flex flex-col">
                   <span class="font-medium text-zinc-200">Dividir por Distancia</span>
                   <span class="text-[10px] text-zinc-400">Puntos por intervalo</span>

@@ -121,6 +121,22 @@ class PropertyPanelUI {
     const activeWidth = (activeLayer && activeLayer.strokeWidth !== undefined) ? activeLayer.strokeWidth : 0;
     const activeWidthLabel = activeWidth === 0 ? '-' : `${activeWidth} px`;
 
+    const standardWidths = [0, 1, 1.5, 2, 3];
+    const isCustomDefWidth = !isWidthByLayer && typeof defaults.strokeWidth === 'number' && !standardWidths.includes(defaults.strokeWidth);
+
+    let defWidthOptionsHTML = `
+      <option value="BYLAYER" ${isWidthByLayer ? 'selected' : ''}>Por Capa (${activeWidthLabel})</option>
+      <option value="0" ${!isWidthByLayer && defaults.strokeWidth === 0 ? 'selected' : ''}>-</option>
+      <option value="1" ${!isWidthByLayer && defaults.strokeWidth === 1 ? 'selected' : ''}>1.0</option>
+      <option value="1.5" ${!isWidthByLayer && defaults.strokeWidth === 1.5 ? 'selected' : ''}>1.5</option>
+      <option value="2" ${!isWidthByLayer && defaults.strokeWidth === 2 ? 'selected' : ''}>2.0</option>
+      <option value="3" ${!isWidthByLayer && defaults.strokeWidth === 3 ? 'selected' : ''}>3.0</option>
+    `;
+
+    if (isCustomDefWidth) {
+      defWidthOptionsHTML += `<option value="${defaults.strokeWidth}" selected>${defaults.strokeWidth} (Personalizado)</option>`;
+    }
+
     container.innerHTML = `
       <div class="border-b border-[#2a2a32] pb-2.5">
         <span class="text-[10px] font-bold uppercase text-zinc-500 tracking-wider mb-2 block">Creación (Por Defecto)</span>
@@ -167,12 +183,7 @@ class PropertyPanelUI {
           <span class="text-[11px] text-zinc-400">Grosor</span>
           <div class="relative flex items-center">
             <select id="defWidthSelect" class="w-full bg-[#17171c] hover:bg-[#27272a] text-zinc-200 text-[11px] px-2 py-1 rounded outline-none border border-[#2a2a32] cursor-pointer appearance-none pr-5">
-              <option value="BYLAYER" ${isWidthByLayer ? 'selected' : ''}>Por Capa (${activeWidthLabel})</option>
-              <option value="0" ${defaults.strokeWidth === 0 ? 'selected' : ''}>-</option>
-              <option value="1" ${defaults.strokeWidth === 1 ? 'selected' : ''}>1.0</option>
-              <option value="1.5" ${defaults.strokeWidth === 1.5 ? 'selected' : ''}>1.5</option>
-              <option value="2" ${defaults.strokeWidth === 2 ? 'selected' : ''}>2.0</option>
-              <option value="3" ${defaults.strokeWidth === 3 ? 'selected' : ''}>3.0</option>
+              ${defWidthOptionsHTML}
             </select>
             <i class="fa-solid fa-chevron-down text-[8px] text-zinc-500 absolute right-2 pointer-events-none"></i>
           </div>
@@ -201,6 +212,26 @@ class PropertyPanelUI {
       : entity.data?.baseStrokeWidth === undefined;
 
     const hexColor = this._getHexColor(propManager ? propManager.getResolvedColor(entity) : entity.strokeColor);
+
+    // REEMPLAZAR EN _renderSingleEntityProperties:
+// (Desde la constante hexColor hasta el HTML del selector de grosor)
+
+    const baseWidth = entity.data?.baseStrokeWidth;
+    const standardWidths = [0, 1, 1.5, 2, 3];
+    const isCustomWidth = !isWidthByLayer && baseWidth !== undefined && !standardWidths.includes(baseWidth);
+
+    let widthOptionsHTML = `
+      <option value="BYLAYER" ${isWidthByLayer ? 'selected' : ''}>Por Capa</option>
+      <option value="0" ${!isWidthByLayer && baseWidth === 0 ? 'selected' : ''}>-</option>
+      <option value="1" ${!isWidthByLayer && baseWidth === 1 ? 'selected' : ''}>1.0</option>
+      <option value="1.5" ${!isWidthByLayer && baseWidth === 1.5 ? 'selected' : ''}>1.5</option>
+      <option value="2" ${!isWidthByLayer && baseWidth === 2 ? 'selected' : ''}>2.0</option>
+      <option value="3" ${!isWidthByLayer && baseWidth === 3 ? 'selected' : ''}>3.0</option>
+    `;
+
+    if (isCustomWidth) {
+      widthOptionsHTML += `<option value="${baseWidth}" selected>${baseWidth} (Personalizado)</option>`;
+    }
 
     container.innerHTML = `
       <!-- Sección General -->
@@ -245,14 +276,15 @@ class PropertyPanelUI {
         </div>
 
         <!-- Selector de Grosor en Entidad Individual -->
-        <select id="propWidthSelect" class="w-full bg-[#17171c] hover:bg-[#27272a] text-zinc-200 text-[11px] px-2 py-1 rounded outline-none border border-[#2a2a32] cursor-pointer appearance-none pr-5">
-          <option value="BYLAYER" ${isWidthByLayer ? 'selected' : ''}>Por Capa</option>
-          <option value="0" ${entity.data?.baseStrokeWidth === 0 ? 'selected' : ''}>-</option>
-          <option value="1" ${entity.data?.baseStrokeWidth === 1 ? 'selected' : ''}>1.0</option>
-          <option value="1.5" ${entity.data?.baseStrokeWidth === 1.5 ? 'selected' : ''}>1.5</option>
-          <option value="2" ${entity.data?.baseStrokeWidth === 2 ? 'selected' : ''}>2.0</option>
-          <option value="3" ${entity.data?.baseStrokeWidth === 3 ? 'selected' : ''}>3.0</option>
-        </select>
+        <div class="grid grid-cols-2 gap-2 items-center">
+          <span class="text-[11px] text-zinc-400">Grosor</span>
+          <div class="relative flex items-center">
+            <select id="propWidthSelect" class="w-full bg-[#17171c] hover:bg-[#27272a] text-zinc-200 text-[11px] px-2 py-1 rounded outline-none border border-[#2a2a32] cursor-pointer appearance-none pr-5">
+              ${widthOptionsHTML}
+            </select>
+            <i class="fa-solid fa-chevron-down text-[8px] text-zinc-500 absolute right-2 pointer-events-none"></i>
+          </div>
+        </div>
       </div>
 
       <!-- Sección Geometría Básica -->

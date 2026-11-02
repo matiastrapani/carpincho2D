@@ -80,8 +80,9 @@ class LayerManager {
   }
   
   setActiveLayer(layerId) {
-    if (!this.layers.has(layerId)) return false;
-    this.activeLayerId = layerId;
+    const key = String(layerId);
+    if (!this.layers.has(key)) return false;
+    this.activeLayerId = key;
     return true;
   }
 

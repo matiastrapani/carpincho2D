@@ -667,6 +667,7 @@ class CADService {
 
 
 
+  // POR ESTE BLOQUE:
   createDemoEntities() {
     const rect = new paper.Path.Rectangle({
       point: [-180, -120],
@@ -675,9 +676,11 @@ class CADService {
       strokeWidth: 2,
     });
     rect.data = { 
-      isDynamicStroke: false, // Grosor de modelo (escala con zoom)
-      baseStrokeWidth: 2,     // Ancho base original
-      origStrokeWidth: 2 
+      layerId: '0',
+      colorByLayer: true,      // <--- Color heredado de la capa '0'
+      widthByLayer: false,
+      baseStrokeWidth: 2,
+      isDynamicStroke: true
     };
     this.demoEntities.push(rect);
 
@@ -689,9 +692,12 @@ class CADService {
       strokeWidth: 2
     });
     poly.data = { 
-      isDynamicStroke: false, 
-      baseStrokeWidth: 2, 
-      origStrokeWidth: 2 
+      layerId: '0',
+      colorByLayer: false,
+      origStrokeColor: '#f59e0b',
+      widthByLayer: false,
+      baseStrokeWidth: 2,
+      isDynamicStroke: true
     };
     this.demoEntities.push(poly);
 
@@ -705,14 +711,21 @@ class CADService {
       strokeWidth: 2.5
     });
     curve.data = { 
-      isDynamicStroke: false, 
-      baseStrokeWidth: 2.5, 
-      origStrokeWidth: 2.5 
+      layerId: '0',
+      colorByLayer: false,
+      origStrokeColor: '#10b981',
+      widthByLayer: false,
+      baseStrokeWidth: 2.5,      // <--- Grosor heredado de la capa '0'
+      isDynamicStroke: true
     };
     this.demoEntities.push(curve);
 
-    this.createPointEntity(new paper.Point(-120, -120));
-    this.createPointEntity(new paper.Point(-60, -120));
+    this.createPointEntity(new paper.Point(-120, -120), { layerId: '0', colorByLayer: true });
+    this.createPointEntity(new paper.Point(-60, -120), { layerId: '0', colorByLayer: true });
+
+    if (this.utils?.updateEntitiesStroke) {
+      this.utils.updateEntitiesStroke();
+    }
   }
 
   createPointEntity(pt, options = {}) {
@@ -726,12 +739,20 @@ class CADService {
     const opts = options || {};
     const nodeTheme = (window.CAD_THEME && window.CAD_THEME.node) ? window.CAD_THEME.node : {};
 
-    // Prioridad de color: Opciones directas (Panel) > Configuración Tema / Capa
-    const fillColor = opts.fillColor || nodeTheme.defaultFillColor || '#10141D';
-    const strokeColor = opts.strokeColor || nodeTheme.selectedStrokeColor || '#18fcf1';
-    const layerId = opts.layerId || 'default';
+    const layerId = String(opts.layerId || this.utils?.layerManager?.activeLayerId || '0');
+    const colorByLayer = opts.colorByLayer !== undefined ? opts.colorByLayer : true;
 
-    // Cambiar temporalmente a la capa dedicada de nodos si existe
+    // Resolver el color directamente de la capa si es BYLAYER
+    let strokeColor = opts.strokeColor;
+    if (colorByLayer && window.cadUtils?.layerManager) {
+      const layer = window.cadUtils.layerManager.layers.get(layerId);
+      strokeColor = layer ? layer.color : (nodeTheme.defaultStrokeColor || '#18fcf1');
+    } else if (!strokeColor) {
+      strokeColor = nodeTheme.defaultStrokeColor || '#18fcf1';
+    }
+
+    const fillColor = opts.fillColor || nodeTheme.defaultFillColor || '#10141D';
+
     if (window.cadUtils && window.cadUtils.nodesLayer) {
       window.cadUtils.nodesLayer.activate();
     }
@@ -747,13 +768,13 @@ class CADService {
     pointMarker.data = { 
       isPointEntity: true, 
       layerId: layerId,
+      colorByLayer: colorByLayer,
       centerPt: pt.clone(),
-      origFillColor: fillColor,      // Preserva el color original del nodo / panel / capa
-      origStrokeColor: strokeColor,  // Preserva el borde original del nodo / panel / capa
+      origFillColor: fillColor,
+      origStrokeColor: colorByLayer ? undefined : strokeColor,
       origStrokeWidth: (nodeTheme.normalWidthPx || 1.0) / zoom 
     };
 
-    // Restaurar la capa activa de dibujo
     if (window.cadUtils && window.cadUtils.drawLayer) {
       window.cadUtils.drawLayer.activate();
     }
@@ -766,24 +787,22 @@ class CADService {
     return null;
   }
 
-  divideEntityByCount(entity, count, renderBezierFn) {
+  divideEntityByCount(entity, count, renderBezierFn, options = {}) {
     if (!entity || count < 2 || !entity.length) return [];
     const totalLen = entity.length;
     const step = totalLen / count;
     const pointsCreated = [];
 
-    // Si es abierta, va de i = 0 (inicio) a i = count (fin)
-    // Si es cerrada, va de i = 0 a i = count - 1 (el punto final coincide con el inicial)
     const isClosed = entity.closed || false;
     const maxIndex = isClosed ? (count - 1) : count;
 
     for (let i = 0; i <= maxIndex; i++) {
       let offset = i * step;
-      if (i === count) offset = totalLen; // Offset exacto del extremo final
+      if (i === count) offset = totalLen;
 
       const pt = entity.getPointAt(offset);
       if (pt) {
-        const pointEntity = this.createPointEntity(pt);
+        const pointEntity = this.createPointEntity(pt, options);
         if (pointEntity) pointsCreated.push(pointEntity);
       }
     }
@@ -792,28 +811,60 @@ class CADService {
     return pointsCreated;
   }
 
-  divideEntityByDistance(entity, distance, renderBezierFn) {
+  divideEntityByDistance(entity, distance, renderBezierFn, options = {}, customStartPt = null) {
     if (!entity || distance <= 0 || !entity.length) return [];
     const totalLen = entity.length;
     if (distance > totalLen) return [];
 
-    const count = Math.floor(totalLen / distance);
     const pointsCreated = [];
+    const isClosed = entity.closed || false;
 
-    // Incluir siempre el punto inicial de la figura (offset = 0)
-    const startPt = entity.getPointAt(0);
+    // 1. Determinar el offset del punto de inicio elegido
+    let startOffset = 0;
+    if (customStartPt) {
+      const loc = entity.getNearestLocation(customStartPt);
+      if (loc) startOffset = loc.offset;
+    }
+
+    // 2. Crear punto en la posición de inicio
+    const startPt = entity.getPointAt(startOffset);
     if (startPt) {
-      const pointEntity = this.createPointEntity(startPt);
+      const pointEntity = this.createPointEntity(startPt, options);
       if (pointEntity) pointsCreated.push(pointEntity);
     }
 
-    // Puntos a intervalos regulares de distancia
-    for (let i = 1; i <= count; i++) {
-      const offset = Math.min(i * distance, totalLen);
-      const pt = entity.getPointAt(offset);
-      if (pt) {
-        const pointEntity = this.createPointEntity(pt);
-        if (pointEntity) pointsCreated.push(pointEntity);
+    if (isClosed) {
+      // Curva cerrada: división circular completa partiendo del offset de inicio
+      const count = Math.floor(totalLen / distance);
+      for (let i = 1; i < count; i++) {
+        const offset = (startOffset + i * distance) % totalLen;
+        const pt = entity.getPointAt(offset);
+        if (pt) {
+          const pointEntity = this.createPointEntity(pt, options);
+          if (pointEntity) pointsCreated.push(pointEntity);
+        }
+      }
+    } else {
+      // Curva abierta: División hacia adelante (hacia el final de la curva)
+      let fwdOffset = startOffset + distance;
+      while (fwdOffset <= totalLen + 0.001) {
+        const pt = entity.getPointAt(Math.min(fwdOffset, totalLen));
+        if (pt) {
+          const pointEntity = this.createPointEntity(pt, options);
+          if (pointEntity) pointsCreated.push(pointEntity);
+        }
+        fwdOffset += distance;
+      }
+
+      // Curva abierta: División hacia atrás (hacia el inicio de la curva)
+      let bwdOffset = startOffset - distance;
+      while (bwdOffset >= -0.001) {
+        const pt = entity.getPointAt(Math.max(bwdOffset, 0));
+        if (pt) {
+          const pointEntity = this.createPointEntity(pt, options);
+          if (pointEntity) pointsCreated.push(pointEntity);
+        }
+        bwdOffset -= distance;
       }
     }
 

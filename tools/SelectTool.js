@@ -328,8 +328,8 @@ class SelectTool extends BaseTool {
         from: this.dragState.selectionStartPoint, 
         to: event.point,
         strokeWidth: 1 / paper.view.zoom, 
-        strokeColor: '#3b82f6',
-        fillColor: new paper.Color(0.2, 0.5, 1, 0.15)
+        strokeColor: '#008800',
+        fillColor: new paper.Color(0, 0.53, 0, 0.15)
       });
     }
   }
@@ -487,9 +487,9 @@ class SelectTool extends BaseTool {
         from: startPt, 
         to: currPt, 
         strokeWidth: 1 / paper.view.zoom,
-        strokeColor: '#3b82f6',
+        strokeColor: '#008800',
         dashArray: isWindowSelection ? null : [2 / paper.view.zoom, 2 / paper.view.zoom],
-        fillColor: new paper.Color(0.23, 0.51, 0.96, 0.15)
+        fillColor: new paper.Color(0, 0.53, 0, 0.15)
       });
     }
   }

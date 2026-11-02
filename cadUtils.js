@@ -543,6 +543,8 @@ class CADUtils {
     if (this.canvasElement) {
       this.canvasElement.focus();
     }
+    this.updateEntitiesStroke();
+    paper.view.update();
   }
 
   handleCanvasResize() {
@@ -1356,45 +1358,47 @@ class CADUtils {
     this.currentToolMode = toolName;
     this.closeAllMenus();
 
-    // 1. Salir del Modo Edición de Nodos si no es 'select' ni 'pan'
+    // 1. RESPALDO INMEDIATO: Guardar selección previa antes de que se limpie por cambio de herramienta
+    const isDivisionTool = (toolName === 'divide_count' || toolName === 'divide_dist');
+    const preservedEntities = isDivisionTool 
+      ? this.service.selectedEntities.filter(ent => ent && !ent.data?.isPointEntity) 
+      : [];
+
+    // 2. Limpieza de estados de edición de nodos (sin deseleccionar si es división)
     if (toolName !== 'select' && toolName !== 'pan') {
       this.service.editingEntities = [];
-      this.service.deselectAllEntities();
       this.service.deselectAllSegments();
+      if (!isDivisionTool) {
+        this.service.deselectAllEntities();
+      }
     }
 
     if (toolName !== 'select' && toolName !== 'pan') {
       this.lastActiveToolMode = toolName;
     }
 
-    // 2. Registro en la Consola / Historial (ej: "LINE", "POINT", "CIRCLE")
+    // 3. Registro en la Consola / Historial
     if (this.commandBar && typeof this.commandBar.logUserCommand === 'function') {
       this.commandBar.logUserCommand(toolName.toUpperCase());
     }
 
-    // 3. Preservar selección previa si es herramienta de división
-    const isDivisionTool = (toolName === 'divide_count' || toolName === 'divide_dist');
-    const preservedEntities = isDivisionTool 
-      ? this.service.selectedEntities.filter(ent => ent && !ent.data?.isPointEntity) 
-      : [];
-
+    // 4. Cambiar herramienta en ToolManager (esto ejecuta cancel() de la tool previa)
     this.toolManager.setTool(toolName);
 
+    // 5. RESTAURACIÓN Y TRANSICIÓN DIRECTA: Restaurar selección y saltar al paso de ingreso
     if (isDivisionTool && preservedEntities.length > 0) {
-      this.service.selectedEntities = [];
-      preservedEntities.forEach(ent => this.service.selectEntity(ent, true));
-      
-      this.renderBezierHandles();
+      this.service.selectedEntities = [...preservedEntities];
+      this.divisionSelectedEntities = [...preservedEntities];
 
       const activeTool = this.toolManager.activeTool;
       if (activeTool && typeof activeTool.askForDivisionValue === 'function') {
-        this.divisionSelectedEntities = [...preservedEntities];
         activeTool.askForDivisionValue();
       }
     }
+
     this.isChangingTool = false;
     
-    // 4. Actualización de clases visuales en Botones de UI
+    // 6. Actualización de clases visuales en Botones de UI
     const allButtons = document.querySelectorAll('.cad-button');
     allButtons.forEach(btn => btn.classList.remove('active'));
     
@@ -1437,11 +1441,12 @@ class CADUtils {
     if (['select', 'trim', 'divide_count', 'divide_dist'].includes(toolName)) {
       if (this.hud) this.hud.clear();
     }
-    // 5. Actualización del icono y de la herramienta por defecto del botón Flyout
+
+    // 7. Actualización del icono y de la herramienta por defecto del botón Flyout
     const iconMap = {
       'point': { btn: 'btnPointGroup', icon: 'currentPointIcon', name: 'custom:dot' },
       'divide_count': { btn: 'btnPointGroup', icon: 'currentPointIcon', name: 'custom:divide' },
-      'divide_dist': { btn: 'btnPointGroup', icon: 'currentPointIcon', name: 'fa-solid:ruler-horizontal' },
+      'divide_dist': { btn: 'btnPointGroup', icon: 'currentPointIcon', name: 'custom:dividelength' },
       'line': { btn: 'btnLineGroup', icon: 'currentLineIcon', name: 'custom:line' },
       'polyline': { btn: 'btnLineGroup', icon: 'currentLineIcon', name: 'custom:polyline' },
       'spline': { btn: 'btnCurveGroup', icon: 'currentCurveIcon', name: 'custom:spline' },
