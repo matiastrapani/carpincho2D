@@ -1,0 +1,460 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/* Reset de bordes y sombras para estética Flat Clean */
+*, *::before, *::after {
+  box-shadow: none !important;
+  text-shadow: none !important;
+  outline: none !important;
+  box-sizing: border-box;
+}
+
+body, html {
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background-color: #121215;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  user-select: none;
+  color: #94a3b8;
+}
+
+/* Fondo Lienzo CAD (Gris Frío / Azul Oscuro Profundo) */
+canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  background-color: #10141d;
+}
+
+canvas.tool-pan { cursor: grab; }
+canvas.tool-pan:active { cursor: grabbing; }
+canvas.tool-draw { cursor: crosshair; }
+canvas.tool-select { cursor: default; }
+canvas.tool-trim { cursor: cell; }
+
+/* Superficies Flat en Grises Cálidos sin bordes externos */
+.cad-panel {
+  background: #1e1e24;
+  border: none !important;
+}
+
+/* Botones Base de Herramientas */
+.cad-button {
+  transition: background-color 0.12s ease, color 0.12s ease;
+  background: transparent;
+  border: none !important;
+  color: #71717a;
+  position: relative;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cad-button-square {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.cad-button:hover {
+  background-color: #2a2a32;
+  color: #e4e4e7;
+}
+
+.cad-button:active {
+  background-color: #3f3f46;
+  color: #ffffff;
+}
+
+/* SELECCIÓN UNIFICADA DE UN SOLO VERDE (#008800) */
+.cad-button.active {
+  background-color: #008800 !important;
+  color: #ffffff !important;
+}
+
+.cad-button.active i {
+  color: #ffffff !important;
+}
+
+/* Estado Deshabilitado (Undo/Redo sin elementos) */
+.cad-button:disabled,
+.cad-button.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+  color: #666666 !important;
+}
+
+/* Indicador de Submenú Desplegable */
+.has-flyout::after {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 0 4px 4px;
+  border-color: transparent transparent #71717a transparent;
+}
+
+.has-flyout.active::after {
+  border-color: transparent transparent #ffffff transparent;
+}
+
+/* Tooltips Minimalistas */
+.hud-value {
+  font-variant-numeric: tabular-nums;
+  display: inline-block;
+  white-space: nowrap;
+}
+
+[data-tooltip] {
+  position: relative;
+}
+
+[data-tooltip]::before {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%) translateX(6px);
+  background: #121215;
+  color: #e4e4e7;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s ease-in-out, visibility 0.12s ease-in-out;
+  z-index: 999;
+}
+
+[data-tooltip].tooltip-top::before,
+.tooltip-top[data-tooltip]::before {
+  top: auto;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(-6px);
+
+}
+
+[data-tooltip]:hover::before {
+  opacity: 1;
+  visibility: visible;
+}
+
+.dock-right [data-tooltip]::before,
+.dock-panel-left [data-tooltip]::before {
+  left: auto;
+  right: 100%;
+  transform: translateY(-50%) translateX(-6px);
+}
+
+.dock-left [data-tooltip]::before {
+  left: 100%;
+  right: auto;
+  transform: translateY(-50%) translateX(6px);
+}
+
+[data-tooltip]:hover::before {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Snap Chips Filtros OSNAP (Mismo Alto que Botones h-8 / 32px) */
+/* Botones OSNAP y GRID cuadrados (Estilo discreto) */
+.snap-btn {
+  background: transparent;
+  color: #71717a;
+}
+
+.snap-btn:hover {
+  background: #2a2a32;
+  color: #e4e4e7;
+}
+
+.snap-btn.active {
+  background: #27272a !important;
+  color: #f4f4f5 !important;
+}
+
+.snap-btn.active i {
+  color: #f4f4f5 !important;
+}
+
+/* Snap Chips Filtros OSNAP (Estilo discreto) */
+.snap-chip {
+  transition: background-color 0.12s ease, color 0.12s ease;
+  cursor: pointer;
+  background: transparent;
+  color: #71717a; /* Texto atenuado/inactivo */
+  border: none !important;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Hover: Aumenta la intensidad del texto sin cambiar el fondo */
+.snap-chip:hover {
+  background: transparent !important;
+  color: #e4e4e7 !important; /* Ilumina el texto */
+}
+
+.snap-chip:hover span {
+  color: #e4e4e7 !important;
+}
+
+/* Estado Activo (ON): Fondo solido discreto #27272a y texto destacado */
+.snap-chip.active {
+  background: #27272a !important;
+  color: #f4f4f5 !important;
+}
+
+/* Hover sobre estado Activo (ON): Solo acentúa el texto a blanco puro */
+.snap-chip.active:hover {
+  background: #27272a !important; /* Mantiene el fondo ON intacto */
+  color: #ffffff !important;
+}
+
+/* Estilo unificado para los botones cuadrados SNAP y GRID */
+.snap-btn {
+  background: transparent;
+  color: #71717a;
+}
+
+.snap-btn:hover {
+  background: transparent !important;
+  color: #e4e4e7 !important;
+}
+
+.snap-btn.active {
+  background: #27272a !important;
+  color: #f4f4f5 !important;
+}
+
+.snap-btn.active:hover {
+  background: #27272a !important;
+  color: #ffffff !important;
+}
+
+.snap-chips-disabled {
+  opacity: 0.4;
+  pointer-events: none;
+  filter: grayscale(1);
+}
+
+/* Entrada de Texto en Consola */
+.command-input {
+  background: #121215;
+  border: none !important;
+  color: #f4f4f5;
+  font-family: 'Inter', system-ui, sans-serif;
+  transition: background-color 0.12s ease;
+}
+
+.command-input:focus {
+  background: #09090b;
+}
+
+/* Submenú Desplegable (Flyout) Sin Bordes */
+.flyout-menu {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: calc(100% + 6px);
+  background: #1e1e24;
+  border: none !important;
+  border-radius: 6px;
+  z-index: 80;
+  min-width: 200px;
+  overflow: hidden;
+}
+
+.dock-right .flyout-menu,
+.dock-panel-left .flyout-menu {
+  left: auto;
+  right: calc(100% + 6px);
+}
+
+.flyout-menu.show {
+  display: flex;
+  flex-direction: column;
+}
+
+.flyout-item {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  color: #a1a1aa;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  transition: background-color 0.12s ease;
+  cursor: pointer;
+}
+
+.flyout-item:hover {
+  background: #2f2f38;
+  color: #ffffff;
+}
+
+/* Drag Handle (Textura Pura Sin Fondo, Sin Hover, Sin Seleccion) */
+.drag-handle {
+  cursor: grab;
+  background: transparent !important;
+  border: none !important;
+  color: #52525b !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+.drag-handle:hover,
+.drag-handle:active,
+.drag-handle:focus {
+  background: transparent !important;
+  color: #52525b !important;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+/* Manija de Redimensionado de Ancho de Barra */
+.toolbar-resizer {
+  position: absolute;
+  right: -3px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  cursor: ew-resize;
+  background: transparent;
+  z-index: 55;
+}
+
+.dock-right .toolbar-resizer,
+.dock-panel-left .toolbar-resizer {
+  right: auto;
+  left: -3px;
+}
+
+.toolbar-resizer:hover, .toolbar-resizer:active {
+  background: #008800;
+}
+
+/* Modos de Acoplamiento de Barra */
+.toolbar-floating {
+  border-radius: 6px;
+  border: none !important;
+  background: #1e1e24 !important;
+}
+
+.toolbar-docked {
+  top: 0 !important;
+  bottom: 0 !important;
+  height: 100% !important;
+  border-radius: 0 !important;
+  background: #1e1e24 !important;
+  border: none !important;
+}
+
+#rightDockContainer {
+  margin-left: 4px;
+  border: none !important;
+}
+
+#rightSidebar {
+  border-right: none !important;
+  border-left: none !important;
+}
+
+/* Grid Dinámica Multi-Columna */
+.tool-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--tool-cols, 1), 32px);
+  gap: 4px;
+  align-content: start;
+}
+
+.tool-divider {
+  grid-column: 1 / -1;
+  height: 1px;
+  background-color: #2f2f38;
+  margin: 2px 0;
+  width: 100%;
+}
+
+.resizer-handle {
+  width: 3px;
+  cursor: col-resize;
+  background: #121215;
+  margin: 0;
+  padding: 0;
+  border: none !important;
+  transition: background-color 0.15s ease;
+}
+.resizer-handle:hover, .resizer-handle:active {
+  background: #008800;
+}
+
+.flat-divider {
+  width: 1px;
+  height: 16px;
+  background-color: #2f2f38;
+  flex-shrink: 0;
+}
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-thumb { background: #2f2f38; border-radius: 2px; }
+
+/* Slider de propiedades CAD - Verde #008800 */
+input[type="range"].cad-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  background: #27272a;
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+input[type="range"].cad-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  background: #008800;
+  border: 1px solid #10141d;
+  cursor: ew-resize;
+  transition: transform 0.1s ease;
+}
+
+input[type="range"].cad-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+input[type="range"].cad-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  background: #008800;
+  border: 1px solid #10141d;
+  cursor: ew-resize;
+  transition: transform 0.1s ease;
+}
+
+input[type="range"].cad-slider::-moz-range-thumb:hover {
+  transform: scale(1.15);
+}

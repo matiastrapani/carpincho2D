@@ -1,0 +1,7 @@
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Configuraciones locales de VS Code (opcional)
+.vscode/
+
