@@ -411,6 +411,10 @@ class LayerPanelUI {
       const row = this.createLayerRow(layer);
       list.appendChild(row);
     });
+
+    if (window.propertyPanelUI) {
+      window.propertyPanelUI.refresh();
+    }
   }
 
   createLayerRow(layer) {
