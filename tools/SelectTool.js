@@ -38,6 +38,14 @@ class SelectTool extends BaseTool {
 
   onMouseDown(event) {
     this.utils.clearHUD();
+    
+    // Resetear estados temporales de hover para evitar arrastrar grosores residuales
+    this.utils.hoveredHandle = null;
+    this.utils.hoveredCurve = null;
+    if (this.service.hoveredEntity) {
+      this.utils.clearHoverHighlight();
+    }
+
     const isShift = event.event.shiftKey;
 
     // 0. CLIC EN GRIP PARAMÉTRICO
@@ -67,15 +75,20 @@ class SelectTool extends BaseTool {
     // =========================================================================
     const hitHandle = this.handleModule.hitTest(event.point);
     if (hitHandle) {
-      this.activeModule = this.handleModule;
-      this.activeModule.onMouseDown(event, hitHandle);
-      return;
+      // GUARDIÁN: Si la entidad completa ya está seleccionada, ignorar el clic en nodos/handles individuales
+      const segPath = hitHandle.item?.data?.segment?.path || hitHandle.segment?.path;
+      const isPathFullySelected = segPath && this.service.selectedEntities.includes(segPath);
+
+      if (!isPathFullySelected) {
+        this.activeModule = this.handleModule;
+        this.activeModule.onMouseDown(event, hitHandle);
+        return;
+      }
     }
 
     // =========================================================================
     // 2. CLIC EN ENTIDADES (Modo Edición de Tramos o Selección Rígida)
     // =========================================================================
-    // Helper para encontrar la entidad raíz registrada en demoEntities
     const getRootEntity = (item) => {
       let current = item;
       while (current) {
@@ -88,11 +101,12 @@ class SelectTool extends BaseTool {
     };
 
     const hitEntity = paper.project.hitTest(event.point, {
-      stroke: true, fill: true, tolerance: 8 / paper.view.zoom,
+      stroke: true, fill: true, pixels: true, tolerance: 8 / paper.view.zoom,
       match: (res) => {
         const root = getRootEntity(res.item);
         if (!this.service.demoEntities.includes(root)) return false;
 
+        if (root instanceof paper.Raster || res.item instanceof paper.Raster) return true;
         if (root.data?.isPointEntity || res.item.data?.isPointEntity) return true;
         if (res.type === 'stroke') return true;
 
@@ -106,12 +120,15 @@ class SelectTool extends BaseTool {
     });
 
     if (hitEntity && hitEntity.item) {
-      // Normalizamos targetItem a la entidad raíz del grupo/escena
       const targetItem = getRootEntity(hitEntity.item);
 
-      // =========================================================================
+      // GUARDIÁN DE CAPA BLOQUEADA
+      const layerId = String(targetItem.data?.layerId || '0');
+      const layerManager = this.service.layerManager || window.cadUtils?.layerManager;
+      const layer = layerManager?.layers?.get(layerId);
+      if (layer && layer.locked) return;
+
       // DETECCIÓN DE DOBLE CLIC -> ENTRAR EN MODO EDICIÓN DE NODOS
-      // =========================================================================
       const now = Date.now();
       const timeDiff = now - this.lastClickTime;
       const isDoubleClick = timeDiff < 300 && this.lastClickEntity === targetItem;
@@ -120,25 +137,24 @@ class SelectTool extends BaseTool {
       this.lastClickEntity = targetItem;
 
       if (isDoubleClick && (targetItem instanceof paper.Path) && !targetItem.data?.isPointEntity) {
-        // Asignar ÚNICAMENTE esta entidad al modo edición
         this.service.editingEntities = [targetItem];
         this.service.selectedEntities = [targetItem];
         this.service.deselectAllSegments();
         this.service.deselectAllHandles();
 
-        // Renderizar vértices y grips
         this.utils.renderBezierHandles();
         this.utils.updateEntitiesStroke();
         this.utils.setPrompt('Modo edición de nodos activo. Presiona Esc para salir.');
         
-        // Cancelar el flujo de arrastre normal
         this.dragState.dragAnchorEntity = null;
         return;
       }
 
       const isAlreadyInEditMode = this.service.editingEntities.includes(targetItem);
+      const isEntityFullySelected = this.service.selectedEntities.includes(targetItem);
 
-      if (isAlreadyInEditMode && targetItem instanceof paper.Path && !targetItem.data?.isPointEntity) {
+      // SOLO entra a edición de tramos/nodos si la entidad NO está seleccionada completa
+      if (isAlreadyInEditMode && !isEntityFullySelected && targetItem instanceof paper.Path && !targetItem.data?.isPointEntity) {
         const location = hitEntity.location || targetItem.getNearestLocation(event.point);
 
         if (location && location.curve) {
@@ -168,8 +184,25 @@ class SelectTool extends BaseTool {
             if (seg2) this.service.selectSegment(seg2, true);
           }
 
-          this.dragState.dragAnchorSegment = seg1;
-          this.dragState.anchorSegmentStartPt = seg1 ? seg1.point.clone() : null;
+          let activePivotSeg = seg1;
+          let minDist = seg1 ? seg1.point.getDistance(event.point) : Infinity;
+
+          const poolSegments = this.service.selectedSegments.length > 0 
+            ? this.service.selectedSegments 
+            : [seg1, seg2].filter(Boolean);
+
+          poolSegments.forEach(s => {
+            const d = s.point.getDistance(event.point);
+            if (d < minDist) {
+              minDist = d;
+              activePivotSeg = s;
+            }
+          });
+
+          this.dragState.dragAnchorSegment = activePivotSeg;
+          this.dragState.anchorSegmentStartPt = activePivotSeg ? activePivotSeg.point.clone() : null;
+          this.dragState.pivotPoint = activePivotSeg ? activePivotSeg.point.clone() : event.point.clone();
+
           this.dragState.selectedSegmentsStartData = this.service.selectedSegments.map(s => ({
             segment: s,
             path: s.path,
@@ -181,11 +214,15 @@ class SelectTool extends BaseTool {
 
           this.dragState.mouseStartPt = event.point.clone();
           this.utils.renderBezierHandles();
+
+          if (this.dragState.pivotPoint) {
+            this.utils.renderPivotMarker(this.dragState.pivotPoint);
+          }
           return;
         }
       }
 
-      // Verificación robusta de selección múltiple
+      // MANEJO DE SELECCIÓN DE ENTIDAD COMPLETA (SI YA ESTÁ SELECCIONADA, PERMITE ARRASTRARLA DE UNA)
       const isAlreadySelected = this.service.selectedEntities.includes(targetItem);
 
       if (isShift) {
@@ -198,7 +235,6 @@ class SelectTool extends BaseTool {
           this.service.deselectAllSegments();
         }
       } else {
-        // Mantiene la selección del grupo intacta si el clic ocurrió dentro de una entidad ya seleccionada
         if (!isAlreadySelected) {
           this.service.selectEntity(targetItem, false);
           this.service.editingEntities = [];
@@ -215,9 +251,6 @@ class SelectTool extends BaseTool {
       this.dragState.dragAnchorEntity = targetItem;
       this.dragState.mouseStartPt = event.point.clone();
 
-      // =========================================================================
-      // CÁLCULO OPTIMIZADO DEL VÉRTICE / PIVOTE
-      // =========================================================================
       const checkIsPoint = (ent) => {
         let current = ent;
         while (current) {
@@ -241,8 +274,22 @@ class SelectTool extends BaseTool {
 
       if (isPivotFromPoint) {
         closestVertex = targetItem.position || targetItem.bounds?.center;
+      } else if (targetItem instanceof paper.Raster && targetItem.bounds) {
+        const b = targetItem.bounds;
+        const imagePoints = [
+          b.topLeft, b.topCenter, b.topRight,
+          b.rightCenter, b.bottomRight, b.bottomCenter,
+          b.bottomLeft, b.leftCenter, b.center
+        ];
+
+        imagePoints.forEach(pt => {
+          const dist = pt.getDistance(event.point);
+          if (dist < minDistance) {
+            minDistance = dist;
+            closestVertex = pt.clone();
+          }
+        });
       } else if (targetItem instanceof paper.Path && targetItem.segments) {
-        // PRIORIDAD 1: Evaluar solo los nodos de la entidad tocada
         targetItem.segments.forEach(seg => {
           const dist = seg.point.getDistance(event.point);
           if (dist < minDistance) {
@@ -252,7 +299,6 @@ class SelectTool extends BaseTool {
         });
       }
 
-      // FALLBACK: Si no había vértices directos, buscar solo en entidades muy cercanas al clic
       if (!closestVertex && this.service.selectedEntities.length > 0) {
         const tolerancePx = 20 / paper.view.zoom;
         const searchBox = new paper.Rectangle(
@@ -300,17 +346,13 @@ class SelectTool extends BaseTool {
         };
       });
 
-      // 1. Redibujar handles generales
       this.utils.renderBezierHandles();
 
-      // 2. Dibujar pivote ÚNICAMENTE si NO es una entidad Punto
       if (this.dragState.pivotPoint && !this.dragState.isPivotFromPoint) {
         this.utils.renderPivotMarker(this.dragState.pivotPoint);
       }
     } else {
-      // =========================================================================
-      // 3. CUADRO DE SELECCIÓN (Espacio vacío)
-      // =========================================================================
+      // 3. CUADRO DE SELECCIÓN
       if (window.cadUI && typeof window.cadUI.updatePropertyPanel === 'function') {
         if (window.propertyPanelUI) {
           window.propertyPanelUI.setSelectedEntities([]);
@@ -335,13 +377,27 @@ class SelectTool extends BaseTool {
   }
 
   onMouseDrag(event) {
-    // 0. Arrastre de Grip Paramétrico (Bounding Box de Imagen / Círculo)
+    // 0. Arrastre de Grip Paramétrico (Bounding Box de Imagen / Círculo) con OSNAP
     if (this.activeGripEntity && this.activeGripId) {
-      const isShift = event.event.shiftKey; // Detectar Shift presionado
+      const isShift = event.event.shiftKey;
       const controller = this.activeGripEntity.data?.controller;
 
+      let targetPt = event.point.clone();
+
+      // Calcular OSNAP omitiendo la imagen en transformación
+      const osnap = this.service.calculateOsnap(
+        event.point,
+        (snapPt, type) => this.utils.renderSnapMarker(snapPt, type),
+        null,
+        { ignoreEntities: [this.activeGripEntity] }
+      );
+
+      if (osnap.type) {
+        targetPt = osnap.point;
+      }
+
       if (controller && typeof controller.onGripDrag === 'function') {
-        controller.onGripDrag(this.activeGripId, event.point, this.gripStartPoint, { isShiftPressed: isShift });
+        controller.onGripDrag(this.activeGripId, targetPt, this.gripStartPoint, { isShiftPressed: isShift });
         this.utils.renderBezierHandles();
         paper.view.update();
       }
@@ -372,7 +428,7 @@ class SelectTool extends BaseTool {
       let globalDelta = targetMousePt.subtract(this.dragState.mouseStartPt);
 
       if (pivotSegData && pivotSegData.initialPt) {
-        const currentPivotPos = pivotSegData.initialPt.add(globalDelta);
+        let currentPivotPos = pivotSegData.initialPt.add(globalDelta);
 
         if (!isShift) {
           const activePaths = Array.from(new Set(
@@ -400,6 +456,10 @@ class SelectTool extends BaseTool {
         } else {
           this.utils.clearHUD();
         }
+
+        // Mantiene visible el marcador de PIVOT en la posición final ajustada por el OSNAP
+        currentPivotPos = pivotSegData.initialPt.add(globalDelta);
+        this.utils.renderPivotMarker(currentPivotPos);
       }
 
       this.dragState.selectedSegmentsStartData.forEach(item => {
@@ -449,7 +509,6 @@ class SelectTool extends BaseTool {
       const finalTargetPivot = osnap.type ? osnap.point : projectedPivot;
       const globalDelta = finalTargetPivot.subtract(pivotPoint);
 
-
       this.dragState.entityStartPositions.forEach(item => {
         if (!item.entity) return;
 
@@ -466,7 +525,7 @@ class SelectTool extends BaseTool {
 
       this.utils.renderBezierHandles();
       
-      // 2. Dibujar pivote SOLO si NO es un punto
+      // Dibujar pivote SOLO si NO es un punto
       if (!this.dragState.isPivotFromPoint) {
         this.utils.renderPivotMarker(finalTargetPivot);
       }
@@ -525,7 +584,8 @@ class SelectTool extends BaseTool {
       this.utils.renderBezierHandles();
       return;
     }
-    // 1. Finalizar submódulo activo si estuvo en ejecución
+
+    // 1. Finalizar submódulo activo
     if (this.activeModule) {
       this.activeModule.onMouseUp(event);
       this.activeModule = null;
@@ -617,18 +677,17 @@ class SelectTool extends BaseTool {
       }
     }
 
-    // 4. Finalizar Cuadro de Selección
-    // 4. Finalizar Cuadro de Selección
+    // 4. Finalizar Cuadro de Selección / Clic en Canvas
     if (this.dragState.selectionBoxRect && this.dragState.selectionStartPoint) {
       const startPt = this.dragState.selectionStartPoint;
       const endPt = event.point;
       const dragDistance = startPt.getDistance(endPt);
       const isShift = event.event.shiftKey;
 
+      // CLIC SIMPLE EN CANVAS: deselecciona entidades/segmentos pero MANTIENE editingEntities
       if (dragDistance < 3 / paper.view.zoom) {
         if (!isShift) {
           this.service.deselectAllEntities();
-          this.service.editingEntities = [];
           this.service.deselectAllSegments();
         }
         this.cleanBox();
@@ -639,9 +698,6 @@ class SelectTool extends BaseTool {
       const isWindowSelection = endPt.x >= startPt.x;
       const hasEditingEntities = this.service.editingEntities.length > 0;
 
-      // -----------------------------------------------------------------------
-      // HELPER 1: Intersección de segmento recto vs rectángulo AABB
-      // -----------------------------------------------------------------------
       const lineIntersectsBox = (p1, p2, rect) => {
         const minX = Math.min(p1.x, p2.x), maxX = Math.max(p1.x, p2.x);
         const minY = Math.min(p1.y, p2.y), maxY = Math.max(p1.y, p2.y);
@@ -657,32 +713,24 @@ class SelectTool extends BaseTool {
                intersectLines(p1, p2, rect.bottomLeft, rect.topLeft);
       };
 
-      // -----------------------------------------------------------------------
-      // HELPER 2: Muestreo Bézier Cúbico exacto para Curvas, Arcos y Splines
-      // -----------------------------------------------------------------------
       const isPathSelectedByBox = (path) => {
         if (!path || !path.bounds) return false;
 
-        // Descarte AABB: Si las cajas principales no se rozan, omitir
         if (!boxBounds.intersects(path.bounds) && !boxBounds.contains(path.bounds)) {
           return false;
         }
 
         if (isWindowSelection) {
-          // Azul (Ventana): exige el 100% encerrado
           return boxBounds.contains(path.bounds);
         }
 
-        // Verde (Cruce)
         if (boxBounds.contains(path.bounds)) return true;
 
-        // 1. Probar si algún nodo/vértice está dentro de la caja
         const segments = path.segments || [];
         for (let i = 0; i < segments.length; i++) {
           if (boxBounds.contains(segments[i].point)) return true;
         }
 
-        // 2. Probar los tramos/curvas entre nodos
         const curves = path.curves || [];
         for (let i = 0; i < curves.length; i++) {
           const c = curves[i];
@@ -694,10 +742,8 @@ class SelectTool extends BaseTool {
           const h2 = c.segment2.handleIn;
 
           if (h1.isZero() && h2.isZero()) {
-            // Tramo RECTO
             if (lineIntersectsBox(p0, p1, boxBounds)) return true;
           } else {
-            // Tramo CURVO: Muestreo paramétrico de la curva Bézier
             const c1 = p0.add(h1);
             const c2 = p1.add(h2);
 
@@ -727,9 +773,7 @@ class SelectTool extends BaseTool {
         ent.data?.isPointEntity || ent.data?.isPoint || ent.parent?.data?.isPointEntity
       );
 
-      // =========================================================================
-      // MODO EDICIÓN DE NODOS
-      // =========================================================================
+      // CUADRO EN MODO EDICIÓN DE NODOS
       if (hasEditingEntities) {
         let segmentsSelectedCount = 0;
         this.service.editingEntities.forEach(entity => {
@@ -745,16 +789,13 @@ class SelectTool extends BaseTool {
           }
         });
 
-        // Si no se tocó ningún nodo, sale del modo edición para volver a modo objeto
+        // Al no seleccionar nodos con el cuadro, deselecciona los segmentos sin vaciar editingEntities
         if (segmentsSelectedCount === 0 && !isShift) {
-          this.service.editingEntities = [];
           this.service.deselectAllSegments();
         }
       }
 
-      // =========================================================================
-      // MODO SELECCIÓN DE OBJETOS
-      // =========================================================================
+      // CUADRO EN MODO SELECCIÓN DE OBJETOS
       if (this.service.editingEntities.length === 0) {
         const entitiesToSelect = [];
         const demoEntities = this.service.demoEntities;
@@ -811,7 +852,6 @@ class SelectTool extends BaseTool {
     const point = event.point;
     const zoom = paper.view.zoom;
 
-    // Detección de Hover sobre Grips Paramétricos
     const hitGrip = this.utils.controlHandlesGroup ? this.utils.controlHandlesGroup.hitTest(point, {
       fill: true, stroke: true, tolerance: 8 / zoom,
       match: (res) => res.item.data?.isParametricGrip
@@ -834,17 +874,13 @@ class SelectTool extends BaseTool {
     }
 
     document.body.style.cursor = 'default';
-    // ==================================================================
-    // NIVEL 1: HOVER EN MODO EDICIÓN (Grips y Tramos Individuales)
-    // ==================================================================
+
     if (this.service.editingEntities.length > 0) {
-      
       const hitHandle = this.utils.controlHandlesGroup ? this.utils.controlHandlesGroup.hitTest(point, {
         fill: true, stroke: true, segments: true, tolerance: 8 / zoom,
         match: (res) => {
           if (!res.item || !res.item.data || !res.item.data.segment) return false;
           
-          // BLOQUEO: Si la entidad entera está en selectedEntities, NO hay hover de sub-elementos
           const parentPath = res.item.data.segment.path;
           if (parentPath && this.service.selectedEntities.includes(parentPath)) {
             return false;
@@ -867,9 +903,6 @@ class SelectTool extends BaseTool {
         return;
       }
 
-      // -----------------------------------------------------------------
-      // OPTIMIZACIÓN AABB: Caja de tolerancia alrededor del puntero
-      // -----------------------------------------------------------------
       const mouseBox = new paper.Rectangle(
         point.subtract(new paper.Point(8 / zoom, 8 / zoom)),
         new paper.Size(16 / zoom, 16 / zoom)
@@ -878,8 +911,6 @@ class SelectTool extends BaseTool {
       let hitCurve = null;
       for (const ent of this.service.editingEntities) {
         if (ent instanceof paper.Path && ent.curves && !ent.data?.isPointEntity) {
-          
-          // Descartar inmediatamente curvas cuya caja no toque el ratón
           if (ent.bounds && !ent.bounds.intersects(mouseBox)) continue;
 
           const loc = ent.getNearestLocation(point);
@@ -910,16 +941,25 @@ class SelectTool extends BaseTool {
       }
     }
 
-    // ==================================================================
-    // NIVEL 2: HOVER GENERAL
-    // ==================================================================
     const hitEntity = paper.project.hitTest(point, {
       stroke: true, fill: true, tolerance: 6 / zoom,
       match: (res) => {
         const item = res.item;
-        const isDemo = this.service.demoEntities.includes(item) || 
-                       this.service.demoEntities.includes(item.parent);
-        if (!isDemo) return false;
+        const getRootEntity = (i) => {
+          let curr = i;
+          while (curr) {
+            if (this.service.demoEntities.includes(curr)) return curr;
+            curr = curr.parent;
+          }
+          return i;
+        };
+        const root = getRootEntity(item);
+        if (!this.service.demoEntities.includes(root)) return false;
+
+        // IGNORAR HOVER SI LA CAPA ESTÁ BLOQUEADA
+        const layerId = String(root.data?.layerId || '0');
+        const layer = this.service.layerManager?.layers?.get(layerId);
+        if (layer && layer.locked) return false;
 
         if (item.data?.isPointEntity || item.parent?.data?.isPointEntity) return true;
         if (res.type === 'stroke') return true;

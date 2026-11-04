@@ -1,6 +1,6 @@
 /**
- * PropertyPanelUI.js - Panel de Propiedades compacto para entidades del lienzo CAD.
- * Maneja estados de selección (Sin selección, Selección única y Selección múltiple).
+ * PropertyPanelUI.js - Panel de Propiedades para entidades del lienzo CAD.
+ * Maneja estados de selección (Sin selección, Selección única y Selección múltiple) con Undo/Redo.
  */
 
 class PropertyPanelUI {
@@ -18,7 +18,6 @@ class PropertyPanelUI {
     this.refresh();
   }
 
-  // --- INICIALIZACIÓN DE VALORES POR DEFECTO ---
   _ensureDefaultSettings() {
     if (this.utils?.propertyManager) {
       if (!this.utils.propertyManager.defaultSettings) {
@@ -31,10 +30,6 @@ class PropertyPanelUI {
     }
   }
 
-  /**
-   * Actualiza el panel según las entidades actualmente seleccionadas en el lienzo.
-   * @param {Array} entities - Lista de entidades seleccionadas.
-   */
   setSelectedEntities(entities = []) {
     this.selectedEntities = entities;
     this.refresh();
@@ -43,13 +38,11 @@ class PropertyPanelUI {
   renderShell() {
     this.container.innerHTML = `
       <div class="flex flex-col h-full w-full select-none text-zinc-300 font-sans overflow-hidden">
-        <!-- Encabezado del Panel -->
         <div class="flex items-center justify-between mb-2 shrink-0 px-1 py-0.5">
           <span class="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Propiedades</span>
           <span id="propSelectionBadge" class="text-[10px] text-zinc-500 font-mono">Sin selección</span>
         </div>
 
-        <!-- Creador Dinámico de Propiedades -->
         <div id="propertyFieldsContainer" class="flex-1 overflow-y-auto custom-scrollbar space-y-3 min-h-0 bg-transparent pr-0.5">
         </div>
       </div>
@@ -62,7 +55,6 @@ class PropertyPanelUI {
     if (!fieldsContainer) return;
 
     fieldsContainer.innerHTML = '';
-
     const count = this.selectedEntities.length;
 
     if (count === 0) {
@@ -70,8 +62,12 @@ class PropertyPanelUI {
       this._renderEmptyState(fieldsContainer);
     } else if (count === 1) {
       const entity = this.selectedEntities[0];
-      const entityName = entity.name || entity.data?.name || entity.type || 'Elemento';
-      if (badge) badge.textContent = entityName;
+      const rawName = entity.name || entity.data?.name || entity.type || 'Elemento';
+      
+      // Se elimina el número al final del nombre para el badge superior derecho (ej. "Línea 1" -> "Línea")
+      const badgeText = rawName.replace(/\s+\d+$/, '');
+      if (badge) badge.textContent = badgeText;
+      
       this._renderSingleEntityProperties(fieldsContainer, entity);
     } else {
       if (badge) badge.textContent = `${count} seleccionados`;
@@ -80,12 +76,8 @@ class PropertyPanelUI {
     this._convertSelectsToCustom(fieldsContainer);
   }
 
-  /**
-   * Convierte de forma segura cualquier color de Paper.js o String a Hexadecimal (#rrggbb)
-   */
   _getHexColor(color) {
     if (!color) return '#ffffff';
-    
     if (typeof color === 'string') {
       if (color.startsWith('#')) {
         if (color.length === 4) {
@@ -95,12 +87,34 @@ class PropertyPanelUI {
       }
       return '#ffffff';
     }
-
     if (typeof color.toCSS === 'function') {
       return color.toCSS(true);
     }
-
     return '#ffffff';
+  }
+
+  _formatWidthDisplay(val) {
+    if (val === 0 || val === '0' || val === '-') return '-';
+    const num = parseFloat(val);
+    return isNaN(num) ? '-' : num.toFixed(1);
+  }
+
+  // Helper para determinar si un valor de grosor pertenece a la lista de presets
+  _isPresetWidth(val) {
+    if (val === '-' || val === 0 || val === '0') return true;
+    const num = parseFloat(val);
+    return [0, 1, 1.5, 2, 3].includes(num);
+  }
+
+  _getWidthTextColorClass(isByLayer, val) {
+    if (isByLayer || this._isPresetWidth(val)) {
+      return 'text-zinc-500';
+    }
+    return 'text-white';
+  }
+
+  _getOpacityTextColorClass(isByLayer) {
+    return isByLayer ? 'text-zinc-500' : 'text-white';
   }
 
   // --- ESTADO: SIN SELECCIÓN (MODO CREACIÓN) ---
@@ -128,7 +142,10 @@ class PropertyPanelUI {
 
     const activeWidth = (activeLayer && activeLayer.strokeWidth !== undefined) ? activeLayer.strokeWidth : 1;
     const resolvedWidth = isWidthByLayer ? activeWidth : defaults.strokeWidth;
-    const defWidthFormatted = (typeof resolvedWidth === 'number' ? resolvedWidth : 1).toFixed(1);
+    const defWidthFormatted = this._formatWidthDisplay(resolvedWidth);
+
+    const opacityColorClass = this._getOpacityTextColorClass(isOpacityByLayer);
+    const widthColorClass = this._getWidthTextColorClass(isWidthByLayer, resolvedWidth);
 
     container.innerHTML = `
       <div class="pb-2.5">
@@ -144,7 +161,7 @@ class PropertyPanelUI {
           </div>
         </div>
 
-        <!-- Color de Trazo -->
+        <!-- Color -->
         <div class="flex items-center justify-between gap-2 mb-1.5 w-full">
           <span class="text-[11px] text-zinc-400 w-[55px] shrink-0">Color</span>
           <div class="flex items-center flex-1 min-w-0 gap-1.5">
@@ -163,9 +180,9 @@ class PropertyPanelUI {
         <div class="flex items-center justify-between gap-2 mb-1.5 w-full">
           <span class="text-[11px] text-zinc-400 w-[55px] shrink-0">Opacidad</span>
           <div class="flex items-center flex-1 min-w-0 gap-1.5">
-            <div id="defOpacityContainer" class="flex items-center justify-end w-[65px] shrink-0 bg-[#17171c] hover:bg-[#27272a] text-zinc-200 text-[11px] px-2 py-1 rounded cursor-ew-resize border-0 outline-none transition-colors" title="Haz clic para editar o mantén presionado y arrastra">
-              <input type="number" id="defOpacityInput" min="0" max="100" value="${defOpacityPct}" class="w-7 bg-transparent text-right outline-none border-0 text-zinc-200 text-[11px] font-sans tabular-nums p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none cursor-ew-resize focus:cursor-text">
-              <span class="text-[11px] text-zinc-400 font-sans tabular-nums ml-0.5 pointer-events-none">%</span>
+            <div id="defOpacityContainer" class="flex items-center justify-end w-[50px] shrink-0 bg-[#17171c] hover:bg-[#27272a] text-[11px] px-2 py-1 rounded cursor-ew-resize border-0 outline-none transition-colors" title="Haz clic para editar o arrastra">
+              <input type="number" id="defOpacityInput" min="0" max="100" value="${defOpacityPct}" class="w-9 bg-transparent text-right outline-none border-0 ${opacityColorClass} text-[11px] font-sans tabular-nums p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none cursor-ew-resize focus:cursor-text">
+              <span class="text-[11px] ${opacityColorClass} font-sans tabular-nums ml-0.5 pointer-events-none">%</span>
             </div>
             <div class="relative flex-1 min-w-0 flex items-center">
               <select id="defOpacityModeSelect" class="w-full bg-[#17171c] hover:bg-[#27272a] text-zinc-200 text-[11px] px-2 py-1 rounded outline-none cursor-pointer appearance-none pr-5">
@@ -181,13 +198,18 @@ class PropertyPanelUI {
         <div class="flex items-center justify-between gap-2 w-full">
           <span class="text-[11px] text-zinc-400 w-[55px] shrink-0">Grosor</span>
           <div class="flex items-center flex-1 min-w-0 gap-1.5">
-            <div id="defWidthContainer" class="flex items-center justify-end w-[65px] shrink-0 bg-[#17171c] hover:bg-[#27272a] text-zinc-200 text-[11px] px-2 py-1 rounded cursor-ew-resize border-0 outline-none transition-colors" title="Haz clic para editar o mantén presionado y arrastra">
-              <input type="number" id="defWidthInput" min="0" step="0.1" value="${defWidthFormatted}" class="w-9 bg-transparent text-right outline-none border-0 text-zinc-200 text-[11px] font-sans tabular-nums p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none cursor-ew-resize focus:cursor-text">
+            <div id="defWidthContainer" class="flex items-center justify-end w-[50px] shrink-0 bg-[#17171c] hover:bg-[#27272a] text-[11px] px-2 py-1 rounded cursor-ew-resize border-0 outline-none transition-colors" title="Haz clic para editar o arrastra">
+              <input type="text" id="defWidthInput" value="${defWidthFormatted}" class="w-9 bg-transparent text-right outline-none border-0 ${widthColorClass} text-[11px] font-sans tabular-nums p-0 cursor-ew-resize focus:cursor-text">
             </div>
             <div class="relative flex-1 min-w-0 flex items-center">
               <select id="defWidthModeSelect" class="w-full bg-[#17171c] hover:bg-[#27272a] text-zinc-200 text-[11px] px-2 py-1 rounded outline-none cursor-pointer appearance-none pr-5">
                 <option value="BYLAYER" ${isWidthByLayer ? 'selected' : ''}>Por Capa</option>
-                <option value="CUSTOM" ${!isWidthByLayer ? 'selected' : ''}>Personalizado</option>
+                <option value="0" ${!isWidthByLayer && resolvedWidth === 0 ? 'selected' : ''}>-</option>
+                <option value="1" ${!isWidthByLayer && resolvedWidth === 1 ? 'selected' : ''}>1.0</option>
+                <option value="1.5" ${!isWidthByLayer && resolvedWidth === 1.5 ? 'selected' : ''}>1.5</option>
+                <option value="2" ${!isWidthByLayer && resolvedWidth === 2 ? 'selected' : ''}>2.0</option>
+                <option value="3" ${!isWidthByLayer && resolvedWidth === 3 ? 'selected' : ''}>3.0</option>
+                <option value="CUSTOM" ${!isWidthByLayer && ![0, 1, 1.5, 2, 3].includes(resolvedWidth) ? 'selected' : ''}>Personalizado</option>
               </select>
               <i class="fa-solid fa-chevron-down text-[8px] text-zinc-500 absolute right-2 pointer-events-none"></i>
             </div>
@@ -206,6 +228,9 @@ class PropertyPanelUI {
     const layers = layerManager ? Array.from(layerManager.layers.values()) : [];
     const currentLayerId = entity.data?.layerId || '0';
     const entityName = entity.name || entity.data?.name || '';
+
+    // Detección de entidad tipo Imagen (Raster)
+    const isRaster = entity instanceof paper.Raster || entity.className === 'Raster' || entity.data?.isImageEntity;
 
     const isColorByLayer = entity.data?.colorByLayer !== undefined 
       ? entity.data.colorByLayer === true 
@@ -231,7 +256,10 @@ class PropertyPanelUI {
 
     const layerWidth = (activeLayer && activeLayer.strokeWidth !== undefined) ? activeLayer.strokeWidth : 1;
     const resolvedWidth = isWidthByLayer ? layerWidth : (entity.data?.baseStrokeWidth !== undefined ? entity.data.baseStrokeWidth : (entity.strokeWidth !== undefined ? entity.strokeWidth : 1));
-    const formattedWidth = resolvedWidth.toFixed(1);
+    const formattedWidth = this._formatWidthDisplay(resolvedWidth);
+
+    const opacityColorClass = this._getOpacityTextColorClass(isOpacityByLayer);
+    const widthColorClass = this._getWidthTextColorClass(isWidthByLayer, resolvedWidth);
 
     container.innerHTML = `
       <div class="pb-2.5">
@@ -271,9 +299,9 @@ class PropertyPanelUI {
         <div class="flex items-center justify-between gap-2 mb-1.5 w-full">
           <span class="text-[11px] text-zinc-400 w-[55px] shrink-0">Opacidad</span>
           <div class="flex items-center flex-1 min-w-0 gap-1.5">
-            <div id="propOpacityContainer" class="flex items-center justify-end w-[65px] shrink-0 bg-[#17171c] hover:bg-[#27272a] text-zinc-200 text-[11px] px-2 py-1 rounded cursor-ew-resize border-0 outline-none transition-colors" title="Haz clic para editar o mantén presionado y arrastra">
-              <input type="number" id="propOpacityInput" min="0" max="100" value="${opacityPct}" class="w-7 bg-transparent text-right outline-none border-0 text-zinc-200 text-[11px] font-sans tabular-nums p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none cursor-ew-resize focus:cursor-text">
-              <span class="text-[11px] text-zinc-400 font-sans tabular-nums ml-0.5 pointer-events-none">%</span>
+            <div id="propOpacityContainer" class="flex items-center justify-end w-[62px] shrink-0 bg-[#17171c] hover:bg-[#27272a] text-[11px] px-2 py-1 rounded cursor-ew-resize border-0 outline-none transition-colors" title="Haz clic para editar o arrastra">
+              <input type="number" id="propOpacityInput" min="0" max="100" value="${opacityPct}" class="w-9 bg-transparent text-right outline-none border-0 ${opacityColorClass} text-[11px] font-sans tabular-nums p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none cursor-ew-resize focus:cursor-text">
+              <span class="text-[11px] ${opacityColorClass} font-sans tabular-nums ml-0.5 pointer-events-none">%</span>
             </div>
             <div class="relative flex-1 min-w-0 flex items-center">
               <select id="propOpacityModeSelect" class="w-full bg-[#17171c] hover:bg-[#27272a] text-zinc-200 text-[11px] px-2 py-1 rounded outline-none cursor-pointer appearance-none pr-5">
@@ -285,22 +313,29 @@ class PropertyPanelUI {
           </div>
         </div>
 
-        <!-- Grosor -->
-        <div class="flex items-center justify-between gap-2 w-full">
-          <span class="text-[11px] text-zinc-400 w-[55px] shrink-0">Grosor</span>
-          <div class="flex items-center flex-1 min-w-0 gap-1.5">
-            <div id="propWidthContainer" class="flex items-center justify-end w-[65px] shrink-0 bg-[#17171c] hover:bg-[#27272a] text-zinc-200 text-[11px] px-2 py-1 rounded cursor-ew-resize border-0 outline-none transition-colors" title="Haz clic para editar o mantén presionado y arrastra">
-              <input type="number" id="propWidthInput" min="0" step="0.1" value="${formattedWidth}" class="w-9 bg-transparent text-right outline-none border-0 text-zinc-200 text-[11px] font-sans tabular-nums p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none cursor-ew-resize focus:cursor-text">
-            </div>
-            <div class="relative flex-1 min-w-0 flex items-center">
-              <select id="propWidthModeSelect" class="w-full bg-[#17171c] hover:bg-[#27272a] text-zinc-200 text-[11px] px-2 py-1 rounded outline-none cursor-pointer appearance-none pr-5">
-                <option value="BYLAYER" ${isWidthByLayer ? 'selected' : ''}>Por Capa</option>
-                <option value="CUSTOM" ${!isWidthByLayer ? 'selected' : ''}>Personalizado</option>
-              </select>
-              <i class="fa-solid fa-chevron-down text-[8px] text-zinc-500 absolute right-2 pointer-events-none"></i>
+        ${!isRaster ? `
+          <!-- Grosor (Omitido para Imágenes) -->
+          <div class="flex items-center justify-between gap-2 w-full">
+            <span class="text-[11px] text-zinc-400 w-[55px] shrink-0">Grosor</span>
+            <div class="flex items-center flex-1 min-w-0 gap-1.5">
+              <div id="propWidthContainer" class="flex items-center justify-end w-[62px] shrink-0 bg-[#17171c] hover:bg-[#27272a] text-[11px] px-2 py-1 rounded cursor-ew-resize border-0 outline-none transition-colors" title="Haz clic para editar o arrastra">
+                <input type="text" id="propWidthInput" value="${formattedWidth}" class="w-9 bg-transparent text-right outline-none border-0 ${widthColorClass} text-[11px] font-sans tabular-nums p-0 cursor-ew-resize focus:cursor-text">
+              </div>
+              <div class="relative flex-1 min-w-0 flex items-center">
+                <select id="propWidthModeSelect" class="w-full bg-[#17171c] hover:bg-[#27272a] text-zinc-200 text-[11px] px-2 py-1 rounded outline-none cursor-pointer appearance-none pr-5">
+                  <option value="BYLAYER" ${isWidthByLayer ? 'selected' : ''}>Por Capa</option>
+                  <option value="0" ${!isWidthByLayer && resolvedWidth === 0 ? 'selected' : ''}>-</option>
+                  <option value="1" ${!isWidthByLayer && resolvedWidth === 1 ? 'selected' : ''}>1.0</option>
+                  <option value="1.5" ${!isWidthByLayer && resolvedWidth === 1.5 ? 'selected' : ''}>1.5</option>
+                  <option value="2" ${!isWidthByLayer && resolvedWidth === 2 ? 'selected' : ''}>2.0</option>
+                  <option value="3" ${!isWidthByLayer && resolvedWidth === 3 ? 'selected' : ''}>3.0</option>
+                  <option value="CUSTOM" ${!isWidthByLayer && ![0, 1, 1.5, 2, 3].includes(resolvedWidth) ? 'selected' : ''}>Personalizado</option>
+                </select>
+                <i class="fa-solid fa-chevron-down text-[8px] text-zinc-500 absolute right-2 pointer-events-none"></i>
+              </div>
             </div>
           </div>
-        </div>
+        ` : ''}
       </div>
     `;
 
@@ -321,7 +356,7 @@ class PropertyPanelUI {
           <input type="text" id="propBatchNameInput" placeholder="-- Varios --" class="w-full bg-[#17171c] hover:bg-[#27272a] focus:bg-[#09090b] text-zinc-200 text-[11px] px-2 py-1 rounded outline-none border-0 flex-1 min-w-0 transition-colors">
         </div>
 
-        <!-- Cambiar Capa a todas -->
+        <!-- Capa en lote -->
         <div class="flex items-center justify-between gap-2 mb-1.5 w-full">
           <span class="text-[11px] text-zinc-400 w-[55px] shrink-0">Capa</span>
           <div class="relative flex items-center flex-1 min-w-0">
@@ -337,9 +372,9 @@ class PropertyPanelUI {
         <div class="flex items-center justify-between gap-2 w-full">
           <span class="text-[11px] text-zinc-400 w-[55px] shrink-0">Opacidad</span>
           <div class="flex items-center flex-1 min-w-0 gap-1.5">
-            <div id="propBatchOpacityContainer" class="flex items-center justify-end w-[65px] shrink-0 bg-[#17171c] hover:bg-[#27272a] text-zinc-200 text-[11px] px-2 py-1 rounded cursor-ew-resize border-0 outline-none transition-colors" title="Haz clic para editar o mantén presionado y arrastra">
-              <input type="number" id="propBatchOpacityInput" min="0" max="100" value="100" class="w-7 bg-transparent text-right outline-none border-0 text-zinc-200 text-[11px] font-sans tabular-nums p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none cursor-ew-resize focus:cursor-text">
-              <span class="text-[11px] text-zinc-400 font-sans tabular-nums ml-0.5 pointer-events-none">%</span>
+            <div id="propBatchOpacityContainer" class="flex items-center justify-end w-[62px] shrink-0 bg-[#17171c] hover:bg-[#27272a] text-[11px] px-2 py-1 rounded cursor-ew-resize border-0 outline-none transition-colors" title="Haz clic para editar o arrastra">
+              <input type="number" id="propBatchOpacityInput" min="0" max="100" value="100" class="w-9 bg-transparent text-right outline-none border-0 text-white text-[11px] font-sans tabular-nums p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none cursor-ew-resize focus:cursor-text">
+              <span class="text-[11px] text-white font-sans tabular-nums ml-0.5 pointer-events-none">%</span>
             </div>
           </div>
         </div>
@@ -348,56 +383,72 @@ class PropertyPanelUI {
 
     this._attachInputIsolation(container);
 
-    // Evento Nombre en Lote
     const batchNameInput = container.querySelector('#propBatchNameInput');
     batchNameInput?.addEventListener('change', (e) => {
       const newName = e.target.value.trim();
       if (!newName) return;
-      this.selectedEntities.forEach((ent) => {
-        ent.name = newName;
-        if (!ent.data) ent.data = {};
-        ent.data.name = newName;
-      });
+      this._dispatchCommand({ name: newName });
     });
 
-    // Evento Capa en Lote
     const batchLayerSelect = container.querySelector('#propBatchLayerSelect');
     batchLayerSelect?.addEventListener('change', (e) => {
       const targetLayerId = e.target.value;
       if (!targetLayerId) return;
-
-      this.selectedEntities.forEach((ent) => {
-        if (!ent.data) ent.data = {};
-        ent.data.layerId = targetLayerId;
-      });
-
-      this._requestCanvasUpdate();
+      this._dispatchCommand({ layerId: targetLayerId });
     });
 
-    // Evento Opacidad en Lote
     const batchOpacityContainer = container.querySelector('#propBatchOpacityContainer');
     const batchOpacityInput = container.querySelector('#propBatchOpacityInput');
 
     this._attachScrubInput(batchOpacityContainer, batchOpacityInput, (pctVal) => {
       const val = pctVal / 100;
-      this.selectedEntities.forEach((ent) => {
-        ent.opacity = val;
-        if (!ent.data) ent.data = {};
-        ent.data.origOpacity = val;
-        ent.data.opacityByLayer = false;
-      });
-      this._requestCanvasUpdate();
+      this._dispatchCommand({ opacityByLayer: false, origOpacity: val, opacity: val });
     }, { min: 0, max: 100, step: 1, precision: 0 });
   }
 
-  // --- HELPER COMPONENT: SCRUB INPUT INTERACTIVO GENERALIZADO ---
-  _attachScrubInput(containerEl, inputEl, onChange, { min = 0, max = null, step = 1, precision = 0 } = {}) {
+  // --- DESPACHADOR DE COMANDOS UNDO/REDO PARA SELECCIÓN ---
+  _dispatchCommand(newStateObj, entityTarget = null) {
+    const cadService = window.cadService;
+    const targets = entityTarget ? [entityTarget] : this.selectedEntities;
+    if (targets.length === 0) return;
+
+    const oldStateObj = {};
+    Object.keys(newStateObj).forEach(key => {
+      oldStateObj[key] = targets[0]?.data?.[key] !== undefined ? targets[0].data[key] : targets[0]?.[key];
+    });
+
+    if (window.UpdateEntityPropertyCommand && cadService) {
+      const cmd = new UpdateEntityPropertyCommand(cadService, targets, oldStateObj, newStateObj, this.utils);
+      cadService.executeCommand(cmd);
+    } else {
+      targets.forEach(ent => {
+        if (!ent.data) ent.data = {};
+        Object.assign(ent.data, newStateObj);
+        if (newStateObj.name !== undefined) ent.name = newStateObj.name;
+        if (newStateObj.opacity !== undefined) {
+          ent.opacity = newStateObj.opacity;
+          ent.data.baseOpacity = newStateObj.opacity; // <-- Mantiene sincronizado baseOpacity
+        }
+      });
+      this._requestCanvasUpdate();
+      this.refresh();
+    }
+  }
+
+  // --- SCRUB INPUT INTERACTIVO ---
+  _attachScrubInput(containerEl, inputEl, onChange, { min = 0, max = null, step = 1, precision = 0, isWidth = false, onLiveChange = null } = {}) {
     if (!containerEl || !inputEl) return;
 
     let isDragging = false;
     let startX = 0;
     let startVal = 0;
     let hasDragged = false;
+
+    const parseInputValue = (v) => {
+      if (v === '-' || v === '0') return 0;
+      const parsed = parseFloat(v);
+      return isNaN(parsed) ? 0 : parsed;
+    };
 
     const onMouseDown = (e) => {
       if (e.button !== 0) return;
@@ -406,7 +457,7 @@ class PropertyPanelUI {
       isDragging = true;
       hasDragged = false;
       startX = e.clientX;
-      startVal = parseFloat(inputEl.value) || 0;
+      startVal = parseInputValue(inputEl.value);
 
       document.addEventListener('mousemove', onMouseMove);
       document.addEventListener('mouseup', onMouseUp);
@@ -432,11 +483,11 @@ class PropertyPanelUI {
           newVal = Math.round(newVal);
         }
 
-        const formatted = precision > 0 ? newVal.toFixed(precision) : String(newVal);
+        const formatted = isWidth ? this._formatWidthDisplay(newVal) : (precision > 0 ? newVal.toFixed(precision) : String(newVal));
 
         if (inputEl.value !== formatted) {
           inputEl.value = formatted;
-          onChange(newVal);
+          if (typeof onLiveChange === 'function') onLiveChange(newVal);
         }
       }
     };
@@ -449,39 +500,31 @@ class PropertyPanelUI {
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
 
-        if (!hasDragged) {
+        if (hasDragged) {
+          const finalVal = parseInputValue(inputEl.value);
+          onChange(finalVal);
+        } else {
           inputEl.focus();
-          inputEl.select();
+          if (inputEl.select) inputEl.select();
         }
       }
     };
 
     containerEl.addEventListener('mousedown', onMouseDown);
 
-    const handleDirectInput = () => {
-      let val = parseFloat(inputEl.value);
-      if (isNaN(val)) val = 0;
-      if (min !== null) val = Math.max(min, val);
-      if (max !== null) val = Math.min(max, val);
-      onChange(val);
-    };
-
-    inputEl.addEventListener('input', handleDirectInput);
     inputEl.addEventListener('change', () => {
-      let val = parseFloat(inputEl.value);
-      if (isNaN(val)) val = 0;
+      let val = parseInputValue(inputEl.value);
       if (min !== null) val = Math.max(min, val);
       if (max !== null) val = Math.min(max, val);
-      inputEl.value = precision > 0 ? val.toFixed(precision) : String(val);
+      inputEl.value = isWidth ? this._formatWidthDisplay(val) : (precision > 0 ? val.toFixed(precision) : String(val));
       onChange(val);
     });
   }
 
-  // Asigna aislamiento de eventos para evitar que la edición borre o active hotkeys de canvas
   _attachInputIsolation(container) {
     container.querySelectorAll('input, select').forEach((el) => {
       el.addEventListener('focus', () => {
-        if (el.tagName === 'INPUT') el.select();
+        if (el.tagName === 'INPUT' && el.type === 'text') el.select();
       });
       el.addEventListener('keydown', (e) => {
         e.stopPropagation();
@@ -508,138 +551,110 @@ class PropertyPanelUI {
 
     const activeLayer = this._getLayer(entity.data?.layerId || '0');
 
-    // 0. CAMBIO DE NOMBRE
+    // Nombre
     nameInput?.addEventListener('change', (e) => {
-      const newName = e.target.value.trim();
-      entity.name = newName;
-      if (!entity.data) entity.data = {};
-      entity.data.name = newName;
-
-      const badge = document.getElementById('propSelectionBadge');
-      if (badge) badge.textContent = newName || entity.type || 'Elemento';
+      this._dispatchCommand({ name: e.target.value.trim() }, entity);
     });
 
-    // 1. CAMBIO DE CAPA
+    // Capa
     layerSelect?.addEventListener('change', (e) => {
-      const newLayerId = e.target.value;
-      if (!entity.data) entity.data = {};
-      entity.data.layerId = newLayerId;
-
-      this._requestCanvasUpdate();
-      this.refresh();
+      this._dispatchCommand({ layerId: e.target.value }, entity);
     });
 
-    // 2. MODO DE COLOR (Desplegable)
+    // Modo Color
     colorModeSelect?.addEventListener('change', (e) => {
-      const val = e.target.value;
-      if (!entity.data) entity.data = {};
-
-      if (val === 'BYLAYER') {
-        entity.data.colorByLayer = true;
-        delete entity.data.origStrokeColor;
-      } else {
-        entity.data.colorByLayer = false;
-        entity.data.origStrokeColor = colorPicker ? colorPicker.value : '#00e5ff';
-      }
-
-      this._requestCanvasUpdate();
-      this.refresh();
+      const isByLayer = e.target.value === 'BYLAYER';
+      this._dispatchCommand({
+        colorByLayer: isByLayer,
+        origStrokeColor: isByLayer ? undefined : (colorPicker ? colorPicker.value : '#00e5ff')
+      }, entity);
     });
 
-    // 3. COLOR PICKER
-    const handlePickerInput = () => {
-      if (!entity.data) entity.data = {};
-      const newColor = colorPicker.value;
+    // Color Picker
+    colorPicker?.addEventListener('change', (e) => {
+      this._dispatchCommand({
+        colorByLayer: false,
+        origStrokeColor: e.target.value
+      }, entity);
+    });
 
-      const wasByLayer = entity.data.colorByLayer !== false;
-      entity.data.colorByLayer = false;
-      entity.data.origStrokeColor = newColor;
-
-      this._requestCanvasUpdate();
-
-      if (wasByLayer) {
-        this.refresh();
-      }
-    };
-
-    colorPicker?.addEventListener('input', handlePickerInput);
-    colorPicker?.addEventListener('change', handlePickerInput);
-
-    // 4. OPACIDAD - MODO
+    // Modo Opacidad
     opacityModeSelect?.addEventListener('change', (e) => {
-      const val = e.target.value;
-      if (!entity.data) entity.data = {};
-
-      if (val === 'BYLAYER') {
-        entity.data.opacityByLayer = true;
-        delete entity.data.origOpacity;
-        const layerOpacity = activeLayer?.opacity !== undefined ? activeLayer.opacity : 1;
-        entity.opacity = layerOpacity;
-      } else {
-        entity.data.opacityByLayer = false;
-        const currentPct = parseFloat(opacityInput ? opacityInput.value : 100);
-        entity.data.origOpacity = currentPct / 100;
-        entity.opacity = entity.data.origOpacity;
-      }
-
-      this._requestCanvasUpdate();
-      this.refresh();
+      const isByLayer = e.target.value === 'BYLAYER';
+      const pctVal = parseFloat(opacityInput ? opacityInput.value : 100);
+      const val = pctVal / 100;
+      this._dispatchCommand({
+        opacityByLayer: isByLayer,
+        origOpacity: isByLayer ? undefined : val,
+        baseOpacity: isByLayer ? undefined : val, // <-- Sincroniza baseOpacity para imágenes
+        opacity: isByLayer ? (activeLayer?.opacity ?? 1) : val
+      }, entity);
     });
 
-    // 4b. OPACIDAD - SCRUB INPUT
+    // Scrub Opacidad
     this._attachScrubInput(opacityContainer, opacityInput, (pctVal) => {
-      if (!entity.data) entity.data = {};
       const opacityVal = pctVal / 100;
-
-      const wasByLayer = entity.data.opacityByLayer !== false;
-      entity.data.opacityByLayer = false;
-      entity.data.origOpacity = opacityVal;
-      entity.opacity = opacityVal;
-
-      this._requestCanvasUpdate();
-
-      if (wasByLayer) {
-        this.refresh();
+      this._dispatchCommand({
+        opacityByLayer: false,
+        origOpacity: opacityVal,
+        baseOpacity: opacityVal, // <-- Sincroniza baseOpacity para imágenes
+        opacity: opacityVal
+      }, entity);
+    }, {
+      min: 0, max: 100, step: 1, precision: 0,
+      onLiveChange: (val) => {
+        if (!entity.data) entity.data = {};
+        entity.data.opacityByLayer = false;
+        entity.data.baseOpacity = val / 100; // Refresco en vivo para el lienzo
+        entity.opacity = val / 100;
+        if (opacityInput) {
+          opacityInput.classList.remove('text-zinc-500');
+          opacityInput.classList.add('text-white');
+        }
+        this._requestCanvasUpdate();
       }
-    }, { min: 0, max: 100, step: 1, precision: 0 });
+    });
 
-    // 5. GROSOR - MODO
+    // Modo Grosor
     widthModeSelect?.addEventListener('change', (e) => {
       const val = e.target.value;
-      if (!entity.data) entity.data = {};
 
       if (val === 'BYLAYER') {
-        entity.data.widthByLayer = true;
-        delete entity.data.baseStrokeWidth;
+        this._dispatchCommand({ widthByLayer: true, baseStrokeWidth: undefined }, entity);
+      } else if (val === 'CUSTOM') {
+        const num = parseFloat(widthInput ? widthInput.value : 1.0) || 1.0;
+        this._dispatchCommand({ widthByLayer: false, baseStrokeWidth: num }, entity);
       } else {
-        entity.data.widthByLayer = false;
-        entity.data.baseStrokeWidth = parseFloat(widthInput ? widthInput.value : 1.0);
+        const num = parseFloat(val);
+        this._dispatchCommand({ widthByLayer: false, baseStrokeWidth: num }, entity);
       }
-
-      this._requestCanvasUpdate();
-      this.refresh();
     });
 
-    // 5b. GROSOR - SCRUB INPUT
+    // Scrub Grosor
     this._attachScrubInput(widthContainer, widthInput, (widthVal) => {
-      if (!entity.data) entity.data = {};
-
-      const wasByLayer = entity.data.widthByLayer !== false;
-      entity.data.widthByLayer = false;
-      entity.data.baseStrokeWidth = widthVal;
-
-      this._requestCanvasUpdate();
-
-      if (wasByLayer) {
-        this.refresh();
+      this._dispatchCommand({
+        widthByLayer: false,
+        baseStrokeWidth: widthVal
+      }, entity);
+    }, {
+      min: 0, max: null, step: 0.1, precision: 1, isWidth: true,
+      onLiveChange: (val) => {
+        if (!entity.data) entity.data = {};
+        entity.data.widthByLayer = false;
+        
+        const isPreset = this._isPresetWidth(val);
+        if (widthInput) {
+          widthInput.classList.toggle('text-zinc-500', isPreset);
+          widthInput.classList.toggle('text-white', !isPreset);
+        }
+        this._requestCanvasUpdate();
       }
-    }, { min: 0, max: null, step: 0.1, precision: 1 });
+    });
   }
 
-  // --- EVENTOS: CREACIÓN (POR DEFECTO) ---
+  // --- EVENTOS: MODO CREACIÓN (SIN SELECCIÓN) ---
   _attachDefaultSettingsEvents(container) {
     const layerSelect = container.querySelector('#defLayerSelect');
-    
     const colorSelect = container.querySelector('#defColorSelect');
     const colorPicker = container.querySelector('#defColorPicker');
     
@@ -662,7 +677,7 @@ class PropertyPanelUI {
       }
     };
 
-    // 1. CAMBIO DE CAPA POR DEFECTO
+    // Capa por defecto
     layerSelect?.addEventListener('change', (e) => {
       const newLayerId = e.target.value;
       if (layerManager) {
@@ -683,103 +698,100 @@ class PropertyPanelUI {
 
       if (defaults && defaults.strokeWidth === 'BYLAYER' && widthInput) {
         const layerWidth = activeLayer?.strokeWidth !== undefined ? activeLayer.strokeWidth : 1;
-        widthInput.value = layerWidth.toFixed(1);
+        widthInput.value = this._formatWidthDisplay(layerWidth);
       }
 
       syncActiveDrawing();
     });
 
-    // 2. MODO DE COLOR POR DEFECTO
+    // Modo Color
     colorSelect?.addEventListener('change', (e) => {
       if (!defaults) return;
-      const val = e.target.value;
-
-      if (val === 'BYLAYER') {
-        defaults.color = 'BYLAYER';
-        const activeLayer = layerManager ? layerManager.getActiveLayer() : null;
-        if (colorPicker) colorPicker.value = this._getHexColor(activeLayer ? activeLayer.color : '#ffffff');
-      } else {
-        defaults.color = colorPicker ? colorPicker.value : '#00e5ff';
-      }
+      defaults.color = e.target.value === 'BYLAYER' ? 'BYLAYER' : (colorPicker ? colorPicker.value : '#00e5ff');
       syncActiveDrawing();
     });
 
-    // 3. COLOR PICKER POR DEFECTO
-    const handleDefPickerInput = () => {
+    // Picker Color
+    colorPicker?.addEventListener('change', (e) => {
       if (!defaults) return;
-      defaults.color = colorPicker.value;
-
-      if (colorSelect && colorSelect.value !== 'CUSTOM') {
-        colorSelect.value = 'CUSTOM';
-        colorSelect.dispatchEvent(new Event('change', { bubbles: true }));
-      }
+      defaults.color = e.target.value;
+      this._updateSelectValue(colorSelect, 'CUSTOM');
       syncActiveDrawing();
-    };
+    });
 
-    colorPicker?.addEventListener('input', handleDefPickerInput);
-    colorPicker?.addEventListener('change', handleDefPickerInput);
-
-    // 4. MODO DE OPACIDAD POR DEFECTO
+    // Modo Opacidad
     opacityModeSelect?.addEventListener('change', (e) => {
       if (!defaults) return;
-      const val = e.target.value;
+      const isByLayer = e.target.value === 'BYLAYER';
+      defaults.opacity = isByLayer ? 'BYLAYER' : (parseFloat(opacityInput ? opacityInput.value : 100) / 100);
 
-      if (val === 'BYLAYER') {
-        defaults.opacity = 'BYLAYER';
-        const activeLayer = layerManager ? layerManager.getActiveLayer() : null;
-        const layerOpacity = activeLayer?.opacity !== undefined ? activeLayer.opacity : 1;
-        if (opacityInput) opacityInput.value = Math.round(layerOpacity * 100);
-      } else {
-        const pct = parseFloat(opacityInput ? opacityInput.value : 100);
-        defaults.opacity = pct / 100;
+      if (opacityInput) {
+        const opacityColorClass = this._getOpacityTextColorClass(isByLayer);
+        opacityInput.className = `w-9 bg-transparent text-right outline-none border-0 ${opacityColorClass} text-[11px] font-sans tabular-nums p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none cursor-ew-resize focus:cursor-text`;
       }
       syncActiveDrawing();
     });
 
-    // 4b. OPACIDAD POR DEFECTO (SCRUB INPUT)
+    // Scrub Opacidad
     this._attachScrubInput(opacityContainer, opacityInput, (pctVal) => {
       if (!defaults) return;
       defaults.opacity = pctVal / 100;
-
-      if (opacityModeSelect && opacityModeSelect.value !== 'CUSTOM') {
-        opacityModeSelect.value = 'CUSTOM';
-        opacityModeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      this._updateSelectValue(opacityModeSelect, 'CUSTOM');
+      
+      if (opacityInput) {
+        opacityInput.classList.remove('text-zinc-500');
+        opacityInput.classList.add('text-white');
       }
-
       syncActiveDrawing();
     }, { min: 0, max: 100, step: 1, precision: 0 });
 
-    // 5. MODO DE GROSOR POR DEFECTO
+    // Modo Grosor
     widthModeSelect?.addEventListener('change', (e) => {
       if (!defaults) return;
       const val = e.target.value;
+      const isByLayer = val === 'BYLAYER';
 
-      if (val === 'BYLAYER') {
+      if (isByLayer) {
         defaults.strokeWidth = 'BYLAYER';
-        const activeLayer = layerManager ? layerManager.getActiveLayer() : null;
-        const layerWidth = activeLayer?.strokeWidth !== undefined ? activeLayer.strokeWidth : 1;
-        if (widthInput) widthInput.value = layerWidth.toFixed(1);
+      } else if (val === 'CUSTOM') {
+        defaults.strokeWidth = parseFloat(widthInput ? widthInput.value : 1.0) || 1.0;
       } else {
-        defaults.strokeWidth = parseFloat(widthInput ? widthInput.value : 1.0);
+        defaults.strokeWidth = parseFloat(val);
+        if (widthInput) widthInput.value = this._formatWidthDisplay(defaults.strokeWidth);
+      }
+
+      if (widthInput) {
+        const isPreset = this._isPresetWidth(val);
+        const colorClass = (isByLayer || isPreset) ? 'text-zinc-500' : 'text-white';
+        widthInput.className = `w-9 bg-transparent text-right outline-none border-0 ${colorClass} text-[11px] font-sans tabular-nums p-0 cursor-ew-resize focus:cursor-text`;
       }
       syncActiveDrawing();
     });
 
-    // 5b. GROSOR POR DEFECTO (SCRUB INPUT)
+    // Scrub Grosor
     this._attachScrubInput(widthContainer, widthInput, (widthVal) => {
       if (!defaults) return;
       defaults.strokeWidth = widthVal;
 
-      if (widthModeSelect && widthModeSelect.value !== 'CUSTOM') {
-        widthModeSelect.value = 'CUSTOM';
-        widthModeSelect.dispatchEvent(new Event('change', { bubbles: true }));
-      }
+      const isPreset = this._isPresetWidth(widthVal);
+      const targetSelectValue = isPreset ? (widthVal === 0 ? '0' : String(widthVal)) : 'CUSTOM';
+      this._updateSelectValue(widthModeSelect, targetSelectValue);
 
+      if (widthInput) {
+        widthInput.classList.toggle('text-zinc-500', isPreset);
+        widthInput.classList.toggle('text-white', !isPreset);
+      }
       syncActiveDrawing();
-    }, { min: 0, max: null, step: 0.1, precision: 1 });
+    }, { min: 0, max: null, step: 0.1, precision: 1, isWidth: true });
   }
 
-  // --- HELPER SEGURO PARA OBTENER CAPAS ---
+  // Helper para sincronizar visualmente selects personalizados
+  _updateSelectValue(selectEl, value) {
+    if (!selectEl) return;
+    selectEl.value = value;
+    selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
   _getLayer(layerId) {
     const lm = this.utils?.layerManager;
     if (!lm) return null;
@@ -789,7 +801,6 @@ class PropertyPanelUI {
     return null;
   }
 
-  // --- FORZAR REFRESCO INMEDIATO DE CANVAS Y LIENZO ---
   _requestCanvasUpdate() {
     if (this.utils?.updateEntitiesStroke) {
       this.utils.updateEntitiesStroke();
@@ -865,6 +876,8 @@ class PropertyPanelUI {
           dropdown._updatePos = updatePosition;
         }
       });
+
+      select.addEventListener('change', syncTrigger);
 
       wrapper.appendChild(trigger);
       document.body.appendChild(dropdown);

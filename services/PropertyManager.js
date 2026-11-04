@@ -12,27 +12,51 @@ class PropertyManager {
     };
   }
 
-  applyDefaultSettings(entity) {
-    if (!entity) return;
-    if (!entity.data) entity.data = {};
+  /**
+   * Aplica la configuración de propiedades por defecto a una nueva entidad.
+   * @param {paper.Item} item - Entidad de Paper.js recién creada
+   */
+  applyDefaultSettings(item) {
+    if (!item) return;
+    if (!item.data) item.data = {};
 
-    const activeLayer = this.utils.layerManager?.getActiveLayer();
-    entity.data.layerId = activeLayer ? activeLayer.id : '0';
+    const defaults = this.defaultSettings || {};
+    const lm = this.layerManager || window.cadUtils?.layerManager;
+    const activeLayer = lm ? lm.getActiveLayer() : null;
 
-    if (this.defaultSettings.color === 'BYLAYER') {
-      entity.data.colorByLayer = true;
-      delete entity.data.origStrokeColor;
-    } else {
-      entity.data.colorByLayer = false;
-      entity.data.origStrokeColor = this.defaultSettings.color;
+    // 0. Capa activa (Preserva la capa si ya venía definida)
+    if (!item.data.layerId) {
+      item.data.layerId = activeLayer ? String(activeLayer.id) : '0';
     }
 
-    if (this.defaultSettings.strokeWidth === 'BYLAYER') {
-      entity.data.widthByLayer = true;
-      delete entity.data.baseStrokeWidth;
+    // 1. Color por defecto
+    if (defaults.color === 'BYLAYER' || !defaults.color) {
+      item.data.colorByLayer = true;
+      delete item.data.origStrokeColor;
     } else {
-      entity.data.widthByLayer = false;
-      entity.data.baseStrokeWidth = parseFloat(this.defaultSettings.strokeWidth);
+      item.data.colorByLayer = false;
+      item.data.origStrokeColor = defaults.color;
+    }
+
+    // 2. Grosor por defecto
+    if (defaults.strokeWidth === 'BYLAYER' || defaults.strokeWidth === undefined) {
+      item.data.widthByLayer = true;
+      delete item.data.baseStrokeWidth;
+    } else {
+      item.data.widthByLayer = false;
+      item.data.baseStrokeWidth = typeof defaults.strokeWidth === 'number' ? defaults.strokeWidth : parseFloat(defaults.strokeWidth) || 0;
+    }
+
+    // 3. Opacidad por defecto
+    if (defaults.opacity === 'BYLAYER' || defaults.opacity === undefined) {
+      item.data.opacityByLayer = true;
+      delete item.data.origOpacity;
+      item.opacity = activeLayer && activeLayer.opacity !== undefined ? activeLayer.opacity : 1.0;
+    } else {
+      item.data.opacityByLayer = false;
+      const opVal = typeof defaults.opacity === 'number' ? defaults.opacity : parseFloat(defaults.opacity) || 1.0;
+      item.data.origOpacity = opVal;
+      item.opacity = opVal;
     }
   }
 

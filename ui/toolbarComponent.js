@@ -29,37 +29,37 @@ class CADToolbarComponent {
             <div class="flex items-center gap-1 text-xs h-6">
               <div id="chipEndpoint" class="snap-chip active rounded px-2 h-6 flex items-center justify-center gap-1.5 shrink-0">
                 <span class="w-1.5 h-1.5 bg-zinc-300 rounded-none"></span>
-                <span class="text-[11px] font-medium leading-none">Endpoint</span>
+                <span class="text-[11px] font-medium leading-none">Fin</span>
               </div>
 
               <div id="chipMidpoint" class="snap-chip active rounded px-2 h-6 flex items-center justify-center gap-1.5 shrink-0">
                 <span class="w-0 h-0 border-l-[3px] border-l-transparent border-r-[3px] border-r-transparent border-b-[6px] border-b-zinc-300"></span>
-                <span class="text-[11px] font-medium leading-none">Midpoint</span>
+                <span class="text-[11px] font-medium leading-none">Medio</span>
               </div>
 
               <div id="chipCenter" class="snap-chip active rounded px-2 h-6 flex items-center justify-center gap-1.5 shrink-0">
                 <span class="w-1.5 h-1.5 rounded-full border border-zinc-300"></span>
-                <span class="text-[11px] font-medium leading-none">Center</span>
+                <span class="text-[11px] font-medium leading-none">Centro</span>
               </div>
 
               <div id="chipQuadrant" class="snap-chip active rounded px-2 h-6 flex items-center justify-center gap-1.5 shrink-0">
                 <span class="w-1.5 h-1.5 bg-zinc-300 rotate-45 transform"></span>
-                <span class="text-[11px] font-medium leading-none">Quadrant</span>
+                <span class="text-[11px] font-medium leading-none">Cuad</span>
               </div>
 
               <div id="chipNode" class="snap-chip active rounded px-2 h-6 flex items-center justify-center gap-1.5 shrink-0">
                 <span class="w-1.5 h-1.5 rounded-full bg-zinc-300"></span>
-                <span class="text-[11px] font-medium leading-none">Node</span>
+                <span class="text-[11px] font-medium leading-none">Punto</span>
               </div>
 
               <div id="chipIntersection" class="snap-chip active rounded px-2 h-6 flex items-center justify-center gap-1.5 shrink-0">
                 <span class="text-zinc-300 text-[10px] font-bold leading-none">✕</span>
-                <span class="text-[11px] font-medium leading-none">Intersect</span>
+                <span class="text-[11px] font-medium leading-none">Int</span>
               </div>
 
               <div id="chipGrid" class="snap-chip rounded px-2 h-6 flex items-center justify-center gap-1.5 shrink-0">
                 <span class="w-1.5 h-1.5 rounded-full bg-zinc-500"></span>
-                <span class="text-[11px] font-medium leading-none">Grid Snap</span>
+                <span class="text-[11px] font-medium leading-none">Ajustar a grilla</span>
               </div>
             </div>
           </div>

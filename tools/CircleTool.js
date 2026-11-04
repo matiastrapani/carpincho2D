@@ -1,16 +1,24 @@
 /**
  * tools/CircleTool.js - Herramienta de Creación de Círculo (Centro y Radio)
- * Incluye previsualización dinámica con línea guía punteada desde el centro al radio.
+ * Incluye previsualización dinámica con línea guía punteada desde el centro al radio,
+ * asignación de nombres correlativos ('Círculo 1'), opacidad y propiedades por defecto.
  */
 class CircleTool extends BaseTool {
   constructor(cadService, cadUtils) {
     super(cadService, cadUtils);
+    this.promptText = 'CIRCLE. Haz clic para especificar el centro del círculo.';
     this.centerPoint = null;
     this.previewCircle = null;
     this.previewRadiusLine = null; // Línea guía punteada
   }
 
   onMouseDown(event) {
+    // Clic derecho -> Cancelar y salir a selección
+    if (event.event.button === 2) {
+      this.cancelAndExit();
+      return;
+    }
+
     if (event.event.button !== 0) return; // Solo procesar clic izquierdo
 
     const isShift = event.event ? event.event.shiftKey : false;
@@ -23,24 +31,41 @@ class CircleTool extends BaseTool {
     );
 
     if (osnap.type) {
-      // Si hay atracción magnética, toma el punto OSNAP exacto
       pt = osnap.point;
     } else if (this.centerPoint && isShift) {
-      // 2. Si no hay OSNAP y Shift está presionado, aplica restricción ORTHO respecto al centro
       pt = this.utils.applyOrthoConstraint(this.centerPoint, event.point, true);
     }
 
     // PASO 1: Fijar el Punto Central
     if (!this.centerPoint) {
       this.centerPoint = pt;
-      this.utils.setPrompt('Specify radius or point on circle:');
+      this.setPrompt('Especifica el radio o un punto en el círculo:');
       return;
     }
 
     // PASO 2: Fijar el Radio y Confirmar la Entidad
     const radius = this.centerPoint.getDistance(pt);
     if (radius > 0.001) {
-      this.service.createCircleEntity(this.centerPoint, radius, true, 1);
+      const circleEntity = this.service.createCircleEntity(this.centerPoint, radius, true, 1);
+      
+      if (circleEntity) {
+        if (!circleEntity.data) circleEntity.data = {};
+        circleEntity.data.isCircleEntity = true;
+
+        // Auto-nombrar entidad de forma secuencial ('Círculo 1', 'Círculo 2', ...)
+        const circleName = this.utils.generateNextEntityName ? this.utils.generateNextEntityName('Círculo') : 'Círculo';
+        circleEntity.name = circleName;
+        circleEntity.data.name = circleName;
+
+        // Aplicar propiedades por defecto (Capa, Color, Grosor, Opacidad)
+        if (this.utils.propertyManager) {
+          this.utils.propertyManager.applyDefaultSettings(circleEntity);
+        }
+
+        if (this.utils.updateEntitiesStroke) {
+          this.utils.updateEntitiesStroke();
+        }
+      }
     }
 
     this.resetTool();
@@ -60,7 +85,6 @@ class CircleTool extends BaseTool {
     if (osnap.type) {
       pt = osnap.point;
     } else if (this.centerPoint && isShift) {
-      // 2. Si no hay enganche OSNAP, aplicar restricción ORTHO respecto al centro fijado
       pt = this.utils.applyOrthoConstraint(this.centerPoint, event.point, true);
     }
 
@@ -70,28 +94,41 @@ class CircleTool extends BaseTool {
       const zoom = paper.view.zoom;
       const dashStyle = [2 / zoom, 2 / zoom];
 
-      // Limpiar previews anteriores
       this.clearPreviews();
+
+      const propMgr = this.utils.propertyManager;
+      const layerManager = this.utils.layerManager;
+      const defaults = propMgr?.defaultSettings || {};
+      const activeLayer = layerManager ? layerManager.getActiveLayer() : null;
+
+      const isColorByLayer = defaults.color === 'BYLAYER' || !defaults.color;
+      const previewColor = isColorByLayer ? (activeLayer?.color || '#00e5ff') : defaults.color;
+
+      const isOpacityByLayer = defaults.opacity === 'BYLAYER' || defaults.opacity === undefined;
+      const previewOpacity = isOpacityByLayer 
+        ? (activeLayer?.opacity !== undefined ? activeLayer.opacity : 1) 
+        : (typeof defaults.opacity === 'number' ? defaults.opacity : 1);
 
       // 1. Círculo Dinámico Punteado
       this.previewCircle = new paper.Path.Circle({
         center: this.centerPoint,
         radius: currentRadius,
-        strokeColor: '#3b82f6',
+        strokeColor: previewColor,
         strokeWidth: 1 / zoom,
-        dashArray: dashStyle
+        dashArray: dashStyle,
+        opacity: previewOpacity
       });
 
       // 2. Línea Guía de Radio Punteada (Centro -> Cursor)
       this.previewRadiusLine = new paper.Path.Line({
         from: this.centerPoint,
         to: pt,
-        strokeColor: '#3b82f6',
+        strokeColor: previewColor,
         strokeWidth: 1 / zoom,
-        dashArray: dashStyle
+        dashArray: dashStyle,
+        opacity: previewOpacity
       });
 
-      // Actualizar información flotante (HUD) de distancia/radio
       this.utils.updateFeedbackLabels(this.centerPoint, pt);
     } else {
       this.utils.updateHUD(pt);
@@ -113,12 +150,26 @@ class CircleTool extends BaseTool {
     this.clearPreviews();
     this.centerPoint = null;
     this.utils.clearHUD();
-    this.utils.setPrompt('Command:');
-    paper.view.update();
+    this.setPrompt('CIRCLE. Haz clic para especificar el centro del círculo.');
+    if (window.paper?.view) {
+      paper.view.update();
+    }
   }
 
+  // Desactivación estándar invocado por ToolManager (SIN ciclo recursivo)
   cancel() {
     this.resetTool();
+  }
+
+  // Clic derecho o cancelación explícita del usuario
+  onContextMenu(event) {
+    this.cancelAndExit();
+    return true;
+  }
+
+  cancelAndExit() {
+    this.resetTool();
+    this.utils.setTool('select');
   }
 }
 

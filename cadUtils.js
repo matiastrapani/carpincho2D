@@ -66,6 +66,80 @@ const CAD_THEME = {
 window.CAD_THEME = CAD_THEME;
 
 
+/**
+ * ImportSVGCommand.js
+ */
+class ImportSVGCommand {
+  constructor(service, cadUtils, importedEntities, createdLayers) {
+    this.service = service;
+    this.utils = cadUtils;
+    this.entities = importedEntities || [];
+    this.createdLayers = createdLayers || [];
+  }
+
+  execute() {
+    const layerManager = this.utils?.layerManager;
+    if (layerManager && this.createdLayers.length > 0) {
+      this.createdLayers.forEach(lData => {
+        if (!layerManager.layers.has(lData.id)) layerManager.createLayer(lData);
+      });
+    }
+
+    this.entities.forEach(ent => {
+      if (!this.service.demoEntities.includes(ent)) this.service.demoEntities.push(ent);
+      const layerId = String(ent.data?.layerId || '0');
+      const layer = layerManager?.layers?.get(layerId);
+
+      if (layer && layer.paperGroup && ent.parent !== layer.paperGroup) {
+        layer.paperGroup.addChild(ent);
+      } else if (!ent.parent && this.utils?.drawLayer) {
+        this.utils.drawLayer.addChild(ent);
+      }
+      ent.visible = true;
+    });
+
+    if (window.layerPanelUI && typeof window.layerPanelUI.refresh === 'function') window.layerPanelUI.refresh();
+    if (this.utils) {
+      this.utils.updateEntitiesStroke();
+      this.utils.renderBezierHandles();
+      if (window.paper?.view) window.paper.view.update();
+    }
+  }
+
+  undo() {
+    const layerManager = this.utils?.layerManager;
+    this.entities.forEach(ent => {
+      if (typeof this.service.deselectEntity === 'function') this.service.deselectEntity(ent);
+      ent.remove();
+      const idx = this.service.demoEntities.indexOf(ent);
+      if (idx !== -1) this.service.demoEntities.splice(idx, 1);
+    });
+
+    if (layerManager && this.createdLayers.length > 0) {
+      this.createdLayers.forEach(lData => {
+        const layerId = String(lData.id);
+        const layer = layerManager.layers.get(layerId);
+        if (layer) {
+          if (layer.paperGroup) layer.paperGroup.remove();
+          layerManager.layers.delete(layerId);
+        }
+      });
+      if (!layerManager.layers.has(layerManager.activeLayerId)) {
+        layerManager.setActiveLayer(layerManager.layers.keys().next().value || '0');
+      }
+    }
+
+    if (window.layerPanelUI && typeof window.layerPanelUI.refresh === 'function') window.layerPanelUI.refresh();
+    if (this.utils) {
+      this.utils.updateEntitiesStroke();
+      this.utils.renderBezierHandles();
+      if (window.paper?.view) window.paper.view.update();
+    }
+  }
+}
+window.ImportSVGCommand = ImportSVGCommand;
+
+
 class CADUtils {
   constructor(canvasId, service) {
     // 1. Referencias al DOM y Servicio Core
@@ -203,49 +277,39 @@ class CADUtils {
     if (!paper || !paper.view) return;
     const zoom = paper.view.zoom;
 
-    this.service.demoEntities.forEach(ent => {
+    const entitiesToUpdate = [...(this.service?.demoEntities || [])];
+    if (this.activePath) {
+      entitiesToUpdate.push(this.activePath);
+    }
+
+    entitiesToUpdate.forEach(ent => {
       if (!ent) return;
       if (!ent.data) ent.data = {};
 
-      // 0. Sincronizar visibilidad de la entidad con la visibilidad de su Capa
+      // 0. Visibilidad y Bloqueo de Capa
       const layerId = ent.data?.layerId || '0';
       const layer = this.layerManager?.layers?.get(String(layerId));
       const isLayerVisible = layer ? (layer.visible !== false) : true;
+      const isLayerLocked = layer ? (layer.locked === true) : false;
       
       ent.visible = isLayerVisible;
-
-      // Si la capa está oculta, omitir el renderizado de estilos y pasar a la siguiente
       if (!isLayerVisible) return;
 
-      // 1. Guardián de Colores Originales (Trazo y Relleno)
-      // Se ejecuta solo si la entidad tiene explícitamente colorByLayer en false y origStrokeColor sin definir
-      if (ent.data.origStrokeColor === undefined && ent.data.colorByLayer === false) {
-        if (ent.strokeColor) {
-          const cssColor = typeof ent.strokeColor.toCSS === 'function' ? ent.strokeColor.toCSS() : ent.strokeColor;
-          ent.data.origStrokeColor = (cssColor && cssColor !== '#ffff00') ? cssColor : '#18fcf1';
-        } else {
-          // Si el vector SVG no tiene borde (es solo relleno), preservamos null
-          ent.data.origStrokeColor = null;
-        }
-      }
+      const layerOpacity = (layer && layer.opacity !== undefined) ? layer.opacity : 1.0;
+      const resolvedOpacity = ent.data.opacityByLayer !== false 
+        ? layerOpacity 
+        : (ent.data.origOpacity !== undefined ? ent.data.origOpacity : (ent.opacity ?? 1.0));
 
-      if (ent.data.origFillColor === undefined) {
-        if (ent.fillColor) {
-          const cssColor = typeof ent.fillColor.toCSS === 'function' ? ent.fillColor.toCSS() : ent.fillColor;
-          ent.data.origFillColor = cssColor;
-        } else {
-          ent.data.origFillColor = null;
-        }
-      }
-
-      const isSelected = this.service.selectedEntities.includes(ent);
-      const isHovered = this.service.hoveredEntity === ent;
+      // Si la capa está bloqueada, ignora los estados de selección y hover
+      const isSelected = !isLayerLocked && this.service.selectedEntities.includes(ent);
+      const isHovered = !isLayerLocked && this.service.hoveredEntity === ent;
 
       // --- NODOS / PUNTOS ---
       if (ent.data.isPointEntity) {
         const nodeTheme = CAD_THEME?.node || {};
         const nodeSelectionTheme = CAD_THEME?.selection?.node || {};
         
+        ent.opacity = 1.0;
         ent.fillColor = isSelected 
           ? (nodeSelectionTheme.fillColor || nodeTheme.defaultFillColor || '#10141D') 
           : (ent.data.origFillColor || nodeTheme.defaultFillColor || '#10141D');
@@ -254,9 +318,13 @@ class CADUtils {
           ? this.propertyManager.getResolvedColor(ent) 
           : (ent.data.origStrokeColor || nodeTheme.defaultStrokeColor || '#18fcf1');
 
-        ent.strokeColor = isSelected 
+        const strokeHex = isSelected 
           ? (nodeSelectionTheme.strokeColor || '#ffff00') 
           : resolvedPointColor;
+
+        const strokeColorObj = new paper.Color(strokeHex);
+        strokeColorObj.alpha = isSelected ? 1.0 : resolvedOpacity;
+        ent.strokeColor = strokeColorObj;
 
         this.updatePointEntitiesScale();
         return;
@@ -264,12 +332,17 @@ class CADUtils {
 
       // --- RASTERS / IMÁGENES ---
       if (ent instanceof paper.Raster) {
-        ent.opacity = ent.data?.baseOpacity ?? 1.0;
+        const isByLayer = ent.data?.opacityByLayer !== false;
+        const resolvedOpacity = (isByLayer && layer && layer.opacity !== undefined)
+          ? layer.opacity
+          : (ent.data?.baseOpacity ?? ent.data?.origOpacity ?? ent.opacity ?? 1.0);
+
+        ent.opacity = resolvedOpacity;
+        ent.data.baseOpacity = resolvedOpacity;
         return;
       }
 
-      // --- LÍNEAS, POLILÍNEAS, CÍRCULOS, CURVAS Y COMPOUND PATHS ---
-      // --- LÍNEAS, POLILÍNEAS, CÍRCULOS, CURVAS Y COMPOUND PATHS ---
+      // --- LÍNEAS Y GEOMETRÍAS ---
       if (ent instanceof paper.Path || ent instanceof paper.CompoundPath) {
         if (ent instanceof paper.Path) {
           ent.strokeJoin = 'miter';
@@ -293,9 +366,21 @@ class CADUtils {
           : (ent.data.baseStrokeWidth !== undefined ? ent.data.baseStrokeWidth : 0);
 
         if (isSelected) {
+          ent.opacity = 1.0;
           ent.strokeColor = styleConfig.strokeColor || '#ffff00';
+          if (ent.fillColor) {
+            const fillCol = new paper.Color(ent.fillColor);
+            fillCol.alpha = resolvedOpacity;
+            ent.fillColor = fillCol;
+          }
         } else {
+          ent.opacity = resolvedOpacity;
           ent.strokeColor = effectiveColor;
+          if (ent.fillColor) {
+            const fillCol = new paper.Color(ent.fillColor);
+            fillCol.alpha = 1.0;
+            ent.fillColor = fillCol;
+          }
         }
 
         let mult = isSelected ? (styleConfig.widthMultiplier || 1.5) : 1;
@@ -303,58 +388,12 @@ class CADUtils {
           mult *= 1.5;
         }
 
-        // REGLA DE ESPESORES:
-        // - Valor 0 (-): Grosor cosmético fijo de 1px en pantalla (se divide por zoom)
-        // - Valor > 0 (1, 1.5, 2, 3): Grosor geométrico real (Paper.js lo escala al hacer zoom)
         if (effectiveBaseWidth === 0) {
           ent.strokeWidth = (1 * mult) / zoom;
         } else {
           ent.strokeWidth = effectiveBaseWidth * mult;
         }
       }
-    });
-  }
-
-  importImageToCanvas(imageSrc, dropPosition = null) {
-    const raster = new paper.Raster(imageSrc);
-
-    raster.on('load', () => {
-      raster.position = dropPosition || paper.view.center.clone();
-
-      const viewBounds = paper.view.bounds;
-      const maxWidth = viewBounds.width * 0.4;
-      if (raster.width > maxWidth) {
-        const scale = maxWidth / raster.width;
-        raster.scale(scale);
-      }
-
-      if (!raster.data) raster.data = {};
-      raster.data.baseOpacity = 1.0;
-      raster.data.isImageEntity = true;
-
-      // Vincular Controlador Paramétrico
-      if (window.ImageController) {
-        raster.data.controller = new ImageController(raster);
-      }
-
-      raster.sendToBack();
-      if (this.gridGroup) this.gridGroup.sendToBack();
-
-      if (window.AddEntityCommand) {
-        const cmd = new AddEntityCommand(this.service, raster);
-        this.service.executeCommand(cmd);
-      } else {
-        this.service.demoEntities.push(raster);
-      }
-
-      this.service.selectEntity(raster, false);
-      this.renderBezierHandles();
-
-      if (window.cadUI && typeof window.cadUI.updatePropertyPanel === 'function') {
-        window.cadUI.updatePropertyPanel(raster);
-      }
-
-      this.setPrompt('Imagen importada al lienzo.');
     });
   }
 
@@ -376,7 +415,7 @@ class CADUtils {
         // Helper para procesar y registrar una entidad vectorial conservando rellenos
         const processVectorEntity = (ent) => {
           ent.data = ent.data || {};
-          
+
           // Preservar colores y grosores originales
           ent.data.origStrokeColor = ent.strokeColor ? ent.strokeColor.toCSS() : null;
           ent.data.origFillColor = ent.fillColor ? ent.fillColor.toCSS() : null;
@@ -386,7 +425,74 @@ class CADUtils {
           // Si la entidad tiene relleno pero está abierta, cerrar contorno para renderizar relleno
           if (ent instanceof paper.Path && ent.fillColor && !ent.closed) {
             ent.closed = true;
+              }
+
+          // Mover a la capa principal de dibujo
+          this.drawLayer.addChild(ent);
+          this.service.registerEntity(ent);
+          importedEntities.push(ent);
+        };
+
+        // Recorrido jerárquico respetando CompoundPath
+        const registerChildren = (parent) => {
+          if (parent instanceof paper.CompoundPath) {
+            // Se preserva el CompoundPath entero para no romper rellenos con huecos
+            processVectorEntity(parent);
+          } else if (parent.children && parent.children.length > 0) {
+            const children = [...parent.children];
+            children.forEach(child => registerChildren(child));
+          } else if (parent instanceof paper.Path) {
+            processVectorEntity(parent);
           }
+        };
+
+        registerChildren(item);
+
+        // Limpiar la cáscara/grupo contenedor
+        item.remove();
+
+        if (importedEntities.length > 0 && window.AddEntityCommand) {
+          const cmd = new AddEntityCommand(this.service, importedEntities);
+          this.service.executeCommand(cmd);
+        }
+
+        this.updateEntitiesStroke();
+        this.renderBezierHandles();
+        paper.view.update();
+        this.setPrompt('Dibujo SVG importado y listo para editar.');
+      }
+    });
+  }
+
+  importSVGToCanvas(svgString, dropPosition) {
+    this.drawLayer.activate();
+
+    paper.project.importSVG(svgString, {
+      expandShapes: true,
+      insert: true,
+      onLoad: (item) => {
+        if (!item) return;
+
+        // Aplanar transformaciones de matriz para evitar desfasajes
+        item.applyMatrix = true;
+        item.position = dropPosition || paper.view.center.clone();
+
+        const importedEntities = [];
+
+        // Helper para procesar y registrar una entidad vectorial conservando rellenos
+        const processVectorEntity = (ent) => {
+          ent.data = ent.data || {};
+
+          // Preservar colores y grosores originales
+          ent.data.origStrokeColor = ent.strokeColor ? ent.strokeColor.toCSS() : null;
+          ent.data.origFillColor = ent.fillColor ? ent.fillColor.toCSS() : null;
+          ent.data.baseStrokeWidth = ent.strokeWidth || 1;
+          ent.data.isSvgEntity = true;
+
+          // Si la entidad tiene relleno pero está abierta, cerrar contorno para renderizar relleno
+          if (ent instanceof paper.Path && ent.fillColor && !ent.closed) {
+            ent.closed = true;
+              }
 
           // Mover a la capa principal de dibujo
           this.drawLayer.addChild(ent);
@@ -1011,9 +1117,7 @@ class CADUtils {
     if (this.controlHandlesGroup) this.controlHandlesGroup.remove();
     this.controlHandlesGroup = new paper.Group();
 
-    // =========================================================================
-    // PURGA DE EDICIÓN: Remueve de modo edición entidades eliminadas o deshechas
-    // =========================================================================
+    // 1. Purga de edición para elementos huérfanos o eliminados
     if (this.service.editingEntities && this.service.editingEntities.length > 0) {
       this.service.editingEntities = this.service.editingEntities.filter(
         ent => ent && ent.parent && this.service.demoEntities.includes(ent)
@@ -1040,9 +1144,16 @@ class CADUtils {
 
     const zoom = paper.view.zoom;
     const cfg = CAD_THEME?.handles || {};
-    const activeEntities = this.service.editingEntities || [];
 
-    // 1. RENDERIZADO DE EDICIÓN DE NODOS BÉZIER / VÉRTICES (Polilíneas / Splines)
+    // Excluir entidades pertenecientes a capas bloqueadas
+    const activeEntities = (this.service.editingEntities || []).filter(ent => {
+      if (!ent || !ent.parent) return false;
+      const lId = String(ent.data?.layerId || '0');
+      const layer = this.layerManager?.layers?.get(lId);
+      return !layer || !layer.locked;
+    });
+
+    // 2. Renderizado de Nodos Bézier y Vértices
     activeEntities.forEach(entity => {
       if (!entity.visible) return;
 
@@ -1052,7 +1163,6 @@ class CADUtils {
           ? (entity.strokeColor.toCSS ? entity.strokeColor.toCSS() : entity.strokeColor)
           : (entity.data?.origStrokeColor || '#ffff00');
 
-        // A. RESALTAR TRAMOS / CURVAS
         if (entity.curves) {
           const selectedChains = [];
           let currentChain = [];
@@ -1149,7 +1259,6 @@ class CADUtils {
           }
         }
         
-        // B. RENDERIZAR VÉRTICES Y HANDLES
         entity.segments.forEach(segment => {
           const isEntitySelected = this.service.selectedEntities.includes(entity);
           const isSegSelected = !isEntitySelected && this.service.selectedSegments.includes(segment);
@@ -1205,7 +1314,7 @@ class CADUtils {
 
               const sizePx = isHandleSelected 
                 ? (cfg.bezierHandleSizePx + 1.0) 
-                : (isHandleHovered ? cfg.bezierHandleSizePx + 0.8 : cfg.bezierHandleSizePx);
+                : (isHandleHovered ? cfg.bezierHandleSizePx + 0.5 : cfg.bezierHandleSizePx);
 
               const handleSquare = new paper.Path.Rectangle({
                 point: [handlePt.x - sizePx / (2 * zoom), handlePt.y - sizePx / (2 * zoom)],
@@ -1230,12 +1339,10 @@ class CADUtils {
             ? (cfg.anchorSizeSelectedPx || 7.5) 
             : (isAnchorHovered ? (cfg.anchorSizeNormalPx || 7.0) + 0.5 : (cfg.anchorSizeNormalPx || 7.0));
 
-          let strokeW = cfg.anchorStrokeWidthNormalPx || 1.0;
-          if (isSegSelected) {
-            strokeW = cfg.anchorStrokeWidthSelectedPx || 1.5;
-          } else if (isAnchorHovered) {
-            strokeW = cfg.anchorStrokeWidthHoverPx || 1.8;
-          }
+          // Si está seleccionado, aplica estrictamente el grosor de selección sin sumar hover
+          let strokeW = isSegSelected 
+            ? (cfg.anchorStrokeWidthSelectedPx || 1.5) 
+            : (isAnchorHovered ? (cfg.anchorStrokeWidthHoverPx || 1.8) : (cfg.anchorStrokeWidthNormalPx || 1.0));
 
           const anchorSquare = new paper.Path.Rectangle({
             point: [segment.point.x - (baseSide / zoom) / 2, segment.point.y - (baseSide / zoom) / 2],
@@ -1250,22 +1357,32 @@ class CADUtils {
       }
     });
 
-    // =========================================================================
-    // 2. RENDERIZADO DE CONTORNOS Y GRIPS PARAMÉTRICOS (Imágenes, Círculos, etc.)
-    // =========================================================================
-    this.service.selectedEntities.forEach(entity => {
+    // 3. Renderizado de Contornos y Grips Paramétricos
+    const selectableEntities = (this.service.selectedEntities || []).filter(ent => {
+      const lId = String(ent.data?.layerId || '0');
+      const layer = this.layerManager?.layers?.get(lId);
+      return !layer || !layer.locked;
+    });
+
+    selectableEntities.forEach(entity => {
       if (!entity.visible) return;
 
       if (entity.data && entity.data.controller) {
         const controller = entity.data.controller;
         const { grips, outlineSegments } = controller.getGrips();
 
-        // A. Dibujar Bounding Box Rectangular (Línea Continua)
+        const rawColor = this.propertyManager 
+          ? this.propertyManager.getResolvedColor(entity)
+          : '#00e5ff';
+
+        const entityColor = new paper.Color(rawColor);
+        entityColor.alpha = 1.0;
+
         if (outlineSegments && outlineSegments.length > 1) {
           const boundingOutline = new paper.Path({
             segments: outlineSegments,
             closed: true,
-            strokeColor: '#00e5ff',
+            strokeColor: entityColor,
             strokeWidth: 1 / zoom,
             insert: false
           });
@@ -1273,7 +1390,6 @@ class CADUtils {
           this.controlHandlesGroup.addChild(boundingOutline);
         }
 
-        // B. Dibujar Grips de Control
         grips.forEach(grip => {
           const isCenter = grip.id === 'center';
           const isHovered = this.hoveredParametricGrip && 
@@ -1281,36 +1397,29 @@ class CADUtils {
                             this.hoveredParametricGrip.gripId === grip.id;
           
           const isActiveGrip = this.activeParametricGrip && 
-                               this.activeParametricGrip.entity === entity && 
-                               this.activeParametricGrip.gripId === grip.id;
+                              this.activeParametricGrip.entity === entity && 
+                              this.activeParametricGrip.gripId === grip.id;
 
-          // Dimensiones base desde CAD_THEME
           const normalSide = isCenter ? 8.0 : (cfg.anchorSizeNormalPx || 7.0);
           const selectedSide = isCenter ? 9.0 : (cfg.anchorSizeSelectedPx || 7.5);
 
           let sizePx = normalSide;
           let strokeW = cfg.anchorStrokeWidthNormalPx || 1.0;
-          let strokeColor = '#00e5ff'; // Color base
+          let strokeColor = entityColor;
           let fillColor = cfg.anchorFillNormal || '#10141D';
 
           if (isActiveGrip) {
-            // Estado SELECCIONADO / ACTIVO: Cambia color a amarillo y aumenta grosor/tamaño
             sizePx = selectedSide;
             strokeW = cfg.anchorStrokeWidthSelectedPx || 1.5;
-            strokeColor = cfg.anchorStrokeSelected || '#ffff00';
-            fillColor = cfg.anchorFillSelected || '#10141D';
           } else if (isHovered) {
-            // Estado HOVER: Mantiene color base y solo incrementa el ancho de línea
             sizePx = normalSide;
             strokeW = cfg.anchorStrokeWidthHoverPx || 1.8;
-            strokeColor = '#00e5ff';
           }
 
           const size = sizePx / zoom;
 
           let gripMarker;
           if (isCenter) {
-            // Grip Central con Fondo Transparente
             gripMarker = new paper.CompoundPath({
               children: [
                 new paper.Path.Circle({ center: grip.point, radius: size / 1.5 }),
@@ -1319,10 +1428,9 @@ class CADUtils {
               ],
               strokeColor: strokeColor,
               strokeWidth: strokeW / zoom,
-              fillColor: null // Transparente
+              fillColor: null
             });
           } else {
-            // Grips de Esquinas y Bordes
             gripMarker = new paper.Path.Rectangle({
               point: [grip.point.x - size / 2, grip.point.y - size / 2],
               size: [size, size],
@@ -1679,23 +1787,43 @@ class CADUtils {
 
   renderPivotMarker(point) {
     if (!point) return;
+
     const zoom = paper.view.zoom;
     const cfg = CAD_THEME?.handles || {};
-    const side = (cfg.anchorSizeSelectedPx || 7.5) / zoom;
+    const side = (cfg.anchorSizeSelectedPx || 8.5) / zoom;
 
     const marker = new paper.Path.Rectangle({
       point: [point.x - side / 2, point.y - side / 2],
       size: [side, side],
       fillColor: cfg.anchorFillSelected || '#10141D',
       strokeColor: cfg.anchorStrokeSelected || '#ffff00',
-      strokeWidth: (cfg.anchorStrokeWidthSelectedPx || 1.5) / zoom
+      strokeWidth: (cfg.anchorStrokeWidthSelectedPx || 2.0) / zoom
     });
 
-    // Se agrega a la capa HUD o de controles activos
     const targetGroup = this.hudGroup || this.controlHandlesGroup;
     if (targetGroup) {
       targetGroup.addChild(marker);
     }
+  }
+
+  /**
+   * Genera el siguiente nombre disponible para una entidad analizando las existentes en el lienzo.
+   */
+  generateNextEntityName(basePrefix = 'Línea') {
+    const entities = this.service?.demoEntities || [];
+    let maxNum = 0;
+    const regex = new RegExp(`^${basePrefix}\\s+(\\d+)$`, 'i');
+
+    entities.forEach((ent) => {
+      const name = ent.name || ent.data?.name || '';
+      const match = name.match(regex);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+
+    return `${basePrefix} ${maxNum + 1}`;
   }
 }
 

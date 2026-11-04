@@ -4,7 +4,7 @@
 class PolylineTool extends BaseTool {
   constructor(cadService, cadUtils) {
     super(cadService, cadUtils);
-    this.promptText = 'Command: POLYLINE. Haz clic para colocar puntos consecutivos, Clic derecho o ENTER para finalizar.';
+    this.promptText = 'POLYLINE. Haz clic para colocar el primer punto.';
   }
 
   onMouseDown(event) {
@@ -42,24 +42,25 @@ class PolylineTool extends BaseTool {
       }
 
       if (!this.utils.activePath) {
-        const isDynamic = true;
-        const baseWidth = 1;
-        const zoom = paper.view.zoom;
-
+        // Crear polilínea nueva en el primer clic
         this.utils.activePath = new paper.Path({
-          strokeColor: '#00e5ff',
-          strokeWidth: isDynamic ? (baseWidth / zoom) : baseWidth,
           segments: [pt]
         });
 
-        this.utils.activePath.data = {
-          isDynamicStroke: isDynamic,
-          baseStrokeWidth: baseWidth,
-          origStrokeColor: '#00e5ff',
-          origStrokeWidth: isDynamic ? (baseWidth / zoom) : baseWidth
-        };
+        if (!this.utils.activePath.data) this.utils.activePath.data = {};
 
-        this.setPrompt('Specify next point or [ENTER / Clic derecho to finish]:');
+        // Auto-nombrar la polilínea secuencialmente ('Polilínea 1', 'Polilínea 2', ...)
+        const polyName = this.utils.generateNextEntityName ? this.utils.generateNextEntityName('Polilínea') : 'Polilínea';
+        this.utils.activePath.name = polyName;
+        this.utils.activePath.data.name = polyName;
+
+        // Aplicar propiedades por defecto (Capa, Color, Grosor, Opacidad)
+        if (this.utils.propertyManager) {
+          this.utils.propertyManager.applyDefaultSettings(this.utils.activePath);
+        }
+
+        this.utils.updateEntitiesStroke();
+        this.setPrompt('Especifique el siguiente punto o [ENTER / Clic derecho para finalizar]:');
       } else {
         const firstPt = this.utils.activePath.firstSegment.point;
         const snapTolerance = 10 / paper.view.zoom;
@@ -80,6 +81,7 @@ class PolylineTool extends BaseTool {
         }
 
         this.utils.activePath.add(pt);
+        this.utils.updateEntitiesStroke();
       }
     }
   }
@@ -107,18 +109,27 @@ class PolylineTool extends BaseTool {
 
     if (this.utils.activePath && this.utils.activePath.segments.length > 0) {
       const lastPt = this.utils.activePath.lastSegment.point;
+      const propMgr = this.utils.propertyManager;
+
+      const activeColor = propMgr ? propMgr.getResolvedColor(this.utils.activePath) : '#00e5ff';
+      const activeOpacity = propMgr && typeof propMgr.getResolvedOpacity === 'function'
+        ? propMgr.getResolvedOpacity(this.utils.activePath)
+        : (this.utils.activePath.opacity !== undefined ? this.utils.activePath.opacity : 1);
 
       if (!this.utils.rubberBandLine) {
         this.utils.rubberBandLine = new paper.Path.Line({
           from: lastPt,
           to: pt,
-          strokeColor: '#00e5ff',
+          strokeColor: activeColor,
           strokeWidth: 1 / paper.view.zoom,
-          dashArray: [2 / paper.view.zoom, 2 / paper.view.zoom]
+          dashArray: [2 / paper.view.zoom, 2 / paper.view.zoom],
+          opacity: activeOpacity
         });
       } else {
         this.utils.rubberBandLine.firstSegment.point = lastPt;
         this.utils.rubberBandLine.lastSegment.point = pt;
+        this.utils.rubberBandLine.strokeColor = activeColor;
+        this.utils.rubberBandLine.opacity = activeOpacity;
       }
 
       this.utils.updateFeedbackLabels(lastPt, pt);
@@ -130,6 +141,7 @@ class PolylineTool extends BaseTool {
       this.utils.finishCurrentDrawing();
     }
   }
+
   onContextMenu(event) {
     if (this.utils.activePath) {
       this.utils.finishCurrentDrawing();

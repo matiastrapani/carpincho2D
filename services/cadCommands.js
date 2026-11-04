@@ -425,10 +425,7 @@ class DivideCommand {
 }
 window.DivideCommand = DivideCommand;
 
-/**
- * commands/TrimCommand.js
- * Comando para Undo/Redo del recorte de entidades (Trim).
- */
+
 /**
  * commands/TrimCommand.js
  * Comando para Undo/Redo del recorte de entidades (Trim).
@@ -663,13 +660,13 @@ window.ChangeOpacityCommand = ChangeOpacityCommand;
 
 /**
  * commands/UpdateEntityPropertyCommand.js
- * Soporte Undo/Redo para cambios de propiedades individuales (Color, Grosor, Capa, BYLAYER).
+ * Soporte Undo/Redo para cambios de propiedades de entidades (Color, Grosor, Opacidad, Capa, Nombre).
  */
 class UpdateEntityPropertyCommand {
-  constructor(cadService, entity, oldState, newState, cadUtils) {
+  constructor(cadService, entities, oldState, newState, cadUtils) {
     this.service = cadService;
-    this.entity = entity;
-    this.oldState = oldState; // Ej: { colorByLayer: true, origStrokeColor: undefined }
+    this.entities = Array.isArray(entities) ? entities : [entities];
+    this.oldState = oldState; // Ej: { colorByLayer: true }
     this.newState = newState; // Ej: { colorByLayer: false, origStrokeColor: '#00e5ff' }
     this.utils = cadUtils;
   }
@@ -683,16 +680,23 @@ class UpdateEntityPropertyCommand {
   }
 
   _applyState(state) {
-    if (!this.entity) return;
-    if (!this.entity.data) this.entity.data = {};
+    if (!this.entities || this.entities.length === 0) return;
 
-    // Aplicar las propiedades del estado recibido
-    Object.keys(state).forEach((key) => {
-      if (state[key] === undefined) {
-        delete this.entity.data[key];
-      } else {
-        this.entity.data[key] = state[key];
-      }
+    this.entities.forEach((entity) => {
+      if (!entity.data) entity.data = {};
+
+      Object.keys(state).forEach((key) => {
+        if (state[key] === undefined) {
+          delete entity.data[key];
+        } else {
+          entity.data[key] = state[key];
+        }
+      });
+
+      // Sincronización de propiedades raíz de Paper.js
+      if (state.name !== undefined) entity.name = state.name;
+      if (state.opacity !== undefined) entity.opacity = state.opacity;
+      if (state.origOpacity !== undefined && !state.opacityByLayer) entity.opacity = state.origOpacity;
     });
 
     if (this.utils?.updateEntitiesStroke) {
@@ -704,10 +708,9 @@ class UpdateEntityPropertyCommand {
     if (window.paper?.view) {
       window.paper.view.update();
     }
-    if (window.propertyPanelUI && this.service?.selectedEntities?.includes(this.entity)) {
+    if (window.propertyPanelUI) {
       window.propertyPanelUI.refresh();
     }
   }
 }
-
 window.UpdateEntityPropertyCommand = UpdateEntityPropertyCommand;

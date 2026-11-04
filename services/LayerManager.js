@@ -111,9 +111,21 @@ class LayerManager {
   }
 
   toggleLock(layerId) {
-    const layer = this.layers.get(layerId);
+    const key = String(layerId);
+    const layer = this.layers.get(key);
     if (!layer) return;
+
     layer.locked = !layer.locked;
+
+    if (layer.locked && this.service) {
+      this._purgeLockedLayerState(key);
+    }
+
+    if (this.utils) {
+      this.utils.updateEntitiesStroke();
+      this.utils.renderBezierHandles();
+      if (window.paper?.view) paper.view.update();
+    }
   }
 
   updateLayerProperty(id, property, value) {
@@ -121,9 +133,40 @@ class LayerManager {
     const layer = this.layers.get(layerId);
     if (!layer) return false;
 
-    // Actualiza únicamente la propiedad de la capa
     layer[property] = value;
+
+    if (property === 'locked' && value === true && this.service) {
+      this._purgeLockedLayerState(layerId);
+    }
+
+    if (this.utils) {
+      this.utils.updateEntitiesStroke();
+      this.utils.renderBezierHandles();
+      if (window.paper?.view) paper.view.update();
+    }
+
     return true;
+  }
+
+  _purgeLockedLayerState(layerId) {
+    if (!this.service) return;
+    const idStr = String(layerId);
+
+    this.service.selectedEntities = (this.service.selectedEntities || []).filter(
+      ent => String(ent.data?.layerId || '0') !== idStr
+    );
+
+    this.service.editingEntities = (this.service.editingEntities || []).filter(
+      ent => String(ent.data?.layerId || '0') !== idStr
+    );
+
+    this.service.selectedSegments = (this.service.selectedSegments || []).filter(
+      seg => seg && seg.path && String(seg.path.data?.layerId || '0') !== idStr
+    );
+
+    this.service.selectedHandles = (this.service.selectedHandles || []).filter(
+      h => h && h.segment && h.segment.path && String(h.segment.path.data?.layerId || '0') !== idStr
+    );
   }
 
   assignEntityToLayer(entity, layerId) {

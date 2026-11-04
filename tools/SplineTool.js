@@ -4,14 +4,16 @@
 class SplineTool extends BaseTool {
   constructor(cadService, cadUtils) {
     super(cadService, cadUtils);
-    this.promptText = 'Command: SPLINE. Haz clic para colocar puntos de la curva suave.';
+    this.promptText = 'SPLINE. Haz clic para colocar el primer punto de la curva suave.';
   }
 
   onMouseDown(event) {
-    // Clic Derecho -> Finalizar spline actual
+    // Clic Derecho -> Finalizar spline actual o salir
     if (event.event.button === 2) {
       if (this.utils.activePath) {
         this.utils.finishCurrentDrawing();
+      } else {
+        this.cancelAndExit();
       }
       return;
     }
@@ -25,32 +27,36 @@ class SplineTool extends BaseTool {
 
       if (!this.utils.activePath) {
         this.utils.activePath = new paper.Path({
-          strokeColor: '#10b981',
-          strokeWidth: 2,
           segments: [pt]
         });
-        
-        // Asignación de metadatos no dinámicos con espesor de 2 unidades
-        this.utils.activePath.data = { 
-          isSpline: true,
-          isDynamicStroke: false,
-          baseStrokeWidth: 2,
-          origStrokeColor: '#10b981',
-          origStrokeWidth: 2
-        };
-        
-        this.setPrompt('Specify next spline point:');
-      } else {
 
-        // Validación común al añadir un nuevo vértice en Polyline, Spline o Bezier
-        if (this.utils.activePath && this.utils.activePath.lastSegment) {
+        if (!this.utils.activePath.data) this.utils.activePath.data = {};
+        this.utils.activePath.data.isSpline = true;
+
+        // Auto-nombrar entidad de forma secuencial ('Spline 1', 'Spline 2', ...)
+        const splineName = this.utils.generateNextEntityName ? this.utils.generateNextEntityName('Spline') : 'Spline';
+        this.utils.activePath.name = splineName;
+        this.utils.activePath.data.name = splineName;
+
+        // Aplicar propiedades por defecto (Capa, Color, Grosor, Opacidad)
+        if (this.utils.propertyManager) {
+          this.utils.propertyManager.applyDefaultSettings(this.utils.activePath);
+        }
+
+        this.utils.updateEntitiesStroke();
+        this.setPrompt('Especifique el siguiente punto de la curva o [ENTER / Clic derecho para finalizar]:');
+      } else {
+        // Validación para evitar puntos duplicados consecutivos
+        if (this.utils.activePath.lastSegment) {
           const lastPt = this.utils.activePath.lastSegment.point;
           if (lastPt.getDistance(pt) < 0.001) {
-            return; // Ignorar clic consecutivo en el mismo punto
+            return;
           }
         }
+
         this.utils.activePath.add(pt);
         this.utils.activePath.smooth({ type: 'catmull-rom' });
+        this.utils.updateEntitiesStroke();
       }
     }
   }
@@ -65,28 +71,55 @@ class SplineTool extends BaseTool {
 
     if (this.utils.activePath && this.utils.activePath.segments.length > 0) {
       const lastPt = this.utils.activePath.lastSegment.point;
+      const propMgr = this.utils.propertyManager;
+
+      const activeColor = propMgr ? propMgr.getResolvedColor(this.utils.activePath) : '#10b981';
+      const activeOpacity = propMgr && typeof propMgr.getResolvedOpacity === 'function'
+        ? propMgr.getResolvedOpacity(this.utils.activePath)
+        : (this.utils.activePath.opacity !== undefined ? this.utils.activePath.opacity : 1);
 
       if (!this.utils.rubberBandLine) {
         this.utils.rubberBandLine = new paper.Path.Line({
           from: lastPt,
           to: pt,
-          strokeColor: '#10b981',
+          strokeColor: activeColor,
           strokeWidth: 1 / paper.view.zoom,
-          dashArray: [2 / paper.view.zoom, 2 / paper.view.zoom]
+          dashArray: [2 / paper.view.zoom, 2 / paper.view.zoom],
+          opacity: activeOpacity
         });
       } else {
         this.utils.rubberBandLine.firstSegment.point = lastPt;
         this.utils.rubberBandLine.lastSegment.point = pt;
+        this.utils.rubberBandLine.strokeColor = activeColor;
+        this.utils.rubberBandLine.opacity = activeOpacity;
       }
 
       this.utils.updateFeedbackLabels(lastPt, pt);
     }
   }
 
+  // Desactivación estándar invocada por ToolManager
   cancel() {
     if (this.utils.activePath) {
       this.utils.finishCurrentDrawing();
     }
+  }
+
+  // Respuesta a clic derecho
+  onContextMenu(event) {
+    if (this.utils.activePath) {
+      this.utils.finishCurrentDrawing();
+    } else {
+      this.cancelAndExit();
+    }
+    return true;
+  }
+
+  cancelAndExit() {
+    if (this.utils.activePath) {
+      this.utils.finishCurrentDrawing();
+    }
+    this.utils.setTool('select');
   }
 }
 

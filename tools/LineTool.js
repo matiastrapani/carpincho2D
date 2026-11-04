@@ -25,10 +25,8 @@ class LineTool extends BaseTool {
       );
 
       if (osnap.type) {
-        // Si hay atracción magnética, toma el punto OSNAP exacto
         pt = osnap.point;
       } else if (this.utils.activePath && isShift) {
-        // 2. Si no hay OSNAP y Shift está presionado, aplica restricción ORTHO
         const startPt = this.utils.activePath.firstSegment.point;
         pt = this.utils.applyOrthoConstraint(startPt, event.point, true);
       }
@@ -44,6 +42,11 @@ class LineTool extends BaseTool {
 
         if (!this.utils.activePath.data) this.utils.activePath.data = {};
 
+        // Auto-nombrar entidad de forma secuencial ('Línea 1', 'Línea 2', ...)
+        const lineName = this.utils.generateNextEntityName ? this.utils.generateNextEntityName('Línea') : 'Línea 1';
+        this.utils.activePath.name = lineName;
+        this.utils.activePath.data.name = lineName;
+
         if (propMgr) {
           propMgr.applyDefaultSettings(this.utils.activePath);
         }
@@ -58,7 +61,7 @@ class LineTool extends BaseTool {
         const cmd = new AddLineCommand(this.service, this.utils.activePath);
         this.service.executeCommand(cmd);
 
-        // Encadenar siguiente segmento leyendo los ajustes por defecto ACTUALES
+        // Encadenar siguiente segmento con su propio nombre correlativo
         const startNextPt = pt.clone();
         const nextPath = new paper.Path.Line({
           from: startNextPt,
@@ -66,6 +69,10 @@ class LineTool extends BaseTool {
         });
 
         if (!nextPath.data) nextPath.data = {};
+
+        const nextLineName = this.utils.generateNextEntityName ? this.utils.generateNextEntityName('Línea') : 'Línea';
+        nextPath.name = nextLineName;
+        nextPath.data.name = nextLineName;
 
         if (propMgr) {
           propMgr.applyDefaultSettings(nextPath);
@@ -81,7 +88,6 @@ class LineTool extends BaseTool {
 
         this.setPrompt('Especifique el punto siguiente o presione ENTER/ESC para finalizar:');
         this.utils.renderBezierHandles();
-
       }
     }
   }
@@ -90,7 +96,6 @@ class LineTool extends BaseTool {
     const isShift = event.event ? event.event.shiftKey : false;
     let pt = event.point;
 
-    // 1. Evaluar OSNAP directamente en el cursor del ratón
     const osnap = this.service.calculateOsnap(
       event.point, 
       (snapPt, type) => this.utils.renderSnapMarker(snapPt, type)
@@ -99,7 +104,6 @@ class LineTool extends BaseTool {
     if (osnap.type) {
       pt = osnap.point;
     } else if (this.utils.activePath && isShift) {
-      // 2. Si no hay enganche OSNAP, aplicar restricción ORTHO sobre la elástica
       const lastConfirmedPt = this.utils.activePath.firstSegment.point;
       pt = this.utils.applyOrthoConstraint(lastConfirmedPt, event.point, true);
     }
@@ -109,7 +113,11 @@ class LineTool extends BaseTool {
     if (this.utils.activePath) {
       const lastConfirmedPt = this.utils.activePath.firstSegment.point;
       const propMgr = this.utils.propertyManager;
+      
       const activeColor = propMgr ? propMgr.getResolvedColor(this.utils.activePath) : '#00e5ff';
+      const activeOpacity = propMgr && typeof propMgr.getResolvedOpacity === 'function'
+        ? propMgr.getResolvedOpacity(this.utils.activePath)
+        : (this.utils.activePath.opacity !== undefined ? this.utils.activePath.opacity : 1);
 
       if (!this.utils.rubberBandLine) {
         this.utils.rubberBandLine = new paper.Path.Line({
@@ -117,12 +125,14 @@ class LineTool extends BaseTool {
           to: pt,
           strokeColor: activeColor,
           strokeWidth: 1 / paper.view.zoom,
-          dashArray: [2 / paper.view.zoom, 2 / paper.view.zoom]
+          dashArray: [2 / paper.view.zoom, 2 / paper.view.zoom],
+          opacity: activeOpacity
         });
       } else {
         this.utils.rubberBandLine.firstSegment.point = lastConfirmedPt;
         this.utils.rubberBandLine.lastSegment.point = pt;
         this.utils.rubberBandLine.strokeColor = activeColor;
+        this.utils.rubberBandLine.opacity = activeOpacity;
       }
 
       this.utils.updateFeedbackLabels(lastConfirmedPt, pt);

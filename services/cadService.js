@@ -84,7 +84,7 @@ class CADService {
       return selectedPointsCoords.some(startPt => startPt.getDistance(pt) < EPSILON);
     };
 
-    // Helper para filtrar estrictamente entidades válidas de dibujo
+    // Helper para filtrar strictly entidades válidas de dibujo
     const isValidSnapEntity = (ent) => {
       if (!ent) return false;
       if (ent.visible === false) return false;
@@ -94,9 +94,13 @@ class CADService {
       if (ent.layer && ent.layer.name === 'hudLayer') return false;
       if (this.gridGroup && (ent === this.gridGroup || ent.isChildOf(this.gridGroup))) return false;
 
-      const hasStroke = ent.strokeColor && ent.strokeColor.alpha > 0;
-      const hasFill = ent.fillColor && ent.fillColor.alpha > 0;
-      if (!hasStroke && !hasFill) return false;
+      // Las imágenes (paper.Raster) no tienen strokeColor ni fillColor
+      const isRaster = ent instanceof paper.Raster || ent.className === 'Raster' || ent.data?.isImageEntity;
+      if (!isRaster) {
+        const hasStroke = ent.strokeColor && ent.strokeColor.alpha > 0;
+        const hasFill = ent.fillColor && ent.fillColor.alpha > 0;
+        if (!hasStroke && !hasFill) return false;
+      }
 
       return true;
     };
@@ -341,12 +345,20 @@ class CADService {
 
   //SELECTION SECTION
   selectEntity(entity, addToSelection = false) {
+    if (!entity) return;
+
+    // Guardián: Bloquear selección si la capa está marcada como locked
+    const layerId = String(entity.data?.layerId || '0');
+    const layerManager = this.layerManager || window.cadUtils?.layerManager;
+    const layer = layerManager?.layers?.get(layerId);
+    if (layer && layer.locked) return;
+
     if (!addToSelection) {
       this.deselectAllEntities();
-      this.editingEntities = [];
+      this.editingEntities = []; // Restablece el grupo activo de edición
     }
 
-    if (entity && !this.selectedEntities.includes(entity)) {
+    if (!this.selectedEntities.includes(entity)) {
       if (!entity.data) entity.data = {};
       
       if (!entity.data.origStrokeColor && entity.strokeColor) {
@@ -382,6 +394,11 @@ class CADService {
     }
   }
 
+
+
+
+
+  
   deselectAllEntities() {
     this.selectedEntities = [];
     this.selectedSegments = [];
@@ -398,14 +415,19 @@ class CADService {
   }
 
   selectHandle(segment, type, addToSelection = false) {
+    if (!segment || !segment.path || !type) return;
+
+    const layerId = String(segment.path.data?.layerId || '0');
+    const layerManager = this.layerManager || window.cadUtils?.layerManager;
+    const layer = layerManager?.layers?.get(layerId);
+    if (layer && layer.locked) return;
+
     if (!addToSelection) {
       this.deselectAllHandles();
     }
-    if (segment && type) {
-      const exists = this.selectedHandles.some(h => h.segment === segment && h.type === type);
-      if (!exists) {
-        this.selectedHandles.push({ segment, type });
-      }
+    const exists = this.selectedHandles.some(h => h.segment === segment && h.type === type);
+    if (!exists) {
+      this.selectedHandles.push({ segment, type });
     }
     if (window.cadUtils) {
       window.cadUtils.renderBezierHandles();
@@ -450,7 +472,6 @@ class CADService {
     }
   }
 
-
   deselectAllEditingEntities() {
     this.selectedEntities = [];
     this.selectedSegments = [];
@@ -464,10 +485,17 @@ class CADService {
   }
 
   selectSegment(segment, addToSelection = false) {
+    if (!segment || !segment.path) return;
+
+    const layerId = String(segment.path.data?.layerId || '0');
+    const layerManager = this.layerManager || window.cadUtils?.layerManager;
+    const layer = layerManager?.layers?.get(layerId);
+    if (layer && layer.locked) return;
+
     if (!addToSelection) {
       this.selectedSegments = [];
     }
-    if (segment && !this.selectedSegments.includes(segment)) {
+    if (!this.selectedSegments.includes(segment)) {
       this.selectedSegments.push(segment);
     }
   }
@@ -493,6 +521,12 @@ class CADService {
 
   performTrim(targetPath, clickPt, renderBezierFn) {
     if (!this.trimCuttingBoundaries.length || !targetPath || this.trimCuttingBoundaries.includes(targetPath)) return;
+
+    // Guardián de capa bloqueada para recorte (Trim)
+    const layerId = String(targetPath.data?.layerId || '0');
+    const layerManager = this.layerManager || window.cadUtils?.layerManager;
+    const layer = layerManager?.layers?.get(layerId);
+    if (layer && layer.locked) return;
 
     let intersections = [];
     this.trimCuttingBoundaries.forEach(boundary => {
@@ -574,7 +608,6 @@ class CADService {
       }
     });
 
-    // --- CAMBIO AQUÍ: Coleccionar tramos sin alterar la escena directamente ---
     const remainingPaths = [];
     subPaths.forEach((p, idx) => {
       if (idx === clickedPathIndex) {
@@ -587,7 +620,6 @@ class CADService {
       }
     });
 
-    // Delegar ejecución al historial para habilitar Undo/Redo
     if (window.TrimCommand) {
       const trimCmd = new TrimCommand(this, targetPath, remainingPaths, origIdx);
       this.executeCommand(trimCmd);
@@ -665,9 +697,6 @@ class CADService {
 
 
 
-
-
-  // POR ESTE BLOQUE:
   createDemoEntities() {
     const rect = new paper.Path.Rectangle({
       point: [-180, -120],

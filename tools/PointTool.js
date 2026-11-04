@@ -17,6 +17,29 @@ class PointTool extends BaseTool {
     this.divisionCount = null;
   }
 
+  // --- HELPER DE CONFIGURACIÓN POR DEFECTO PARA PUNTOS ---
+  getPointDefaultOpts() {
+    const activeLayerId = String(this.utils.layerManager?.getActiveLayer()?.id || this.utils.layerManager?.activeLayerId || '0');
+    const defaults = this.utils.propertyManager?.defaultSettings || { color: 'BYLAYER', opacity: 'BYLAYER', strokeWidth: 'BYLAYER' };
+    const activeLayer = this.utils.layerManager ? this.utils.layerManager.getActiveLayer() : null;
+
+    const isColorByLayer = defaults.color === 'BYLAYER';
+    const isOpacityByLayer = defaults.opacity === 'BYLAYER';
+
+    const resolvedOpacity = isOpacityByLayer 
+      ? (activeLayer && activeLayer.opacity !== undefined ? activeLayer.opacity : 1.0) 
+      : (typeof defaults.opacity === 'number' ? defaults.opacity : 1.0);
+
+    return {
+      layerId: activeLayerId,
+      colorByLayer: isColorByLayer,
+      strokeColor: !isColorByLayer ? defaults.color : undefined,
+      opacityByLayer: isOpacityByLayer,
+      origOpacity: !isOpacityByLayer ? resolvedOpacity : undefined,
+      opacity: resolvedOpacity
+    };
+  }
+
   onActivate() {
     this.service.lastInsertedPoint = null;
     const mode = this.utils.currentToolMode;
@@ -65,9 +88,9 @@ class PointTool extends BaseTool {
     const mode = this.utils.currentToolMode;
 
     if (mode === 'divide_count') {
-      this.setPrompt(`Specify number of segments (${count} objetivo/s):`);
+      this.setPrompt(`DIVIDIR (N): Especifica el número de segmentos (${count} objetivo/s):`);
     } else {
-      this.setPrompt(`Specify distance (${count} objetivo/s):`);
+      this.setPrompt(`DIVIDIR (Dist): Especifica la distancia de división (${count} objetivo/s):`);
     }
 
     const cmdInput = document.getElementById('cmdInput');
@@ -321,18 +344,25 @@ class PointTool extends BaseTool {
   }
 
   createPointAt(pt, coordsLabel = null) {
-    const activeLayerId = String(this.utils.layerManager?.activeLayerId || '0');
-    const defaults = this.utils.propertyManager?.defaultSettings || { color: 'BYLAYER' };
-
-    const opts = {
-      layerId: activeLayerId,
-      colorByLayer: defaults.color === 'BYLAYER',
-      strokeColor: defaults.color !== 'BYLAYER' ? defaults.color : undefined
-    };
-
+    const opts = this.getPointDefaultOpts();
     const pointEntity = this.service.createPointEntity(pt, opts);
 
     if (pointEntity) {
+      if (!pointEntity.data) pointEntity.data = {};
+
+      // Asegura la capa activa seleccionada
+      pointEntity.data.layerId = opts.layerId;
+
+      // Nombre secuencial ('Punto 1', 'Punto 2', ...)
+      const pointName = this.utils.generateNextEntityName ? this.utils.generateNextEntityName('Punto') : 'Punto';
+      pointEntity.name = pointName;
+      pointEntity.data.name = pointName;
+
+      // Sincronizar propiedades por defecto
+      if (this.utils.propertyManager) {
+        this.utils.propertyManager.applyDefaultSettings(pointEntity);
+      }
+
       if (window.AddPointCommand) {
         const cmd = new AddPointCommand(this.service, pointEntity);
         this.service.executeCommand(cmd);
@@ -455,15 +485,7 @@ class PointTool extends BaseTool {
     const targets = [...this.utils.divisionSelectedEntities];
     const val = mode === 'divide_count' ? this.divisionCount : this.divisionDistance;
 
-    const activeLayerId = String(this.utils.layerManager?.activeLayerId || '0');
-    const defaults = this.utils.propertyManager?.defaultSettings || { color: 'BYLAYER' };
-
-    const opts = {
-      layerId: activeLayerId,
-      colorByLayer: defaults.color === 'BYLAYER',
-      strokeColor: defaults.color !== 'BYLAYER' ? defaults.color : undefined
-    };
-
+    const opts = this.getPointDefaultOpts();
     const allCreatedPoints = [];
 
     targets.forEach(entity => {
@@ -474,7 +496,23 @@ class PointTool extends BaseTool {
         const customPt = this.customStartPoints.get(entity);
         created = this.service.divideEntityByDistance(entity, val, null, opts, customPt);
       }
+
       if (created && created.length > 0) {
+        created.forEach(ptEnt => {
+          if (ptEnt) {
+            if (!ptEnt.data) ptEnt.data = {};
+            
+            // Asignar nombre correlativo a cada punto creado en la división
+            const ptName = this.utils.generateNextEntityName ? this.utils.generateNextEntityName('Punto') : 'Punto';
+            ptEnt.name = ptName;
+            ptEnt.data.name = ptName;
+
+            // Sincronizar propiedades por defecto y opacidad
+            if (this.utils.propertyManager) {
+              this.utils.propertyManager.applyDefaultSettings(ptEnt);
+            }
+          }
+        });
         allCreatedPoints.push(...created);
       }
     });
