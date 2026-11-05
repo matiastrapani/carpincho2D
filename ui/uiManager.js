@@ -1,7 +1,9 @@
 /**
  * modules/uiManager.js - Delegación de eventos e interfaz CAD
  */
-class CADUIManager {
+import { ChangeOpacityCommand } from '../services/commands/cadCommands.js';
+
+export class CADUIManager {
   constructor(cadUtils, cadService) {
     this.cadUtils = cadUtils;
     this.cadService = cadService;
@@ -529,7 +531,7 @@ class CADUIManager {
       sliderInput.addEventListener('change', (e) => {
         const finalOpacity = applyOpacityChange(parseFloat(e.target.value));
         if (Math.abs(initialOpacity - finalOpacity) > 0.001) {
-          if (window.ChangeOpacityCommand && this.cadService) {
+          if (ChangeOpacityCommand && this.cadService) {
             const cmd = new ChangeOpacityCommand(this.cadService, selectedItem, initialOpacity, finalOpacity);
             this.cadService.executeCommand(cmd);
           }
@@ -546,7 +548,7 @@ class CADUIManager {
         const val = parseFloat(e.target.value) || 0;
         const finalOpacity = applyOpacityChange(val);
         if (Math.abs(initialOpacity - finalOpacity) > 0.001) {
-          if (window.ChangeOpacityCommand && this.cadService) {
+          if (ChangeOpacityCommand && this.cadService) {
             const cmd = new ChangeOpacityCommand(this.cadService, selectedItem, initialOpacity, finalOpacity);
             this.cadService.executeCommand(cmd);
           }
@@ -620,8 +622,7 @@ class CADUIManager {
   updateUndoRedoUI() {
     const btnUndo = document.getElementById('btnHeaderUndo');
     const btnRedo = document.getElementById('btnHeaderRedo');
-    const history = this.service?.history || window.cadService?.history;
-
+    const history = this.cadService?.history || window.cadService?.history;
     if (!history) return;
 
     const canUndo = typeof history.canUndo === 'function' 
@@ -637,5 +638,3 @@ class CADUIManager {
   }
 
 }
-
-window.CADUIManager = CADUIManager;

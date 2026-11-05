@@ -3,7 +3,9 @@
  * Maneja estados de selección (Sin selección, Selección única y Selección múltiple) con Undo/Redo.
  */
 
-class PropertyPanelUI {
+import { UpdateEntityPropertyCommand } from '../services/commands/cadCommands.js';
+
+export class PropertyPanelUI {
   constructor(cadUtils, containerId = 'propertyPanelContainer') {
     this.utils = cadUtils;
     this.container = document.getElementById(containerId);
@@ -408,16 +410,21 @@ class PropertyPanelUI {
 
   // --- DESPACHADOR DE COMANDOS UNDO/REDO PARA SELECCIÓN ---
   _dispatchCommand(newStateObj, entityTarget = null) {
-    const cadService = window.cadService;
+    const cadService = this.service || window.cadService;
     const targets = entityTarget ? [entityTarget] : this.selectedEntities;
     if (targets.length === 0) return;
+
+    // Sincronizar baseOpacity en newStateObj si se modifica la opacidad
+    if (newStateObj.opacity !== undefined && newStateObj.baseOpacity === undefined) {
+      newStateObj.baseOpacity = newStateObj.opacity;
+    }
 
     const oldStateObj = {};
     Object.keys(newStateObj).forEach(key => {
       oldStateObj[key] = targets[0]?.data?.[key] !== undefined ? targets[0].data[key] : targets[0]?.[key];
     });
 
-    if (window.UpdateEntityPropertyCommand && cadService) {
+    if (UpdateEntityPropertyCommand && cadService) {
       const cmd = new UpdateEntityPropertyCommand(cadService, targets, oldStateObj, newStateObj, this.utils);
       cadService.executeCommand(cmd);
     } else {
@@ -905,5 +912,3 @@ class PropertyPanelUI {
     }
   }
 }
-
-window.PropertyPanelUI = PropertyPanelUI;

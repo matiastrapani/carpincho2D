@@ -2,7 +2,7 @@
  * controllers/ImageController.js - Controlador Paramétrico para Imágenes (Bounding Box & Grips)
  * Maneja transformaciones geométricas, grips de escalado/estiramiento y sincronización de opacidad/Undo.
  */
-class ImageController {
+export class ImageController {
   constructor(raster) {
     this.raster = raster;
     this._ensureRasterData();
@@ -201,5 +201,3 @@ class ImageController {
     }
   }
 }
-
-window.ImageController = ImageController;

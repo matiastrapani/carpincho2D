@@ -1,7 +1,10 @@
 /**
  * tools/PolylineTool.js - Herramienta para dibujado de Polilíneas continuas
  */
-class PolylineTool extends BaseTool {
+
+import { BaseTool } from './BaseTool.js';
+
+export class PolylineTool extends BaseTool {
   constructor(cadService, cadUtils) {
     super(cadService, cadUtils);
     this.promptText = 'POLYLINE. Haz clic para colocar el primer punto.';
@@ -156,5 +159,3 @@ class PolylineTool extends BaseTool {
     this.utils.setTool('select');
   }
 }
-
-window.PolylineTool = PolylineTool;

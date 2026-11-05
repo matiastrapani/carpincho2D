@@ -66,81 +66,24 @@ const CAD_THEME = {
 window.CAD_THEME = CAD_THEME;
 
 
-/**
- * ImportSVGCommand.js
- */
-class ImportSVGCommand {
-  constructor(service, cadUtils, importedEntities, createdLayers) {
-    this.service = service;
-    this.utils = cadUtils;
-    this.entities = importedEntities || [];
-    this.createdLayers = createdLayers || [];
-  }
+import { LayerManager } from './services/LayerManager.js';
+import { PropertyManager } from './services/PropertyManager.js';
+import { SelectTool } from './tools/SelectTool.js';
+import { LineTool } from './tools/LineTool.js';
+import { PolylineTool } from './tools/PolylineTool.js';
+import { CircleTool } from './tools/CircleTool.js';
+import { SplineTool } from './tools/SplineTool.js';
+import { BezierTool } from './tools/BezierTool.js';
+import { PointTool } from './tools/PointTool.js';
+import { TrimTool } from './tools/TrimTool.js';
+import { ExtendTool } from './tools/ExtendTool.js';
+import { ImageController } from './controllers/ImageController.js';
+import { ToolManager } from './tools/ToolManager.js';
 
-  execute() {
-    const layerManager = this.utils?.layerManager;
-    if (layerManager && this.createdLayers.length > 0) {
-      this.createdLayers.forEach(lData => {
-        if (!layerManager.layers.has(lData.id)) layerManager.createLayer(lData);
-      });
-    }
-
-    this.entities.forEach(ent => {
-      if (!this.service.demoEntities.includes(ent)) this.service.demoEntities.push(ent);
-      const layerId = String(ent.data?.layerId || '0');
-      const layer = layerManager?.layers?.get(layerId);
-
-      if (layer && layer.paperGroup && ent.parent !== layer.paperGroup) {
-        layer.paperGroup.addChild(ent);
-      } else if (!ent.parent && this.utils?.drawLayer) {
-        this.utils.drawLayer.addChild(ent);
-      }
-      ent.visible = true;
-    });
-
-    if (window.layerPanelUI && typeof window.layerPanelUI.refresh === 'function') window.layerPanelUI.refresh();
-    if (this.utils) {
-      this.utils.updateEntitiesStroke();
-      this.utils.renderBezierHandles();
-      if (window.paper?.view) window.paper.view.update();
-    }
-  }
-
-  undo() {
-    const layerManager = this.utils?.layerManager;
-    this.entities.forEach(ent => {
-      if (typeof this.service.deselectEntity === 'function') this.service.deselectEntity(ent);
-      ent.remove();
-      const idx = this.service.demoEntities.indexOf(ent);
-      if (idx !== -1) this.service.demoEntities.splice(idx, 1);
-    });
-
-    if (layerManager && this.createdLayers.length > 0) {
-      this.createdLayers.forEach(lData => {
-        const layerId = String(lData.id);
-        const layer = layerManager.layers.get(layerId);
-        if (layer) {
-          if (layer.paperGroup) layer.paperGroup.remove();
-          layerManager.layers.delete(layerId);
-        }
-      });
-      if (!layerManager.layers.has(layerManager.activeLayerId)) {
-        layerManager.setActiveLayer(layerManager.layers.keys().next().value || '0');
-      }
-    }
-
-    if (window.layerPanelUI && typeof window.layerPanelUI.refresh === 'function') window.layerPanelUI.refresh();
-    if (this.utils) {
-      this.utils.updateEntitiesStroke();
-      this.utils.renderBezierHandles();
-      if (window.paper?.view) window.paper.view.update();
-    }
-  }
-}
-window.ImportSVGCommand = ImportSVGCommand;
+import { DeleteCommand, AddLineCommand, AddEntityCommand, ImportSVGCommand } from './services/commands/cadCommands.js';
 
 
-class CADUtils {
+export class CADUtils {
   constructor(canvasId, service) {
     // 1. Referencias al DOM y Servicio Core
     this.canvasElement = document.getElementById(canvasId);
@@ -397,75 +340,64 @@ class CADUtils {
     });
   }
 
-  importSVGToCanvas(svgString, dropPosition) {
-    this.drawLayer.activate();
 
-    paper.project.importSVG(svgString, {
-      expandShapes: true,
-      insert: true,
-      onLoad: (item) => {
-        if (!item) return;
+  importImageToCanvas(imageSrc, dropPosition = null) {
+    const raster = new paper.Raster(imageSrc);
 
-        // Aplanar transformaciones de matriz para evitar desfasajes
-        item.applyMatrix = true;
-        item.position = dropPosition || paper.view.center.clone();
+    raster.on('load', () => {
+      raster.data.controller = new ImageController(raster);
+      raster.position = dropPosition || paper.view.center.clone();
 
-        const importedEntities = [];
+      if (!raster.data) raster.data = {};
+      raster.data.isImageEntity = true;
 
-        // Helper para procesar y registrar una entidad vectorial conservando rellenos
-        const processVectorEntity = (ent) => {
-          ent.data = ent.data || {};
+      // 1. Asignar nombre correlativo ("Imagen 1", "Imagen 2")
+      const imageName = this.generateNextEntityName ? this.generateNextEntityName('Imagen') : 'Imagen';
+      raster.name = imageName;
+      raster.data.name = imageName;
 
-          // Preservar colores y grosores originales
-          ent.data.origStrokeColor = ent.strokeColor ? ent.strokeColor.toCSS() : null;
-          ent.data.origFillColor = ent.fillColor ? ent.fillColor.toCSS() : null;
-          ent.data.baseStrokeWidth = ent.strokeWidth || 1;
-          ent.data.isSvgEntity = true;
-
-          // Si la entidad tiene relleno pero está abierta, cerrar contorno para renderizar relleno
-          if (ent instanceof paper.Path && ent.fillColor && !ent.closed) {
-            ent.closed = true;
-              }
-
-          // Mover a la capa principal de dibujo
-          this.drawLayer.addChild(ent);
-          this.service.registerEntity(ent);
-          importedEntities.push(ent);
-        };
-
-        // Recorrido jerárquico respetando CompoundPath
-        const registerChildren = (parent) => {
-          if (parent instanceof paper.CompoundPath) {
-            // Se preserva el CompoundPath entero para no romper rellenos con huecos
-            processVectorEntity(parent);
-          } else if (parent.children && parent.children.length > 0) {
-            const children = [...parent.children];
-            children.forEach(child => registerChildren(child));
-          } else if (parent instanceof paper.Path) {
-            processVectorEntity(parent);
-          }
-        };
-
-        registerChildren(item);
-
-        // Limpiar la cáscara/grupo contenedor
-        item.remove();
-
-        if (importedEntities.length > 0 && window.AddEntityCommand) {
-          const cmd = new AddEntityCommand(this.service, importedEntities);
-          this.service.executeCommand(cmd);
-        }
-
-        this.updateEntitiesStroke();
-        this.renderBezierHandles();
-        paper.view.update();
-        this.setPrompt('Dibujo SVG importado y listo para editar.');
+      // 2. Vincular propiedades por defecto (Capa activa, Color Por Capa/Personalizado y Opacidad)
+      if (this.propertyManager) {
+        this.propertyManager.applyDefaultSettings(raster);
       }
+
+      // Sincronizar baseOpacity para ImageController
+      raster.data.baseOpacity = raster.opacity;
+
+      // 3. Vincular Controlador Paramétrico
+      raster.data.controller = new ImageController(raster);
+
+      raster.sendToBack();
+      if (this.gridGroup) this.gridGroup.sendToBack();
+
+      // 4. Registrar comando en el historial para soporte de Undo / Redo
+      const cmd = new AddEntityCommand(this.service, raster);
+      this.service.executeCommand(cmd);
+
+      this.service.selectEntity(raster, false);
+      this.updateEntitiesStroke();
+      this.renderBezierHandles();
+
+      if (window.cadUI && typeof window.cadUI.updatePropertyPanel === 'function') {
+        window.cadUI.updatePropertyPanel(raster);
+      }
+
+      this.setPrompt('Imagen importada al lienzo.');
     });
   }
 
   importSVGToCanvas(svgString, dropPosition) {
-    this.drawLayer.activate();
+    // 1. Obtener la capa activa del LayerManager y su contenedor Paper.js real (paperGroup)
+    const layerManager = this.service?.layerManager || this.layerManager;
+    const activeCadLayer = layerManager ? layerManager.getActiveLayer() : null;
+
+    // El contenedor gráfico en Paper.js es 'paperGroup' o 'drawLayer' por defecto
+    const targetContainer = activeCadLayer?.paperGroup || this.drawLayer || paper.project.activeLayer;
+
+    // Solo activamos si es un objeto nativo paper.Layer
+    if (targetContainer && typeof targetContainer.activate === 'function') {
+      targetContainer.activate();
+    }
 
     paper.project.importSVG(svgString, {
       expandShapes: true,
@@ -473,37 +405,50 @@ class CADUtils {
       onLoad: (item) => {
         if (!item) return;
 
-        // Aplanar transformaciones de matriz para evitar desfasajes
         item.applyMatrix = true;
         item.position = dropPosition || paper.view.center.clone();
 
         const importedEntities = [];
 
-        // Helper para procesar y registrar una entidad vectorial conservando rellenos
+        // Extraer el color asignado a la capa en LayerManager
+        const layerColor = activeCadLayer?.color || (activeCadLayer?.data && activeCadLayer.data.color) || null;
+
         const processVectorEntity = (ent) => {
+          if (!ent) return;
           ent.data = ent.data || {};
 
-          // Preservar colores y grosores originales
-          ent.data.origStrokeColor = ent.strokeColor ? ent.strokeColor.toCSS() : null;
-          ent.data.origFillColor = ent.fillColor ? ent.fillColor.toCSS() : null;
+          if (layerColor) {
+            ent.strokeColor = layerColor;
+          }
+
+          ent.data.origStrokeColor = ent.strokeColor ? (ent.strokeColor.toCSS ? ent.strokeColor.toCSS() : ent.strokeColor) : null;
+          ent.data.origFillColor = ent.fillColor ? (ent.fillColor.toCSS ? ent.fillColor.toCSS() : ent.fillColor) : null;
           ent.data.baseStrokeWidth = ent.strokeWidth || 1;
           ent.data.isSvgEntity = true;
 
-          // Si la entidad tiene relleno pero está abierta, cerrar contorno para renderizar relleno
+          // Asignar ID de la capa activa a la entidad
+          if (activeCadLayer?.id) {
+            ent.data.layerId = String(activeCadLayer.id);
+          }
+
           if (ent instanceof paper.Path && ent.fillColor && !ent.closed) {
             ent.closed = true;
-              }
+          }
 
-          // Mover a la capa principal de dibujo
-          this.drawLayer.addChild(ent);
-          this.service.registerEntity(ent);
+          // Mover al contenedor de Paper.js correspondiente
+          if (targetContainer && typeof targetContainer.addChild === 'function') {
+            targetContainer.addChild(ent);
+          }
+
+          if (this.service && typeof this.service.registerEntity === 'function') {
+            this.service.registerEntity(ent);
+          }
           importedEntities.push(ent);
         };
 
-        // Recorrido jerárquico respetando CompoundPath
         const registerChildren = (parent) => {
+          if (!parent) return;
           if (parent instanceof paper.CompoundPath) {
-            // Se preserva el CompoundPath entero para no romper rellenos con huecos
             processVectorEntity(parent);
           } else if (parent.children && parent.children.length > 0) {
             const children = [...parent.children];
@@ -515,18 +460,21 @@ class CADUtils {
 
         registerChildren(item);
 
-        // Limpiar la cáscara/grupo contenedor
+        // Eliminar el contenedor temporal generado por importSVG
         item.remove();
 
-        if (importedEntities.length > 0 && window.AddEntityCommand) {
-          const cmd = new AddEntityCommand(this.service, importedEntities);
-          this.service.executeCommand(cmd);
+        // 2. Registrar el comando de Undo/Redo usando ImportSVGCommand (definido arriba en cadUtils.js)
+        if (importedEntities.length > 0) {
+          const cmd = new ImportSVGCommand(this.service, this, importedEntities, []);
+          if (this.service && typeof this.service.executeCommand === 'function') {
+            this.service.executeCommand(cmd);
+          }
         }
 
         this.updateEntitiesStroke();
         this.renderBezierHandles();
-        paper.view.update();
-        this.setPrompt('Dibujo SVG importado y listo para editar.');
+        if (paper.view) paper.view.update();
+        this.setPrompt('Dibujo SVG importado en la capa activa.');
       }
     });
   }
@@ -1826,5 +1774,3 @@ class CADUtils {
     return `${basePrefix} ${maxNum + 1}`;
   }
 }
-
-window.CADUtils = CADUtils;

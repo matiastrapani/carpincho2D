@@ -1,7 +1,9 @@
 /**
  * services/PropertyManager.js - Gestor de propiedades y resolución BYLAYER.
  */
-class PropertyManager {
+import { UpdateEntityPropertyCommand } from './commands/cadCommands.js';
+
+export class PropertyManager {
   constructor(cadService, cadUtils) {
     this.service = cadService;
     this.utils = cadUtils;
@@ -21,7 +23,7 @@ class PropertyManager {
     if (!item.data) item.data = {};
 
     const defaults = this.defaultSettings || {};
-    const lm = this.layerManager || window.cadUtils?.layerManager;
+    const lm = this.utils?.layerManager;
     const activeLayer = lm ? lm.getActiveLayer() : null;
 
     // 0. Capa activa (Preserva la capa si ya venía definida)
@@ -93,5 +95,3 @@ class PropertyManager {
     return layerWidth !== undefined ? layerWidth : 0;
     }
 }
-
-window.PropertyManager = PropertyManager;

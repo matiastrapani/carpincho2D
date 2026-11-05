@@ -1,7 +1,10 @@
 /**
  * tools/SplineTool.js - Herramienta para dibujado de Curvas Suaves (Splines)
  */
-class SplineTool extends BaseTool {
+
+import { BaseTool } from './BaseTool.js';
+
+export class SplineTool extends BaseTool {
   constructor(cadService, cadUtils) {
     super(cadService, cadUtils);
     this.promptText = 'SPLINE. Haz clic para colocar el primer punto de la curva suave.';
@@ -122,5 +125,3 @@ class SplineTool extends BaseTool {
     this.utils.setTool('select');
   }
 }
-
-window.SplineTool = SplineTool;

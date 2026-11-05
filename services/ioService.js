@@ -1,7 +1,8 @@
 /**
  * modules/ioService.js - Exportación e Importación de archivos
  */
-class CADIOService {
+
+export class CADIOService {
   async exportSVG(defaultFileName = 'dibujo_carpincho.svg') {
     if (!paper || !paper.project) return;
 
@@ -101,5 +102,3 @@ class CADIOService {
     this.exportSVG(fileName);
   }
 }
-
-window.CADIOService = CADIOService;

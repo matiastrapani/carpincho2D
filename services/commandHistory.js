@@ -1,7 +1,8 @@
 /**
  * Gestor del historial de comandos para Undo / Redo
  */
-class CommandHistory {
+
+export class CommandHistory {
   constructor(maxHistory = 50) {
     this.undoStack = [];
     this.redoStack = [];
@@ -47,5 +48,3 @@ class CommandHistory {
     this.redoStack = [];
   }
 }
-
-window.CommandHistory = CommandHistory;

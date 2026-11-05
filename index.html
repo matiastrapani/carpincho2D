@@ -15,41 +15,48 @@
   
   <!-- MÓDULOS LOCALES -->
   <!-- 1. SERVICIOS Y ESTADO CENTRAL (services/) -->
-  <script src="services/commandHistory.js"></script>
-  <script src="services/cadCommands.js"></script>
-  <script src="services/LayerManager.js"></script>
-  <script src="services/PropertyManager.js"></script>
-  <script src="services/cadService.js"></script>
-  <script src="services/ioService.js"></script>
+  <script type="module" src="services/commandHistory.js"></script>
+  <script type="module" src="services/commands/cadCommands.js"></script>
+  <script type="module" src="services/commands/LayerCommands.js"></script>
+  <script type="module" src="services/LayerManager.js"></script>
+  <script type="module" src="services/PropertyManager.js"></script>
+  <script type="module" src="services/cadService.js"></script>
+  <script type="module" src="services/ioService.js"></script>
 
   <!-- 2. CONTROLADORES (controllers/) -->
-  <script src="controllers/ImageController.js"></script>
+  <script type="module" src="controllers/ImageController.js"></script>
 
   <!-- 3. COMPONENTES DE INTERFAZ Y UI (ui/) -->
-  <script src="ui/HUDManager.js"></script>
-  <script src="ui/CommandBarManager.js"></script>
-  <script src="ui/LayerPanelUI.js"></script>
-  <script src="ui/PropertyPanelUI.js"></script>
-  <script src="ui/toolbarComponent.js"></script>
-  <script src="ui/uiManager.js"></script>
+  <script type="module" src="ui/HUDManager.js"></script>
+  <script type="module" src="ui/CommandBarManager.js"></script>
+  <script type="module" src="ui/LayerPanelUI.js"></script>
+  <script type="module" src="ui/PropertyPanelUI.js"></script>
+  <script type="module" src="ui/toolbarComponent.js"></script>
+  <script type="module" src="ui/uiManager.js"></script>
 
   <!-- 4. HERRAMIENTAS DE INTERACCIÓN (tools/) -->
-  <script src="tools/BaseTool.js"></script> <!-- SIEMPRE PRIMERO EN TOOLS -->
-  <script src="tools/HandleSelectionHandler.js"></script>
-  <script src="tools/SelectTool.js"></script>
-  <script src="tools/LineTool.js"></script>
-  <script src="tools/PolylineTool.js"></script>
-  <script src="tools/CircleTool.js"></script>
-  <script src="tools/SplineTool.js"></script>
-  <script src="tools/BezierTool.js"></script>
-  <script src="tools/PointTool.js"></script>
-  <script src="tools/TrimTool.js"></script>
-  <script src="tools/ExtendTool.js"></script>
-  <script src="tools/ToolManager.js"></script>
+  <script type="module" src="tools/BaseTool.js"></script> <!-- SIEMPRE PRIMERO EN TOOLS -->
+  <script type="module" src="tools/HandleSelectionHandler.js"></script>
+  <script type="module" src="tools/SelectTool.js"></script>
+  <script type="module" src="tools/LineTool.js"></script>
+  <script type="module" src="tools/PolylineTool.js"></script>
+  <script type="module" src="tools/CircleTool.js"></script>
+  <script type="module" src="tools/SplineTool.js"></script>
+  <script type="module" src="tools/BezierTool.js"></script>
+  <script type="module" src="tools/PointTool.js"></script>
+  <script type="module" src="tools/TrimTool.js"></script>
+  <script type="module" src="tools/ExtendTool.js"></script>
+  <script type="module" src="tools/ToolManager.js"></script>
 
   <!-- 5. ORQUESTADOR PRINCIPAL (cadUtils.js) -->
-  <script src="cadUtils.js"></script>
+  <script type="module" src="cadUtils.js"></script>
+  <link rel="icon" href="favicon.ico" sizes="any">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="manifest" href="site.webmanifest">
+  <meta name="theme-color" content="#FFFFFF">
 </head>
+
 <body class="text-zinc-400 flex flex-col h-screen w-screen overflow-hidden font-sans bg-[#121215] select-none">
 
   <!-- CABEZAL FIJO SUPERIOR -->
@@ -164,7 +171,15 @@
   </div>
 
   <script src="icons/icons.js"></script>
-  <script>
+  <script type="module">
+    import { CADToolbarComponent } from './ui/toolbarComponent.js';
+    import { CADService } from './services/cadService.js';
+    import { CADUtils } from './cadUtils.js';
+    import { CADIOService } from './services/ioService.js';
+    import { CADUIManager } from './ui/uiManager.js';
+    import { LayerPanelUI } from './ui/LayerPanelUI.js';
+    import { PropertyPanelUI } from './ui/PropertyPanelUI.js';
+    
     window.addEventListener('load', () => {
       // 1. Inyectar Componente de Interfaz
       const toolbar = new CADToolbarComponent('app-ui-container');

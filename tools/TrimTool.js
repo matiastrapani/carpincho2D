@@ -1,7 +1,10 @@
 /**
  * tools/TrimTool.js - Herramienta de Recorte (Trim) aislada
  */
-class TrimTool extends BaseTool {
+
+import { BaseTool } from './BaseTool.js';
+
+export class TrimTool extends BaseTool {
   constructor(cadService, cadUtils) {
     super(cadService, cadUtils);
   }
@@ -23,7 +26,7 @@ class TrimTool extends BaseTool {
     } else {
       // Fase de selección manual de límites de corte
       this.service.isTrimCuttingPhase = false;
-      this.setPrompt('TRIM: Selecciona las entidades de corte y presiona BOTÓN DERECHO para confirmar.');
+      this.setPrompt('TRIM: Selecciona las entidades de corte y presiona BOTÓN DERECHO o ENTER para confirmar.');
     }
   }
 
@@ -44,6 +47,25 @@ class TrimTool extends BaseTool {
     this.cancel();
     this.utils.setTool('select');
     return true;
+  }
+
+  onKeyDown(event) {
+    const key = event.key || event.code;
+
+    // Confirmar límites de corte con Enter o Espacio
+    if (key === 'Enter' || key === 'NumpadEnter' || key === 'Space') {
+      if (!this.service.isTrimCuttingPhase && this.service.trimCuttingBoundaries.length > 0) {
+        this.confirmTrimBoundaries();
+        return true;
+      }
+    } 
+    // Cancelar herramienta con Escape
+    else if (key === 'Escape') {
+      this.cancel();
+      this.utils.setTool('select');
+      return true;
+    }
+    return false;
   }
 
   onMouseDown(event) {
@@ -84,5 +106,3 @@ class TrimTool extends BaseTool {
     this.utils.renderBezierHandles();
   }
 }
-
-window.TrimTool = TrimTool;

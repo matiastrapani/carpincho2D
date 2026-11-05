@@ -1,7 +1,7 @@
 /**
  * modules/toolbarComponent.js - Componente que genera e inyecta la UI dinámicamente
  */
-class CADToolbarComponent {
+export class CADToolbarComponent {
   constructor(containerId = 'app-ui-container') {
     this.container = document.getElementById(containerId);
   }
@@ -266,5 +266,3 @@ class CADToolbarComponent {
     `;
   }
 }
-
-window.CADToolbarComponent = CADToolbarComponent;

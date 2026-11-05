@@ -1,7 +1,9 @@
 /**
  * tools/submodules/HandleSelectionHandler.js
  */
-class HandleSelectionHandler {
+import { MoveCommand } from '../services/commands/cadCommands.js';
+
+export class HandleSelectionHandler {
   constructor(cadService, cadUtils) {
     this.service = cadService;
     this.utils = cadUtils;
@@ -257,7 +259,7 @@ class HandleSelectionHandler {
         });
       });
 
-      if (hasMoved && window.MoveCommand) {
+      if (hasMoved) {
         const moveCmd = new MoveCommand(this.service, {
           type: 'segments',
           items: movedSegmentsData
@@ -281,7 +283,7 @@ class HandleSelectionHandler {
       finalPt = seg.point.add(seg.handleOut);
     }
 
-    if (finalPt && !finalPt.equals(this.handleDragStartPt) && window.MoveCommand) {
+    if (finalPt && !finalPt.equals(this.handleDragStartPt)) {
       const moveCmd = new MoveCommand(this.service, {
         type: 'handle',
         segment: seg,
@@ -297,5 +299,3 @@ class HandleSelectionHandler {
     this.reset();
   }
 }
-
-window.HandleSelectionHandler = HandleSelectionHandler;

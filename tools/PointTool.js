@@ -2,7 +2,11 @@
  * tools/PointTool.js - Herramienta para Puntos y División de Entidades
  * Soporta selección estándar, caja de selección verde (#008800) y definición del punto de inicio en división por distancia.
  */
-class PointTool extends BaseTool {
+
+import { BaseTool } from './BaseTool.js';
+import { AddPointCommand, DivideCommand } from '../services/commands/cadCommands.js';
+
+export class PointTool extends BaseTool {
   constructor(cadService, cadUtils) {
     super(cadService, cadUtils);
     this.promptText = 'POINT. Haz clic en el lienzo para colocar un punto o ingresa coordenadas (X,Y).';
@@ -314,11 +318,17 @@ class PointTool extends BaseTool {
             }
 
             if (shouldSelect) {
-              if (!this.utils.divisionSelectedEntities.includes(entity)) {
-                this.utils.divisionSelectedEntities.push(entity);
-              }
-              if (!this.service.selectedEntities.includes(entity)) {
-                this.service.selectedEntities.push(entity);
+              const layerId = String(entity.data?.layerId || '0');
+              const layerManager = this.utils?.layerManager || window.cadUtils?.layerManager;
+              const layer = layerManager?.layers?.get(layerId);
+
+              if (!layer || !layer.locked) {
+                if (!this.utils.divisionSelectedEntities.includes(entity)) {
+                  this.utils.divisionSelectedEntities.push(entity);
+                }
+                if (!this.service.selectedEntities.includes(entity)) {
+                  this.service.selectedEntities.push(entity);
+                }
               }
             }
           });
@@ -363,10 +373,8 @@ class PointTool extends BaseTool {
         this.utils.propertyManager.applyDefaultSettings(pointEntity);
       }
 
-      if (window.AddPointCommand) {
-        const cmd = new AddPointCommand(this.service, pointEntity);
-        this.service.executeCommand(cmd);
-      }
+      const cmd = new AddPointCommand(this.service, pointEntity);
+      this.service.executeCommand(cmd);
 
       this.service.editingEntities = [];
       this.service.deselectAllSegments();
@@ -517,7 +525,7 @@ class PointTool extends BaseTool {
       }
     });
 
-    if (allCreatedPoints.length > 0 && window.DivideCommand) {
+    if (allCreatedPoints.length > 0) {
       const divideCmd = new DivideCommand(this.service, allCreatedPoints);
       this.service.executeCommand(divideCmd);
     }
@@ -594,5 +602,3 @@ class PointTool extends BaseTool {
     this.utils.setTool('select');
   }
 }
-
-window.PointTool = PointTool;

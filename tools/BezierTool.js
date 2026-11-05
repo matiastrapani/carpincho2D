@@ -1,7 +1,10 @@
 /**
  * tools/BezierTool.js - Herramienta para dibujado de Curvas Bézier interactivas
  */
-class BezierTool extends BaseTool {
+
+import { BaseTool } from './BaseTool.js';
+
+export class BezierTool extends BaseTool {
   constructor(cadService, cadUtils) {
     super(cadService, cadUtils);
     this.promptText = 'BÉZIER. Haz clic y arrastra para colocar puntos y manijas. Clic derecho o ENTER para finalizar.';
@@ -199,5 +202,3 @@ class BezierTool extends BaseTool {
     this.utils.setTool('select');
   }
 }
-
-window.BezierTool = BezierTool;

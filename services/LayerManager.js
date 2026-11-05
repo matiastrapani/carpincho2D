@@ -2,7 +2,8 @@
  * LayerManager.js - Gestión de capas, visibilidad, bloqueo y propiedades BYLAYER.
  */
 
-class LayerManager {
+
+export class LayerManager {
   constructor(cadService, cadUtils) {
     this.service = cadService;
     this.utils = cadUtils;
@@ -124,7 +125,7 @@ class LayerManager {
     if (this.utils) {
       this.utils.updateEntitiesStroke();
       this.utils.renderBezierHandles();
-      if (window.paper?.view) paper.view.update();
+      if (paper?.view) paper.view.update();
     }
   }
 
@@ -142,7 +143,7 @@ class LayerManager {
     if (this.utils) {
       this.utils.updateEntitiesStroke();
       this.utils.renderBezierHandles();
-      if (window.paper?.view) paper.view.update();
+      if (paper?.view) paper.view.update();
     }
 
     return true;
@@ -186,5 +187,3 @@ class LayerManager {
     }
   }
 }
-
-window.LayerManager = LayerManager;

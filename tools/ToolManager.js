@@ -1,7 +1,7 @@
 /**
  * tools/ToolManager.js - Administrador central del ciclo de vida de herramientas
  */
-class ToolManager {
+export class ToolManager {
   constructor(cadService, cadUtils) {
     this.service = cadService;
     this.utils = cadUtils;
@@ -76,4 +76,3 @@ class ToolManager {
   }
 }
 
-window.ToolManager = ToolManager;

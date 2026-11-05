@@ -3,7 +3,11 @@
  * Incluye previsualización dinámica con línea guía punteada desde el centro al radio,
  * asignación de nombres correlativos ('Círculo 1'), opacidad y propiedades por defecto.
  */
-class CircleTool extends BaseTool {
+
+import { BaseTool } from './BaseTool.js';
+import { AddEntityCommand } from '../services/commands/cadCommands.js';
+
+export class CircleTool extends BaseTool {
   constructor(cadService, cadUtils) {
     super(cadService, cadUtils);
     this.promptText = 'CIRCLE. Haz clic para especificar el centro del círculo.';
@@ -13,18 +17,13 @@ class CircleTool extends BaseTool {
   }
 
   onMouseDown(event) {
-    // Clic derecho -> Cancelar y salir a selección
-    if (event.event.button === 2) {
-      this.cancelAndExit();
-      return;
-    }
-
-    if (event.event.button !== 0) return; // Solo procesar clic izquierdo
+    // Procesar ÚNICAMENTE el clic izquierdo (ignora clic derecho)
+    if (event.event.button !== 0) return;
 
     const isShift = event.event ? event.event.shiftKey : false;
     let pt = event.point.clone();
 
-    // 1. Evaluar OSNAP sobre la posición REAL del cursor del ratón
+    // 1. Evaluar OSNAP sobre la posición REAL del cursor
     const osnap = this.service.calculateOsnap(
       event.point, 
       (snapPt, type) => this.utils.renderSnapMarker(snapPt, type)
@@ -52,15 +51,17 @@ class CircleTool extends BaseTool {
         if (!circleEntity.data) circleEntity.data = {};
         circleEntity.data.isCircleEntity = true;
 
-        // Auto-nombrar entidad de forma secuencial ('Círculo 1', 'Círculo 2', ...)
         const circleName = this.utils.generateNextEntityName ? this.utils.generateNextEntityName('Círculo') : 'Círculo';
         circleEntity.name = circleName;
         circleEntity.data.name = circleName;
 
-        // Aplicar propiedades por defecto (Capa, Color, Grosor, Opacidad)
         if (this.utils.propertyManager) {
           this.utils.propertyManager.applyDefaultSettings(circleEntity);
         }
+
+        // Registrar comando en el historial para Undo / Redo
+        const cmd = new AddEntityCommand(this.service, circleEntity);
+        this.service.executeCommand(cmd);
 
         if (this.utils.updateEntitiesStroke) {
           this.utils.updateEntitiesStroke();
@@ -163,8 +164,14 @@ class CircleTool extends BaseTool {
 
   // Clic derecho o cancelación explícita del usuario
   onContextMenu(event) {
-    this.cancelAndExit();
-    return true;
+    if (this.centerPoint) {
+      // 1.er Clic derecho: Cancela la previsualización del radio actual
+      this.resetTool();
+    } else {
+      // 2.º Clic derecho: Sale limpiamente a Selección
+      this.cancelAndExit();
+    }
+    return true; // Bloquea la reactivación automática en cadUtils.js
   }
 
   cancelAndExit() {
@@ -172,5 +179,3 @@ class CircleTool extends BaseTool {
     this.utils.setTool('select');
   }
 }
-
-window.CircleTool = CircleTool;

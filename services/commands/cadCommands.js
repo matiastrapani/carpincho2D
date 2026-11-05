@@ -3,7 +3,7 @@
  */
 
 // Comando para añadir una entidad de línea al lienzo CAD
-class AddLineCommand {
+export class AddLineCommand {
   constructor(cadService, lineEntity) {
     this.cadService = cadService;
     this.lineEntity = lineEntity;
@@ -33,13 +33,12 @@ class AddLineCommand {
     this.lineEntity.remove();
   }
 }
-window.AddLineCommand = AddLineCommand;
 
 /**
  * commands/AddPointCommand.js
  * Comando para registrar y deshacer/rehacer la creación de puntos.
  */
-class AddPointCommand {
+export class AddPointCommand {
   constructor(service, pointEntity) {
     this.service = service;
     this.pointEntity = pointEntity;
@@ -79,14 +78,13 @@ class AddPointCommand {
     paper.view.update();
   }
 }
-window.AddPointCommand = AddPointCommand;
 
 /**
  * commands/MoveCommand.js
  * Comando para Undo/Redo de arrastre de entidades, vértices/nodos múltiples y manejadores,
  * resistente a ciclos de borrado/restauración de segmentos.
  */
-class MoveCommand {
+export class MoveCommand {
   constructor(cadService, moveData) {
     this.cadService = cadService;
     this.moveData = moveData;
@@ -163,13 +161,12 @@ class MoveCommand {
     paper.view.update();
   }
 }
-window.MoveCommand = MoveCommand;
 
 /**
  * commands/DeleteCommand.js
  * Soporte de Undo/Redo para borrado de Entidades, Nodos y Tiradores Bézier.
  */
-class DeleteCommand {
+export class DeleteCommand {
   constructor(cadService, deleteData) {
     this.cadService = cadService;
     // deleteData: { type: 'entities' | 'handle' | 'segments', data: ... }
@@ -302,19 +299,13 @@ class DeleteCommand {
     paper.view.update();
   }
 }
-window.DeleteCommand = DeleteCommand;
 
-/**
- * commands/AddEntityCommand.js
- * Comando para registrar y deshacer/rehacer la adición de cualquier entidad
- * (Círculos, Líneas, Puntos, Imágenes o Lotes de Vectores SVG)
- */
 /**
  * commands/AddEntityCommand.js
  * Comando para registrar y deshacer/rehacer la adición de cualquier entidad
  * (Círculos, Líneas, Puntos, Imágenes o Lotes de Vectores SVG) - Versión Optimizada O(N)
  */
-class AddEntityCommand {
+export class AddEntityCommand {
   constructor(cadService, entity) {
     this.cadService = cadService;
     // Si recibe una sola entidad la envuelve en Array; si ya recibe un Array (SVG) lo conserva
@@ -382,12 +373,11 @@ class AddEntityCommand {
     paper.view.update();
   }
 }
-window.AddEntityCommand = AddEntityCommand;
 
 /**
  * commands/DivideCommand.js
  */
-class DivideCommand {
+export class DivideCommand {
   constructor(cadService, pointsCreated) {
     this.cadService = cadService;
     this.pointsCreated = pointsCreated;
@@ -423,14 +413,12 @@ class DivideCommand {
     paper.view.update();
   }
 }
-window.DivideCommand = DivideCommand;
-
 
 /**
  * commands/TrimCommand.js
  * Comando para Undo/Redo del recorte de entidades (Trim).
  */
-class TrimCommand {
+export class TrimCommand {
   constructor(cadService, originalPath, remainingPaths, originalIndex) {
     this.cadService = cadService;
     this.originalPath = originalPath;     // Entidad completa previa al corte
@@ -520,13 +508,12 @@ class TrimCommand {
     paper.view.update();
   }
 }
-window.TrimCommand = TrimCommand;
 
 /**
  * commands/ExtendCommand.js
  * Comando para Undo/Redo de extensión paramétrica de entidades (Extend).
  */
-class ExtendCommand {
+export class ExtendCommand {
   constructor(cadService, path, initialSegments, finalSegments) {
     this.cadService = cadService;
     this.path = path;
@@ -567,14 +554,12 @@ class ExtendCommand {
     paper.view.update();
   }
 }
-window.ExtendCommand = ExtendCommand;
-
 
 /**
  * commands/TransformEntityCommand.js
  * Soporte Undo/Redo para transformaciones de Bounding Box (Scale, Move, Stretch)
  */
-class TransformEntityCommand {
+export class TransformEntityCommand {
   constructor(cadService, entity, initialState, finalState) {
     this.cadService = cadService;
     this.entity = entity;
@@ -614,13 +599,12 @@ class TransformEntityCommand {
     paper.view.update();
   }
 }
-window.TransformEntityCommand = TransformEntityCommand;
 
 /**
  * commands/ChangeOpacityCommand.js
  * Soporte Undo/Redo para cambios de opacidad en imágenes / entidades.
  */
-class ChangeOpacityCommand {
+export class ChangeOpacityCommand {
   constructor(cadService, entity, oldOpacity, newOpacity) {
     this.cadService = cadService;
     this.entity = entity;
@@ -656,13 +640,12 @@ class ChangeOpacityCommand {
     paper.view.update();
   }
 }
-window.ChangeOpacityCommand = ChangeOpacityCommand;
 
 /**
  * commands/UpdateEntityPropertyCommand.js
  * Soporte Undo/Redo para cambios de propiedades de entidades (Color, Grosor, Opacidad, Capa, Nombre).
  */
-class UpdateEntityPropertyCommand {
+export class UpdateEntityPropertyCommand {
   constructor(cadService, entities, oldState, newState, cadUtils) {
     this.service = cadService;
     this.entities = Array.isArray(entities) ? entities : [entities];
@@ -713,4 +696,75 @@ class UpdateEntityPropertyCommand {
     }
   }
 }
-window.UpdateEntityPropertyCommand = UpdateEntityPropertyCommand;
+
+/**
+ * ImportSVGCommand.js
+ */
+export class ImportSVGCommand {
+  constructor(service, cadUtils, importedEntities, createdLayers) {
+    this.service = service;
+    this.utils = cadUtils;
+    this.entities = importedEntities || [];
+    this.createdLayers = createdLayers || [];
+  }
+
+  execute() {
+    const layerManager = this.utils?.layerManager;
+    if (layerManager && this.createdLayers.length > 0) {
+      this.createdLayers.forEach(lData => {
+        if (!layerManager.layers.has(lData.id)) layerManager.createLayer(lData);
+      });
+    }
+
+    this.entities.forEach(ent => {
+      if (!this.service.demoEntities.includes(ent)) this.service.demoEntities.push(ent);
+      const layerId = String(ent.data?.layerId || '0');
+      const layer = layerManager?.layers?.get(layerId);
+
+      if (layer && layer.paperGroup && ent.parent !== layer.paperGroup) {
+        layer.paperGroup.addChild(ent);
+      } else if (!ent.parent && this.utils?.drawLayer) {
+        this.utils.drawLayer.addChild(ent);
+      }
+      ent.visible = true;
+    });
+
+    if (window.layerPanelUI && typeof window.layerPanelUI.refresh === 'function') window.layerPanelUI.refresh();
+    if (this.utils) {
+      this.utils.updateEntitiesStroke();
+      this.utils.renderBezierHandles();
+      if (window.paper?.view) window.paper.view.update();
+    }
+  }
+
+  undo() {
+    const layerManager = this.utils?.layerManager;
+    this.entities.forEach(ent => {
+      if (typeof this.service.deselectEntity === 'function') this.service.deselectEntity(ent);
+      ent.remove();
+      const idx = this.service.demoEntities.indexOf(ent);
+      if (idx !== -1) this.service.demoEntities.splice(idx, 1);
+    });
+
+    if (layerManager && this.createdLayers.length > 0) {
+      this.createdLayers.forEach(lData => {
+        const layerId = String(lData.id);
+        const layer = layerManager.layers.get(layerId);
+        if (layer) {
+          if (layer.paperGroup) layer.paperGroup.remove();
+          layerManager.layers.delete(layerId);
+        }
+      });
+      if (!layerManager.layers.has(layerManager.activeLayerId)) {
+        layerManager.setActiveLayer(layerManager.layers.keys().next().value || '0');
+      }
+    }
+
+    if (window.layerPanelUI && typeof window.layerPanelUI.refresh === 'function') window.layerPanelUI.refresh();
+    if (this.utils) {
+      this.utils.updateEntitiesStroke();
+      this.utils.renderBezierHandles();
+      if (window.paper?.view) window.paper.view.update();
+    }
+  }
+}

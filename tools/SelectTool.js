@@ -1,7 +1,11 @@
 /**
  * tools/SelectTool.js - Herramienta de Selección con Estado Encapsulado y Submódulos Delegados
  */
-class SelectTool extends BaseTool {
+import { BaseTool } from './BaseTool.js';
+import { HandleSelectionHandler } from './HandleSelectionHandler.js';
+import { MoveCommand, TransformEntityCommand } from '../services/commands/cadCommands.js';
+
+export class SelectTool extends BaseTool {
   constructor(cadService, cadUtils) {
     super(cadService, cadUtils);
 
@@ -124,7 +128,7 @@ class SelectTool extends BaseTool {
 
       // GUARDIÁN DE CAPA BLOQUEADA
       const layerId = String(targetItem.data?.layerId || '0');
-      const layerManager = this.service.layerManager || window.cadUtils?.layerManager;
+      const layerManager = this.service.layerManager || this.utils?.layerManager;
       const layer = layerManager?.layers?.get(layerId);
       if (layer && layer.locked) return;
 
@@ -571,10 +575,8 @@ class SelectTool extends BaseTool {
           matrix: this.activeGripEntity.matrix ? this.activeGripEntity.matrix.clone() : null
         };
 
-        if (window.TransformEntityCommand) {
-          const cmd = new TransformEntityCommand(this.service, this.activeGripEntity, initialState, finalState);
-          this.service.executeCommand(cmd);
-        }
+        const cmd = new TransformEntityCommand(this.service, this.activeGripEntity, initialState, finalState);
+        this.service.executeCommand(cmd);
       }
 
       this.activeGripEntity = null;
@@ -623,11 +625,8 @@ class SelectTool extends BaseTool {
         });
       });
 
-      if (hasMoved && window.MoveCommand) {
-        const moveCmd = new MoveCommand(this.service, {
-          type: 'segments',
-          items: movedSegmentsData
-        });
+      if (hasMoved) {
+        const moveCmd = new MoveCommand(this.service, { type: 'segments', items: movedSegmentsData });
         this.service.executeCommand(moveCmd);
       }
     }
@@ -668,7 +667,7 @@ class SelectTool extends BaseTool {
         });
       });
 
-      if (hasMoved && window.MoveCommand) {
+      if (hasMoved) {
         const moveCmd = new MoveCommand(this.service, {
           type: 'entities',
           items: movedEntitiesData
@@ -822,7 +821,14 @@ class SelectTool extends BaseTool {
           }
 
           if (shouldSelect) {
-            entitiesToSelect.push(entity);
+            const layerId = String(entity.data?.layerId || '0');
+            const layerManager = this.utils?.layerManager || window.cadUtils?.layerManager;
+            const layer = layerManager?.layers?.get(layerId);
+
+            // Solo seleccionar si la capa está desbloqueada
+            if (!layer || !layer.locked) {
+              entitiesToSelect.push(entity);
+            }
           }
         }
 
@@ -958,7 +964,9 @@ class SelectTool extends BaseTool {
 
         // IGNORAR HOVER SI LA CAPA ESTÁ BLOQUEADA
         const layerId = String(root.data?.layerId || '0');
-        const layer = this.service.layerManager?.layers?.get(layerId);
+        const layerManager = this.utils?.layerManager || window.cadUtils?.layerManager;
+        const layer = layerManager?.layers?.get(layerId);
+        if (layer && layer.locked) return false;
         if (layer && layer.locked) return false;
 
         if (item.data?.isPointEntity || item.parent?.data?.isPointEntity) return true;
@@ -1032,5 +1040,3 @@ class SelectTool extends BaseTool {
     paper.view.update();
   }
 }
-
-window.SelectTool = SelectTool;

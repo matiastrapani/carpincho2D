@@ -1,7 +1,11 @@
 /**
  * cadService.js - Servicio geométrico, OSNAP, recortes (Trim), división y estado CAD.
  */
-class CADService {
+
+import { CommandHistory } from './commandHistory.js';
+import { DeleteCommand, TrimCommand, AddEntityCommand } from './commands/cadCommands.js';
+
+export class CADService {
   constructor() {
     this.demoEntities = [];
     this.selectedEntities = [];
@@ -349,7 +353,7 @@ class CADService {
 
     // Guardián: Bloquear selección si la capa está marcada como locked
     const layerId = String(entity.data?.layerId || '0');
-    const layerManager = this.layerManager || window.cadUtils?.layerManager;
+    const layerManager = this.utils?.layerManager || window.cadUtils?.layerManager;
     const layer = layerManager?.layers?.get(layerId);
     if (layer && layer.locked) return;
 
@@ -418,7 +422,7 @@ class CADService {
     if (!segment || !segment.path || !type) return;
 
     const layerId = String(segment.path.data?.layerId || '0');
-    const layerManager = this.layerManager || window.cadUtils?.layerManager;
+    const layerManager = this.utils?.layerManager || window.cadUtils?.layerManager;
     const layer = layerManager?.layers?.get(layerId);
     if (layer && layer.locked) return;
 
@@ -488,10 +492,10 @@ class CADService {
     if (!segment || !segment.path) return;
 
     const layerId = String(segment.path.data?.layerId || '0');
-    const layerManager = this.layerManager || window.cadUtils?.layerManager;
+    const layerManager = this.utils?.layerManager || window.cadUtils?.layerManager;
     const layer = layerManager?.layers?.get(layerId);
     if (layer && layer.locked) return;
-
+    
     if (!addToSelection) {
       this.selectedSegments = [];
     }
@@ -516,8 +520,6 @@ class CADService {
   }
   //SELECTION SECTION
 
-
-  
 
   performTrim(targetPath, clickPt, renderBezierFn) {
     if (!this.trimCuttingBoundaries.length || !targetPath || this.trimCuttingBoundaries.includes(targetPath)) return;
@@ -620,10 +622,9 @@ class CADService {
       }
     });
 
-    if (window.TrimCommand) {
-      const trimCmd = new TrimCommand(this, targetPath, remainingPaths, origIdx);
-      this.executeCommand(trimCmd);
-    }
+    // Instanciar directamente el comando importado en lugar de usar window
+    const trimCmd = new TrimCommand(this, targetPath, remainingPaths, origIdx);
+    this.executeCommand(trimCmd);
 
     if (renderBezierFn) renderBezierFn();
   }
@@ -935,7 +936,7 @@ class CADService {
       radius: radius,
       strokeColor: '#3b82f6',
       strokeWidth: initialWidth,
-      fillColor: null // Strictly null: interior inerte y transparente
+      fillColor: null
     });
 
     circlePath.data = {
@@ -951,10 +952,9 @@ class CADService {
 
     const success = this.registerEntity(circlePath);
     if (success) {
-      if (window.AddEntityCommand) {
-        const addCmd = new AddEntityCommand(this, circlePath);
-        this.executeCommand(addCmd);
-      }
+      // Instanciar directamente AddEntityCommand importado arriba
+      const addCmd = new AddEntityCommand(this, circlePath);
+      this.executeCommand(addCmd);
       return circlePath;
     }
     return null;
@@ -999,5 +999,3 @@ class CADService {
   }
   
 }
-
-window.CADService = CADService;

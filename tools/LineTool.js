@@ -1,7 +1,11 @@
 /**
  * tools/LineTool.js - Herramienta de dibujado de líneas simples y encadenadas
  */
-class LineTool extends BaseTool {
+
+import { BaseTool } from './BaseTool.js';
+import { AddLineCommand } from '../services/commands/cadCommands.js';
+
+export class LineTool extends BaseTool {
   constructor(cadService, cadUtils) {
     super(cadService, cadUtils);
     this.promptText = 'LINE. Haz clic en el primer punto.';
@@ -143,5 +147,3 @@ class LineTool extends BaseTool {
     this.utils.finishCurrentDrawing();
   }
 }
-
-window.LineTool = LineTool;

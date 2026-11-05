@@ -3,7 +3,11 @@
  * Permite cambiar entre modo 'smooth' (S) y modo 'line' (L) mediante teclado,
  * modificando entidades existentes si son rectas o anexando segmentos si son curvas.
  */
-class ExtendTool extends BaseTool {
+
+import { BaseTool } from './BaseTool.js';
+import { ExtendCommand } from '../services/commands/cadCommands.js';
+
+export class ExtendTool extends BaseTool {
   constructor(cadService, cadUtils) {
     super(cadService, cadUtils);
     this.promptText = 'EXTEND: Selecciona un extremo. [S] Smooth / [L] Line';
@@ -308,11 +312,9 @@ class ExtendTool extends BaseTool {
 
     const initialSegments = initialControls.segmentsBackup;
 
-    // Crear y registrar el comando en el historial para habilitar Undo/Redo
-    if (window.ExtendCommand) {
-      const extendCmd = new ExtendCommand(this.service, path, initialSegments, finalSegments);
-      this.service.executeCommand(extendCmd);
-    }
+    // Registrar el comando en el historial para habilitar Undo/Redo
+    const extendCmd = new ExtendCommand(this.service, path, initialSegments, finalSegments);
+    this.service.executeCommand(extendCmd);
 
     this.extendData = null;
     this.lastMouseEvent = null;
@@ -334,5 +336,3 @@ class ExtendTool extends BaseTool {
     this.setPrompt('EXTEND: Operación cancelada.');
   }
 }
-
-window.ExtendTool = ExtendTool;
