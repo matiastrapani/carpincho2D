@@ -11,81 +11,70 @@ export class PolylineTool extends BaseTool {
   }
 
   onMouseDown(event) {
-    // Clic Derecho -> Finalizar polilínea actual
-    if (event.event.button === 2) {
-      if (this.utils.activePath) {
-        // Si ya hay un trazo iniciado, finaliza la polilínea en ese punto
-        this.utils.finishCurrentDrawing();
-      } else {
-        // Si AÚN NO hay primer punto, cancela la herramienta y vuelve a 'select'
-        this.cancelAndExit();
-      }
-      return;
+    // Procesar ÚNICAMENTE el clic izquierdo (ignora clic derecho)
+    if (event.event.button !== 0) return;
+
+    const isShift = event.event ? event.event.shiftKey : false;
+    let pt = event.point;
+
+    // 1. Evaluar OSNAP sobre el punto REAL del cursor del ratón
+    const osnap = this.service.calculateOsnap(
+      event.point, 
+      (snapPt, type) => this.utils.renderSnapMarker(snapPt, type),
+      this.utils.activePath
+    );
+
+    if (osnap.type) {
+      // Si hay atracción magnética, toma el punto OSNAP exacto
+      pt = osnap.point;
+    } else if (this.utils.activePath && this.utils.activePath.lastSegment && isShift) {
+      // 2. Si no hay OSNAP y Shift está presionado, aplica restricción ORTHO respecto al último vértice
+      const lastPt = this.utils.activePath.lastSegment.point;
+      pt = this.utils.applyOrthoConstraint(lastPt, event.point, true);
     }
 
-    // Clic Izquierdo -> Agregar punto
-    if (event.event.button === 0) {
-      const isShift = event.event ? event.event.shiftKey : false;
-      let pt = event.point;
+    if (!this.utils.activePath) {
+      // Crear polilínea nueva en el primer clic
+      this.utils.activePath = new paper.Path({
+        segments: [pt]
+      });
 
-      // 1. Evaluar OSNAP sobre el punto REAL del cursor del ratón
-      const osnap = this.service.calculateOsnap(
-        event.point, 
-        (snapPt, type) => this.utils.renderSnapMarker(snapPt, type),
-        this.utils.activePath
-      );
+      if (!this.utils.activePath.data) this.utils.activePath.data = {};
 
-      if (osnap.type) {
-        // Si hay atracción magnética, toma el punto OSNAP exacto
-        pt = osnap.point;
-      } else if (this.utils.activePath && this.utils.activePath.lastSegment && isShift) {
-        // 2. Si no hay OSNAP y Shift está presionado, aplica restricción ORTHO respecto al último vértice
-        const lastPt = this.utils.activePath.lastSegment.point;
-        pt = this.utils.applyOrthoConstraint(lastPt, event.point, true);
+      // Auto-nombrar la polilínea secuencialmente ('Polilínea 1', 'Polilínea 2', ...)
+      const polyName = this.utils.generateNextEntityName ? this.utils.generateNextEntityName('Polilínea') : 'Polilínea';
+      this.utils.activePath.name = polyName;
+      this.utils.activePath.data.name = polyName;
+
+      // Aplicar propiedades por defecto (Capa, Color, Grosor, Opacidad)
+      if (this.utils.propertyManager) {
+        this.utils.propertyManager.applyDefaultSettings(this.utils.activePath);
       }
 
-      if (!this.utils.activePath) {
-        // Crear polilínea nueva en el primer clic
-        this.utils.activePath = new paper.Path({
-          segments: [pt]
-        });
+      this.utils.updateEntitiesStroke();
+      this.setPrompt('Especifique el siguiente punto o [ENTER / Clic derecho para finalizar]:');
+    } else {
+      const firstPt = this.utils.activePath.firstSegment.point;
+      const snapTolerance = 10 / paper.view.zoom;
 
-        if (!this.utils.activePath.data) this.utils.activePath.data = {};
+      // Auto-Cierre: Si hace clic/OSNAP en el primer punto de la polilínea
+      if (osnap.type === 'endpoint' && pt.getDistance(firstPt) < snapTolerance) {
+        this.utils.activePath.closed = true;
+        this.utils.finishCurrentDrawing();
+        this.setPrompt(this.promptText);
+        return;
+      }
 
-        // Auto-nombrar la polilínea secuencialmente ('Polilínea 1', 'Polilínea 2', ...)
-        const polyName = this.utils.generateNextEntityName ? this.utils.generateNextEntityName('Polilínea') : 'Polilínea';
-        this.utils.activePath.name = polyName;
-        this.utils.activePath.data.name = polyName;
-
-        // Aplicar propiedades por defecto (Capa, Color, Grosor, Opacidad)
-        if (this.utils.propertyManager) {
-          this.utils.propertyManager.applyDefaultSettings(this.utils.activePath);
-        }
-
-        this.utils.updateEntitiesStroke();
-        this.setPrompt('Especifique el siguiente punto o [ENTER / Clic derecho para finalizar]:');
-      } else {
-        const firstPt = this.utils.activePath.firstSegment.point;
-        const snapTolerance = 10 / paper.view.zoom;
-
-        // Auto-Cierre: Si hace clic/OSNAP en el primer punto de la polilínea
-        if (osnap.type === 'endpoint' && pt.getDistance(firstPt) < snapTolerance) {
-          this.utils.activePath.closed = true;
-          this.utils.finishCurrentDrawing();
+      // Evitar duplicar el último punto
+      if (this.utils.activePath.lastSegment) {
+        const lastPt = this.utils.activePath.lastSegment.point;
+        if (lastPt.getDistance(pt) < 0.001) {
           return;
         }
-
-        // Evitar duplicar el último punto
-        if (this.utils.activePath.lastSegment) {
-          const lastPt = this.utils.activePath.lastSegment.point;
-          if (lastPt.getDistance(pt) < 0.001) {
-            return;
-          }
-        }
-
-        this.utils.activePath.add(pt);
-        this.utils.updateEntitiesStroke();
       }
+
+      this.utils.activePath.add(pt);
+      this.utils.updateEntitiesStroke();
     }
   }
 
@@ -138,24 +127,22 @@ export class PolylineTool extends BaseTool {
       this.utils.updateFeedbackLabels(lastPt, pt);
     }
   }
-  
+
+  // Limpieza al cambiar/desactivar la herramienta
   cancel() {
     if (this.utils.activePath) {
       this.utils.finishCurrentDrawing();
     }
   }
 
+  // Clic derecho: 1.° finaliza el trazo activo, 2.° sale a Selección
   onContextMenu(event) {
     if (this.utils.activePath) {
       this.utils.finishCurrentDrawing();
+      this.setPrompt(this.promptText);
     } else {
-      this.cancelAndExit();
+      this.exitToSelect();
     }
-    return true; // Indica que el clic derecho fue manejado por la herramienta
-  }
-
-  cancelAndExit() {
-    this.utils.finishCurrentDrawing();
-    this.utils.setTool('select');
+    return true;
   }
 }

@@ -1,6 +1,7 @@
 /**
  * tools/BaseTool.js - Clase base para todas las herramientas del entorno CAD
  */
+
 export class BaseTool {
   constructor(cadService, cadUtils) {
     this.service = cadService;
@@ -21,10 +22,41 @@ export class BaseTool {
   onMouseDrag(event) {}
   onMouseMove(event) {}
   onMouseUp(event) {}
-  onKeyDown(event) {}
-  
+
+  // Captura solo la tecla ESC para salir
+  onKeyDown(event) {
+    const key = event.key || event.code;
+    if (key === 'Escape') {
+      this.exitToSelect();
+      return true;
+    }
+    return false;
+  }
+
+  // Clic derecho global -> Salir a la herramienta de selección
+  onContextMenu(event) {
+    this.exitToSelect();
+    return true;
+  }
+
   /**
-   * Se ejecuta cuando la herramienta se desactiva o el usuario presiona ESC
+   * Se ejecuta al desinstalar/limpiar la herramienta (cada subclase limpia su previsualización)
    */
   cancel() {}
+
+  /**
+   * Quita el foco del input, se lo devuelve al canvas y vuelve al selector
+   */
+  exitToSelect() {
+    const cmdInput = document.getElementById('cmdInput');
+    if (cmdInput) cmdInput.blur();
+
+    const canvas = document.getElementById('cadCanvas');
+    if (canvas) canvas.focus();
+
+    this.cancel();
+    if (this.utils?.setTool) {
+      this.utils.setTool('select');
+    }
+  }
 }

@@ -50,11 +50,21 @@
 
   <!-- 5. ORQUESTADOR PRINCIPAL (cadUtils.js) -->
   <script type="module" src="cadUtils.js"></script>
+  
+  
   <link rel="icon" href="favicon.ico" sizes="any">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-touch-fullscreen" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="carpincho2D" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <script src="https://unpkg.com/ios-pwa-splash@1.0.0/cdn.min.js"></script>
+  <script>iosPWASplash('apple-touch-icon.png', '#888888');</script>
   <link rel="manifest" href="site.webmanifest">
-  <meta name="theme-color" content="#FFFFFF">
+  <meta name="theme-color" content="#888888">
 </head>
 
 <body class="text-zinc-400 flex flex-col h-screen w-screen overflow-hidden font-sans bg-[#121215] select-none">

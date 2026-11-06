@@ -12,13 +12,14 @@ export class LineTool extends BaseTool {
   }
 
   onMouseDown(event) {
-    // Clic derecho -> Finalizar trazado
-    if (event.event.button === 2) {
-      this.utils.finishCurrentDrawing();
+    // Clic derecho -> Finalizar y salir a herramienta de selección
+    if (event.event && event.event.button === 2) {
+      this.exitToSelect();
       return;
     }
 
-    if (event.event.button === 0) {
+    // Clic izquierdo -> Dibujar
+    if (!event.event || event.event.button === 0) {
       const isShift = event.event ? event.event.shiftKey : false;
       let pt = event.point;
 
@@ -28,7 +29,7 @@ export class LineTool extends BaseTool {
         (snapPt, type) => this.utils.renderSnapMarker(snapPt, type)
       );
 
-      if (osnap.type) {
+      if (osnap && osnap.type) {
         pt = osnap.point;
       } else if (this.utils.activePath && isShift) {
         const startPt = this.utils.activePath.firstSegment.point;
@@ -74,7 +75,7 @@ export class LineTool extends BaseTool {
 
         if (!nextPath.data) nextPath.data = {};
 
-        const nextLineName = this.utils.generateNextEntityName ? this.utils.generateNextEntityName('Línea') : 'Línea';
+        const nextLineName = this.utils.generateNextEntityName ? this.utils.generateNextEntityName('Línea') : 'Línea 1';
         nextPath.name = nextLineName;
         nextPath.data.name = nextLineName;
 
@@ -91,7 +92,9 @@ export class LineTool extends BaseTool {
         }
 
         this.setPrompt('Especifique el punto siguiente o presione ENTER/ESC para finalizar:');
-        this.utils.renderBezierHandles();
+        if (this.utils.renderBezierHandles) {
+          this.utils.renderBezierHandles();
+        }
       }
     }
   }

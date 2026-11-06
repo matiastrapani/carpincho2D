@@ -665,21 +665,25 @@ export class UpdateEntityPropertyCommand {
   _applyState(state) {
     if (!this.entities || this.entities.length === 0) return;
 
-    this.entities.forEach((entity) => {
+    this.entities.forEach((entity, idx) => {
       if (!entity.data) entity.data = {};
+      const entityState = Array.isArray(state) ? state[idx] : state;
+      if (!entityState) return;
 
-      Object.keys(state).forEach((key) => {
-        if (state[key] === undefined) {
+      Object.keys(entityState).forEach((key) => {
+        if (entityState[key] === undefined) {
           delete entity.data[key];
         } else {
-          entity.data[key] = state[key];
+          entity.data[key] = entityState[key];
         }
       });
 
-      // Sincronización de propiedades raíz de Paper.js
-      if (state.name !== undefined) entity.name = state.name;
-      if (state.opacity !== undefined) entity.opacity = state.opacity;
-      if (state.origOpacity !== undefined && !state.opacityByLayer) entity.opacity = state.origOpacity;
+      // Sincronización de propiedades raíz de Paper.js en Undo/Redo
+      if (entityState.name !== undefined) entity.name = entityState.name;
+      if (entityState.opacity !== undefined) entity.opacity = entityState.opacity;
+      if (entityState.origOpacity !== undefined && !entityState.opacityByLayer) entity.opacity = entityState.origOpacity;
+      if (entityState.strokeColor !== undefined) entity.strokeColor = entityState.strokeColor;
+      if (entityState.origStrokeColor !== undefined && !entityState.colorByLayer) entity.strokeColor = entityState.origStrokeColor;
     });
 
     if (this.utils?.updateEntitiesStroke) {
@@ -687,6 +691,47 @@ export class UpdateEntityPropertyCommand {
     }
     if (this.utils?.renderBezierHandles) {
       this.utils.renderBezierHandles();
+    }
+    if (window.paper?.view) {
+      window.paper.view.update();
+    }
+    if (window.propertyPanelUI) {
+      window.propertyPanelUI.refresh();
+    }
+  }
+}
+
+/**
+ * commands/UpdateDefaultSettingsCommand.js
+ * Soporte Undo/Redo para la configuración por defecto de dibujo (modo creación).
+ */
+export class UpdateDefaultSettingsCommand {
+  constructor(cadService, defaultSettingsRef, oldState, newState, cadUtils) {
+    this.service = cadService;
+    this.defaults = defaultSettingsRef;
+    this.oldState = oldState; // Ej: { color: 'BYLAYER', opacity: 1 }
+    this.newState = newState; // Ej: { color: '#00E5FF', opacity: 0.8 }
+    this.utils = cadUtils;
+  }
+
+  execute() {
+    this._applyState(this.newState);
+  }
+
+  undo() {
+    this._applyState(this.oldState);
+  }
+
+  _applyState(state) {
+    if (!this.defaults) return;
+
+    Object.assign(this.defaults, state);
+
+    if (this.utils?.activePath && this.utils?.propertyManager) {
+      this.utils.propertyManager.applyDefaultSettings(this.utils.activePath);
+    }
+    if (this.utils?.updateEntitiesStroke) {
+      this.utils.updateEntitiesStroke();
     }
     if (window.paper?.view) {
       window.paper.view.update();

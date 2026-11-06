@@ -3,18 +3,15 @@ opacidad en capas
 grosor personalizado en capas
 exportacion/importacion de archivos (dxf? pdf?)
 incorporar osnaps pendientes
-favicon/isologo
 propiedades por herramienta
-color picker
-
+consola y opciones por herramientas
 
 FIXME
-bloqueo y seleccion de objetos debajo
+favicon/isologo
 osnap en svg importado
 herramienta de seleccion y edicion de objetos
 cambiar icono de bezier
 pasar todo a iconos personalizados usar solo iconify
-panel de propiedades y seleccion de objetos en capas bloqueadas con selection box
-algunas herramientas fallan al salir con click derecho
+algunas herramientas fallan al salir con click derecho en windows
 al borrar capa con contenidos, preguntar tambien si borrar
 aumentar solo 1px el espesor de la seleccion

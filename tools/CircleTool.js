@@ -165,13 +165,11 @@ export class CircleTool extends BaseTool {
   // Clic derecho o cancelación explícita del usuario
   onContextMenu(event) {
     if (this.centerPoint) {
-      // 1.er Clic derecho: Cancela la previsualización del radio actual
       this.resetTool();
     } else {
-      // 2.º Clic derecho: Sale limpiamente a Selección
-      this.cancelAndExit();
+      this.exitToSelect();
     }
-    return true; // Bloquea la reactivación automática en cadUtils.js
+    return true;
   }
 
   cancelAndExit() {

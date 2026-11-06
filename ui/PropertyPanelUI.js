@@ -3,11 +3,14 @@
  * Maneja estados de selección (Sin selección, Selección única y Selección múltiple) con Undo/Redo.
  */
 
-import { UpdateEntityPropertyCommand } from '../services/commands/cadCommands.js';
+import { ColorPickerPopover } from './components/ColorPickerPopover.js';
+import { UpdateEntityPropertyCommand, UpdateDefaultSettingsCommand } from '../services/commands/cadCommands.js';
+import { SetActiveLayerCommand } from '../services/commands/LayerCommands.js';
 
 export class PropertyPanelUI {
   constructor(cadUtils, containerId = 'propertyPanelContainer') {
     this.utils = cadUtils;
+    this.service = cadUtils?.service || window.cadService;
     this.container = document.getElementById(containerId);
     this.selectedEntities = [];
 
@@ -51,6 +54,451 @@ export class PropertyPanelUI {
     `;
   }
 
+  _openColorPickerForDefaults(triggerEl) {
+    this._closeColorPicker();
+    const defaults = this.utils?.propertyManager?.defaultSettings;
+    if (!defaults) return;
+
+    const layerManager = this.utils?.layerManager;
+    const activeLayer = layerManager ? layerManager.getActiveLayer() : null;
+
+    const isColorByLayer = defaults.color === 'BYLAYER';
+    const resolvedColor = isColorByLayer ? (activeLayer ? activeLayer.color : '#ffffff') : defaults.color;
+    const initialColor = this._getHexColor(resolvedColor);
+
+    const isOpacityByLayer = defaults.opacity === 'BYLAYER';
+    const resolvedOpacity = isOpacityByLayer ? (activeLayer?.opacity ?? 1) : defaults.opacity;
+    const initialOpacity = typeof resolvedOpacity === 'number' ? resolvedOpacity : 1;
+
+    const snapshot = {
+      color: defaults.color,
+      opacity: defaults.opacity
+    };
+
+    let hasChanges = false;
+
+    this.activePopover = new ColorPickerPopover({
+      color: initialColor,
+      opacity: initialOpacity,
+      anchorEl: triggerEl,
+      presets: this._getPresetColors(),
+
+      onChange: (hexColor, alphaValue, flags = {}) => {
+        const colorChanged = flags.colorChanged === true;
+        const opacityChanged = flags.opacityChanged === true;
+
+        if (colorChanged) {
+          defaults.color = hexColor;
+          const freshTrigger = (triggerEl?.id ? document.getElementById(triggerEl.id) : null) || triggerEl;
+          if (freshTrigger) freshTrigger.value = hexColor;
+          const colorSelect = document.getElementById('defColorSelect');
+          if (colorSelect) {
+            this._updateSelectValueSilently(colorSelect, 'CUSTOM');
+          }
+        }
+
+        if (opacityChanged) {
+          defaults.opacity = alphaValue;
+          const opacitySelect = document.getElementById('defOpacityModeSelect');
+          const opacityInput = document.getElementById('defOpacityInput');
+          const opacityContainer = document.getElementById('defOpacityContainer');
+
+          if (opacitySelect) {
+            this._updateSelectValueSilently(opacitySelect, 'CUSTOM');
+          }
+          if (opacityInput && document.activeElement !== opacityInput) {
+            opacityInput.value = Math.round(alphaValue * 100);
+            opacityInput.classList.remove('text-zinc-500');
+            opacityInput.classList.add('text-white');
+          }
+          if (opacityContainer) {
+            const span = opacityContainer.querySelector('span');
+            if (span) {
+              span.classList.remove('text-zinc-500');
+              span.classList.add('text-white');
+            }
+          }
+        }
+
+        if (colorChanged || opacityChanged) {
+          hasChanges = true;
+          if (this.utils?.activePath && this.utils?.propertyManager) {
+            this.utils.propertyManager.applyDefaultSettings(this.utils.activePath);
+          }
+          if (this.utils?.updateEntitiesStroke) {
+            this.utils.updateEntitiesStroke();
+          }
+          this._requestCanvasUpdate();
+        }
+      },
+
+      onChangeEnd: (hexColor, alphaValue, flags = {}) => {
+        const colorChanged = flags.colorChanged === true;
+        const opacityChanged = flags.opacityChanged === true;
+
+        const oldStateObj = {};
+        const newStateObj = {};
+
+        if (colorChanged) {
+          newStateObj.color = hexColor;
+          oldStateObj.color = snapshot.color;
+        }
+
+        if (opacityChanged) {
+          newStateObj.opacity = alphaValue;
+          oldStateObj.opacity = snapshot.opacity;
+        }
+
+        if (Object.keys(newStateObj).length > 0) {
+          this._dispatchDefaultCommand(oldStateObj, newStateObj);
+        }
+      },
+
+      onCancel: () => {
+        if (!hasChanges) return;
+        defaults.color = snapshot.color;
+        defaults.opacity = snapshot.opacity;
+
+        this.refresh();
+        if (this.utils?.activePath && this.utils?.propertyManager) {
+          this.utils.propertyManager.applyDefaultSettings(this.utils.activePath);
+        }
+        this._requestCanvasUpdate();
+      },
+
+      onClose: () => {
+        this.activePopover = null;
+      }
+    });
+  }
+
+  _openColorPickerForEntity(entity, triggerEl) {
+    this._closeColorPicker();
+
+    const activeLayer = this._getLayer(entity?.data?.layerId || '0');
+    const isColorByLayer = entity.data?.colorByLayer !== false;
+    const isOpacityByLayer = entity.data?.opacityByLayer !== false;
+
+    const layerColor = activeLayer ? activeLayer.color : '#ffffff';
+    const resolvedColor = isColorByLayer ? layerColor : (entity.data?.origStrokeColor || entity.strokeColor);
+    const initialColor = this._getHexColor(resolvedColor);
+
+    const layerOpacity = (activeLayer && activeLayer.opacity !== undefined) ? activeLayer.opacity : 1;
+    const resolvedOpacity = isOpacityByLayer ? layerOpacity : (entity.data?.origOpacity !== undefined ? entity.data.origOpacity : (entity.opacity !== undefined ? entity.opacity : 1));
+    const initialOpacity = typeof resolvedOpacity === 'number' ? resolvedOpacity : 1;
+
+    const initialColorByLayer = entity.data?.colorByLayer;
+    const initialOrigStrokeColor = entity.data?.origStrokeColor;
+    const initialStrokeColor = entity.strokeColor;
+    const initialOpacityByLayer = entity.data?.opacityByLayer;
+    const initialOrigOpacity = entity.data?.origOpacity;
+    const initialBaseOpacity = entity.data?.baseOpacity;
+    const initialOpacityVal = entity.opacity;
+
+    let hasChanges = false;
+
+    this.activePopover = new ColorPickerPopover({
+      color: initialColor,
+      opacity: initialOpacity,
+      anchorEl: triggerEl,
+      presets: this._getPresetColors(),
+
+      onChange: (hexColor, alphaValue, flags = {}) => {
+        if (!entity.data) entity.data = {};
+        
+        const colorChanged = flags.colorChanged === true;
+        const opacityChanged = flags.opacityChanged === true;
+
+        if (colorChanged) {
+          entity.data.colorByLayer = false;
+          entity.data.origStrokeColor = hexColor;
+          entity.strokeColor = hexColor;
+
+          const colorPickerIn = document.getElementById('propColorPicker');
+          const colorModeSelect = document.getElementById('propColorModeSelect');
+          if (colorPickerIn) colorPickerIn.value = hexColor;
+          if (colorModeSelect) this._updateSelectValueSilently(colorModeSelect, 'CUSTOM');
+        }
+
+        if (opacityChanged) {
+          entity.data.opacityByLayer = false;
+          entity.data.origOpacity = alphaValue;
+          entity.data.baseOpacity = alphaValue;
+          entity.opacity = alphaValue;
+
+          const opacityIn = document.getElementById('propOpacityInput');
+          const opacityContainer = document.getElementById('propOpacityContainer');
+          const opacityModeSelect = document.getElementById('propOpacityModeSelect');
+
+          if (opacityModeSelect) this._updateSelectValueSilently(opacityModeSelect, 'CUSTOM');
+          if (opacityIn && document.activeElement !== opacityIn) {
+            opacityIn.value = Math.round(alphaValue * 100);
+            opacityIn.classList.remove('text-zinc-500');
+            opacityIn.classList.add('text-white');
+          }
+          if (opacityContainer) {
+            const span = opacityContainer.querySelector('span');
+            if (span) {
+              span.classList.remove('text-zinc-500');
+              span.classList.add('text-white');
+            }
+          }
+        }
+
+        if (colorChanged || opacityChanged) {
+          hasChanges = true;
+          if (this.utils?.updateEntitiesStroke) {
+            this.utils.updateEntitiesStroke();
+          }
+          this._requestCanvasUpdate();
+        }
+      },
+
+      onChangeEnd: (hexColor, alphaValue, flags = {}) => {
+        const colorChanged = flags.colorChanged === true;
+        const opacityChanged = flags.opacityChanged === true;
+
+        const newStateObj = {};
+        const oldStateObj = {};
+
+        if (colorChanged) {
+          newStateObj.colorByLayer = false;
+          newStateObj.origStrokeColor = hexColor;
+          newStateObj.strokeColor = hexColor;
+
+          oldStateObj.colorByLayer = initialColorByLayer;
+          oldStateObj.origStrokeColor = initialOrigStrokeColor;
+          oldStateObj.strokeColor = initialStrokeColor;
+        }
+
+        if (opacityChanged) {
+          newStateObj.opacityByLayer = false;
+          newStateObj.origOpacity = alphaValue;
+          newStateObj.baseOpacity = alphaValue;
+          newStateObj.opacity = alphaValue;
+
+          oldStateObj.opacityByLayer = initialOpacityByLayer;
+          oldStateObj.origOpacity = initialOrigOpacity;
+          oldStateObj.baseOpacity = initialBaseOpacity;
+          oldStateObj.opacity = initialOpacityVal;
+        }
+
+        if (Object.keys(newStateObj).length > 0) {
+          this._dispatchCommand(newStateObj, entity, oldStateObj);
+        }
+      },
+
+      onCancel: () => {
+        if (!hasChanges) return;
+        if (!entity.data) entity.data = {};
+
+        entity.data.colorByLayer = initialColorByLayer;
+        entity.data.origStrokeColor = initialOrigStrokeColor;
+        entity.strokeColor = initialStrokeColor;
+
+        entity.data.opacityByLayer = initialOpacityByLayer;
+        entity.data.origOpacity = initialOrigOpacity;
+        entity.data.baseOpacity = initialBaseOpacity;
+        entity.opacity = initialOpacityVal;
+
+        this.refresh();
+        this._requestCanvasUpdate();
+      },
+
+      onClose: () => {
+        this.activePopover = null;
+      }
+    });
+  }
+
+  _openColorPickerForBatch(triggerEl) {
+    this._closeColorPicker();
+    if (this.selectedEntities.length === 0) return;
+
+    const propManager = this.utils?.propertyManager;
+    const layerManager = this.utils?.layerManager;
+    const activeLayer = layerManager ? layerManager.getActiveLayer() : null;
+    const defaults = propManager?.defaultSettings;
+
+    let sharedColor = null;
+    let allSameColor = true;
+
+    for (const ent of this.selectedEntities) {
+      const isByLayer = ent.data?.colorByLayer !== false;
+      const layerOfEnt = this._getLayer(ent.data?.layerId) || activeLayer;
+      const entColor = isByLayer 
+        ? (layerOfEnt ? layerOfEnt.color : '#ffffff')
+        : (ent.data?.origStrokeColor || ent.strokeColor || '#ffffff');
+      
+      const hex = this._getHexColor(entColor);
+      if (sharedColor === null) {
+        sharedColor = hex;
+      } else if (sharedColor.toLowerCase() !== hex.toLowerCase()) {
+        allSameColor = false;
+        break;
+      }
+    }
+
+    // Color de creación por defecto (resuelto según Por Capa o Valor Personalizado)
+    const creationColor = (defaults?.color === 'BYLAYER' || !defaults?.color)
+      ? (activeLayer ? activeLayer.color : '#ffffff')
+      : defaults.color;
+
+    // Si los colores difieren (estado '?'), abre con el color por defecto de creación
+    const initialColor = allSameColor && sharedColor ? sharedColor : this._getHexColor(creationColor);
+
+    let sharedOpacity = null;
+    let allSameOpacity = true;
+
+    for (const ent of this.selectedEntities) {
+      const entOp = ent.opacity !== undefined ? ent.opacity : (ent.data?.origOpacity !== undefined ? ent.data.origOpacity : 1);
+      if (sharedOpacity === null) {
+        sharedOpacity = entOp;
+      } else if (Math.abs(sharedOpacity - entOp) > 0.01) {
+        allSameOpacity = false;
+        break;
+      }
+    }
+
+    const initialOpacity = allSameOpacity && sharedOpacity !== null 
+      ? sharedOpacity 
+      : (defaults?.opacity !== 'BYLAYER' && typeof defaults?.opacity === 'number' ? defaults.opacity : (activeLayer?.opacity ?? 1));
+
+    const initialStates = this.selectedEntities.map(ent => ({
+      entity: ent,
+      colorByLayer: ent.data?.colorByLayer,
+      origStrokeColor: ent.data?.origStrokeColor,
+      strokeColor: ent.strokeColor,
+      opacityByLayer: ent.data?.opacityByLayer,
+      origOpacity: ent.data?.origOpacity,
+      baseOpacity: ent.data?.baseOpacity,
+      opacity: ent.opacity
+    }));
+
+    let hasChanges = false;
+
+    this.activePopover = new ColorPickerPopover({
+      color: initialColor,
+      opacity: initialOpacity,
+      anchorEl: triggerEl,
+      presets: this._getPresetColors(),
+
+      onChange: (hexColor, alphaValue, flags = {}) => {
+        const colorChanged = flags.colorChanged === true;
+        const opacityChanged = flags.opacityChanged === true;
+
+        this.selectedEntities.forEach(ent => {
+          if (!ent.data) ent.data = {};
+          if (colorChanged) {
+            ent.data.colorByLayer = false;
+            ent.data.origStrokeColor = hexColor;
+            ent.strokeColor = hexColor;
+          }
+          if (opacityChanged) {
+            ent.data.opacityByLayer = false;
+            ent.data.origOpacity = alphaValue;
+            ent.data.baseOpacity = alphaValue;
+            ent.opacity = alphaValue;
+          }
+        });
+
+        if (colorChanged) {
+          const colorPickerIn = document.getElementById('propBatchColorPicker');
+          const colorModeSelect = document.getElementById('propBatchColorModeSelect');
+          if (colorPickerIn) {
+            colorPickerIn.style.backgroundColor = hexColor;
+            colorPickerIn.textContent = '';
+          }
+          if (colorModeSelect) this._updateSelectValueSilently(colorModeSelect, 'CUSTOM');
+        }
+
+        if (opacityChanged) {
+          const opacityIn = document.getElementById('propBatchOpacityInput');
+          if (opacityIn && document.activeElement !== opacityIn) {
+            opacityIn.value = Math.round(alphaValue * 100);
+          }
+        }
+
+        if (colorChanged || opacityChanged) {
+          hasChanges = true;
+          if (this.utils?.updateEntitiesStroke) {
+            this.utils.updateEntitiesStroke();
+          }
+          this._requestCanvasUpdate();
+        }
+      },
+
+      onChangeEnd: (hexColor, alphaValue, flags = {}) => {
+        const colorChanged = flags.colorChanged === true;
+        const opacityChanged = flags.opacityChanged === true;
+
+        const newStateObj = {};
+        if (colorChanged) {
+          newStateObj.colorByLayer = false;
+          newStateObj.origStrokeColor = hexColor;
+          newStateObj.strokeColor = hexColor;
+        }
+        if (opacityChanged) {
+          newStateObj.opacityByLayer = false;
+          newStateObj.origOpacity = alphaValue;
+          newStateObj.baseOpacity = alphaValue;
+          newStateObj.opacity = alphaValue;
+        }
+
+        if (Object.keys(newStateObj).length > 0) {
+          const oldStates = initialStates.map(s => {
+            const oldObj = {};
+            if (colorChanged) {
+              oldObj.colorByLayer = s.colorByLayer;
+              oldObj.origStrokeColor = s.origStrokeColor;
+              oldObj.strokeColor = s.strokeColor;
+            }
+            if (opacityChanged) {
+              oldObj.opacityByLayer = s.opacityByLayer;
+              oldObj.origOpacity = s.origOpacity;
+              oldObj.baseOpacity = s.baseOpacity;
+              oldObj.opacity = s.opacity;
+            }
+            return oldObj;
+          });
+
+          this._dispatchCommand(newStateObj, null, oldStates);
+        }
+      },
+
+      onCancel: () => {
+        if (!hasChanges) return;
+        initialStates.forEach(s => {
+          const ent = s.entity;
+          if (!ent.data) ent.data = {};
+
+          ent.data.colorByLayer = s.colorByLayer;
+          ent.data.origStrokeColor = s.origStrokeColor;
+          ent.strokeColor = s.strokeColor;
+
+          ent.data.opacityByLayer = s.opacityByLayer;
+          ent.data.origOpacity = s.origOpacity;
+          ent.data.baseOpacity = s.baseOpacity;
+          ent.opacity = s.opacity;
+        });
+
+        this.refresh();
+        this._requestCanvasUpdate();
+      },
+
+      onClose: () => {
+        this.activePopover = null;
+      }
+    });
+  }
+
+  _closeColorPicker() {
+    if (this.activePopover && typeof this.activePopover.close === 'function') {
+      this.activePopover.close();
+      this.activePopover = null;
+    }
+  }
+
   refresh() {
     const fieldsContainer = document.getElementById('propertyFieldsContainer');
     const badge = document.getElementById('propSelectionBadge');
@@ -76,6 +524,10 @@ export class PropertyPanelUI {
       this._renderMultipleEntitiesProperties(fieldsContainer, count);
     }
     this._convertSelectsToCustom(fieldsContainer);
+  }
+
+  _getPresetColors() {
+    return ColorPickerPopover.getPresets();
   }
 
   _getHexColor(color) {
@@ -348,14 +800,127 @@ export class PropertyPanelUI {
   // --- ESTADO: VARIAS ENTIDADES SELECCIONADAS ---
   _renderMultipleEntitiesProperties(container, count) {
     const layerManager = this.utils?.layerManager;
+    const propManager = this.utils?.propertyManager;
     const layers = layerManager ? Array.from(layerManager.layers.values()) : [];
+    const activeLayer = layerManager ? layerManager.getActiveLayer() : null;
+    const defaults = propManager ? propManager.defaultSettings : null;
+
+    // 1. Capas
+    let sharedLayerId = null;
+    let allSameLayer = true;
+
+    // 2. Color
+    let sharedColor = null;
+    let allSameColor = true;
+    let allColorByLayer = true;
+    let allColorCustom = true;
+
+    // 3. Opacidad
+    let sharedOpacity = null;
+    let allSameOpacity = true;
+    let allOpacityByLayer = true;
+    let allOpacityCustom = true;
+
+    // 4. Grosor
+    let sharedWidth = null;
+    let allSameWidth = true;
+    let allWidthByLayer = true;
+    let allWidthCustom = true;
+
+    for (const ent of this.selectedEntities) {
+      // Evaluador de Capa
+      const entLayerId = String(ent.data?.layerId ?? '0');
+      if (sharedLayerId === null) {
+        sharedLayerId = entLayerId;
+      } else if (sharedLayerId !== entLayerId) {
+        allSameLayer = false;
+      }
+
+      const layerOfEnt = this._getLayer(ent.data?.layerId) || activeLayer;
+
+      // Evaluador de Color
+      const colorByLayer = ent.data?.colorByLayer !== false;
+      if (colorByLayer) allColorCustom = false;
+      else allColorByLayer = false;
+
+      const entColor = colorByLayer 
+        ? (layerOfEnt ? layerOfEnt.color : '#ffffff')
+        : (ent.data?.origStrokeColor || ent.strokeColor || '#ffffff');
+      const hex = this._getHexColor(entColor);
+
+      if (sharedColor === null) {
+        sharedColor = hex;
+      } else if (sharedColor.toLowerCase() !== hex.toLowerCase()) {
+        allSameColor = false;
+      }
+
+      // Evaluador de Opacidad
+      const opacityByLayer = ent.data?.opacityByLayer !== false;
+      if (opacityByLayer) allOpacityCustom = false;
+      else allOpacityByLayer = false;
+
+      const entOp = opacityByLayer
+        ? (layerOfEnt && layerOfEnt.opacity !== undefined ? layerOfEnt.opacity : 1)
+        : (ent.data?.origOpacity !== undefined ? ent.data.origOpacity : (ent.opacity !== undefined ? ent.opacity : 1));
+
+      if (sharedOpacity === null) {
+        sharedOpacity = entOp;
+      } else if (Math.abs(sharedOpacity - entOp) > 0.01) {
+        allSameOpacity = false;
+      }
+
+      // Evaluador de Grosor
+      const widthByLayer = ent.data?.widthByLayer !== false;
+      if (widthByLayer) allWidthCustom = false;
+      else allWidthByLayer = false;
+
+      const entW = widthByLayer
+        ? (layerOfEnt && layerOfEnt.strokeWidth !== undefined ? layerOfEnt.strokeWidth : 1)
+        : (ent.data?.baseStrokeWidth !== undefined ? ent.data.baseStrokeWidth : (ent.strokeWidth !== undefined ? ent.strokeWidth : 1));
+
+      if (sharedWidth === null) {
+        sharedWidth = entW;
+      } else if (Math.abs(sharedWidth - entW) > 0.001) {
+        allSameWidth = false;
+      }
+    }
+
+    // Determinación de Modos Válidos
+    const isColorCustomMode = allColorCustom && allSameColor;
+    const isColorMixedMode = !allColorByLayer && !isColorCustomMode;
+
+    const isOpacityCustomMode = allOpacityCustom && allSameOpacity;
+    const isOpacityMixedMode = !allOpacityByLayer && !isOpacityCustomMode;
+
+    const isWidthCustomMode = allWidthCustom && allSameWidth;
+    const isWidthMixedMode = !allWidthByLayer && !isWidthCustomMode;
+
+    // Clases de Color y Peso (Bold cuando hay '?')
+    const colorQuestionClass = allColorByLayer ? 'text-zinc-500' : 'text-white';
+
+    const opacityColorClass = allOpacityByLayer ? 'text-zinc-500' : 'text-white';
+    const opacityWeightClass = allSameOpacity ? 'font-normal' : 'font-bold';
+
+    const widthColorClass = allWidthByLayer 
+      ? 'text-zinc-500' 
+      : (allSameWidth ? this._getWidthTextColorClass(false, sharedWidth) : 'text-white');
+    const widthWeightClass = allSameWidth ? 'font-normal' : 'font-bold';
+
+    // Valores visuales para controles
+    const defaultFallbackColor = defaults?.color && defaults.color !== 'BYLAYER' 
+      ? defaults.color 
+      : (activeLayer ? activeLayer.color : '#ffffff');
+    const batchHexColor = this._getHexColor(allSameColor && sharedColor ? sharedColor : defaultFallbackColor);
+
+    const opacityDisplay = allSameOpacity && sharedOpacity !== null ? `${Math.round(sharedOpacity * 100)}` : '?';
+    const widthDisplay = allSameWidth && sharedWidth !== null ? this._formatWidthDisplay(sharedWidth) : '?';
 
     container.innerHTML = `
       <div class="pb-2.5">
-        <!-- Nombre (Múltiple) -->
+        <!-- Nombres (Solo lectura) -->
         <div class="flex items-center justify-between gap-2 mb-1.5 w-full mt-2">
-          <span class="text-[11px] text-zinc-400 w-[55px] shrink-0">Nombre</span>
-          <input type="text" id="propBatchNameInput" placeholder="-- Varios --" class="w-full bg-[#17171c] hover:bg-[#27272a] focus:bg-[#09090b] text-zinc-200 text-[11px] px-2 py-1 rounded outline-none border-0 flex-1 min-w-0 transition-colors">
+          <span class="text-[11px] text-zinc-400 w-[55px] shrink-0">Nombres</span>
+          <input type="text" id="propBatchNameInput" value="-- Varios --" disabled class="w-full bg-[#121215] text-zinc-500 text-[11px] px-2 py-1 rounded outline-none border border-[#27272a]/30 flex-1 min-w-0 cursor-not-allowed select-none">
         </div>
 
         <!-- Capa en lote -->
@@ -363,20 +928,73 @@ export class PropertyPanelUI {
           <span class="text-[11px] text-zinc-400 w-[55px] shrink-0">Capa</span>
           <div class="relative flex items-center flex-1 min-w-0">
             <select id="propBatchLayerSelect" class="w-full bg-[#17171c] hover:bg-[#27272a] text-zinc-200 text-[11px] px-2 py-1 rounded outline-none cursor-pointer appearance-none pr-5">
-              <option value="" disabled selected>-- Seleccionar --</option>
-              ${layers.map((l) => `<option value="${l.id}">${l.name}</option>`).join('')}
+              ${!allSameLayer ? '<option value="" disabled selected>-- Varias --</option>' : ''}
+              ${layers.map((l) => `<option value="${l.id}" ${allSameLayer && String(l.id) === String(sharedLayerId) ? 'selected' : ''}>${l.name}</option>`).join('')}
             </select>
             <i class="fa-solid fa-chevron-down text-[8px] text-zinc-500 absolute right-2 pointer-events-none"></i>
           </div>
         </div>
 
+        <!-- Color (Múltiple) -->
+        <div class="flex items-center justify-between gap-2 mb-1.5 w-full">
+          <span class="text-[11px] text-zinc-400 w-[55px] shrink-0">Color</span>
+          <div class="flex items-center flex-1 min-w-0 gap-1.5">
+            ${!allSameColor ? `
+              <div id="propBatchColorPicker" class="w-[22px] h-[22px] rounded cursor-pointer bg-[#17171c] hover:bg-[#27272a] flex items-center justify-center ${colorQuestionClass} text-[11px] font-sans font-bold select-none shrink-0 transition-colors" title="Cambiar color en lote">
+                ?
+              </div>
+            ` : `
+              <input type="color" id="propBatchColorPicker" value="${batchHexColor}" class="w-[22px] h-[22px] rounded cursor-pointer border-none outline-none p-0 shrink-0 bg-transparent" title="Cambiar color en lote">
+            `}
+            <div class="relative flex-1 min-w-0 flex items-center">
+              <select id="propBatchColorModeSelect" class="w-full bg-[#17171c] hover:bg-[#27272a] text-zinc-200 text-[11px] px-2 py-1 rounded outline-none cursor-pointer appearance-none pr-5">
+                ${isColorMixedMode ? '<option value="" disabled selected>-- Varios --</option>' : ''}
+                <option value="BYLAYER" ${allColorByLayer ? 'selected' : ''}>Por Capa</option>
+                <option value="CUSTOM" ${isColorCustomMode ? 'selected' : ''}>Personalizado</option>
+              </select>
+              <i class="fa-solid fa-chevron-down text-[8px] text-zinc-500 absolute right-2 pointer-events-none"></i>
+            </div>
+          </div>
+        </div>
+
         <!-- Opacidad (Múltiple) -->
-        <div class="flex items-center justify-between gap-2 w-full">
+        <div class="flex items-center justify-between gap-2 mb-1.5 w-full">
           <span class="text-[11px] text-zinc-400 w-[55px] shrink-0">Opacidad</span>
           <div class="flex items-center flex-1 min-w-0 gap-1.5">
             <div id="propBatchOpacityContainer" class="flex items-center justify-end w-[62px] shrink-0 bg-[#17171c] hover:bg-[#27272a] text-[11px] px-2 py-1 rounded cursor-ew-resize border-0 outline-none transition-colors" title="Haz clic para editar o arrastra">
-              <input type="number" id="propBatchOpacityInput" min="0" max="100" value="100" class="w-9 bg-transparent text-right outline-none border-0 text-white text-[11px] font-sans tabular-nums p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none cursor-ew-resize focus:cursor-text">
-              <span class="text-[11px] text-white font-sans tabular-nums ml-0.5 pointer-events-none">%</span>
+              <input type="text" id="propBatchOpacityInput" value="${opacityDisplay}" class="w-9 bg-transparent text-right outline-none border-0 ${opacityColorClass} ${opacityWeightClass} text-[11px] font-sans tabular-nums p-0 cursor-ew-resize focus:cursor-text">
+              ${allSameOpacity ? `<span class="text-[11px] ${opacityColorClass} font-sans tabular-nums ml-0.5 pointer-events-none">%</span>` : ''}
+            </div>
+            <div class="relative flex-1 min-w-0 flex items-center">
+              <select id="propBatchOpacityModeSelect" class="w-full bg-[#17171c] hover:bg-[#27272a] text-zinc-200 text-[11px] px-2 py-1 rounded outline-none cursor-pointer appearance-none pr-5">
+                ${isOpacityMixedMode ? '<option value="" disabled selected>-- Varios --</option>' : ''}
+                <option value="BYLAYER" ${allOpacityByLayer ? 'selected' : ''}>Por Capa</option>
+                <option value="CUSTOM" ${isOpacityCustomMode ? 'selected' : ''}>Personalizado</option>
+              </select>
+              <i class="fa-solid fa-chevron-down text-[8px] text-zinc-500 absolute right-2 pointer-events-none"></i>
+            </div>
+          </div>
+        </div>
+
+        <!-- Grosor (Múltiple) -->
+        <div class="flex items-center justify-between gap-2 w-full">
+          <span class="text-[11px] text-zinc-400 w-[55px] shrink-0">Grosor</span>
+          <div class="flex items-center flex-1 min-w-0 gap-1.5">
+            <div id="propBatchWidthContainer" class="flex items-center justify-end w-[62px] shrink-0 bg-[#17171c] hover:bg-[#27272a] text-[11px] px-2 py-1 rounded cursor-ew-resize border-0 outline-none transition-colors" title="Haz clic para editar o arrastra">
+              <input type="text" id="propBatchWidthInput" value="${widthDisplay}" class="w-9 bg-transparent text-right outline-none border-0 ${widthColorClass} ${widthWeightClass} text-[11px] font-sans tabular-nums p-0 cursor-ew-resize focus:cursor-text">
+            </div>
+            <div class="relative flex-1 min-w-0 flex items-center">
+              <select id="propBatchWidthModeSelect" class="w-full bg-[#17171c] hover:bg-[#27272a] text-zinc-200 text-[11px] px-2 py-1 rounded outline-none cursor-pointer appearance-none pr-5">
+                ${isWidthMixedMode ? '<option value="" disabled selected>-- Varios --</option>' : ''}
+                <option value="BYLAYER" ${allWidthByLayer ? 'selected' : ''}>Por Capa</option>
+                <option value="0" ${isWidthCustomMode && sharedWidth === 0 ? 'selected' : ''}>-</option>
+                <option value="1" ${isWidthCustomMode && sharedWidth === 1 ? 'selected' : ''}>1.0</option>
+                <option value="1.5" ${isWidthCustomMode && sharedWidth === 1.5 ? 'selected' : ''}>1.5</option>
+                <option value="2" ${isWidthCustomMode && sharedWidth === 2 ? 'selected' : ''}>2.0</option>
+                <option value="3" ${isWidthCustomMode && sharedWidth === 3 ? 'selected' : ''}>3.0</option>
+                <option value="CUSTOM" ${isWidthCustomMode && ![0, 1, 1.5, 2, 3].includes(sharedWidth) ? 'selected' : ''}>Personalizado</option>
+              </select>
+              <i class="fa-solid fa-chevron-down text-[8px] text-zinc-500 absolute right-2 pointer-events-none"></i>
             </div>
           </div>
         </div>
@@ -385,13 +1003,7 @@ export class PropertyPanelUI {
 
     this._attachInputIsolation(container);
 
-    const batchNameInput = container.querySelector('#propBatchNameInput');
-    batchNameInput?.addEventListener('change', (e) => {
-      const newName = e.target.value.trim();
-      if (!newName) return;
-      this._dispatchCommand({ name: newName });
-    });
-
+    // Eventos Capa
     const batchLayerSelect = container.querySelector('#propBatchLayerSelect');
     batchLayerSelect?.addEventListener('change', (e) => {
       const targetLayerId = e.target.value;
@@ -399,44 +1011,160 @@ export class PropertyPanelUI {
       this._dispatchCommand({ layerId: targetLayerId });
     });
 
+    // Eventos Modo Color
+    const batchColorModeSelect = container.querySelector('#propBatchColorModeSelect');
+    const batchColorPicker = container.querySelector('#propBatchColorPicker');
+
+    batchColorModeSelect?.addEventListener('change', (e) => {
+      const isByLayer = e.target.value === 'BYLAYER';
+      this._dispatchCommand({
+        colorByLayer: isByLayer,
+        origStrokeColor: isByLayer ? undefined : (batchColorPicker && batchColorPicker.value ? batchColorPicker.value : '#00e5ff')
+      });
+    });
+
+    batchColorPicker?.addEventListener('click', (e) => {
+      e.preventDefault();
+      this._openColorPickerForBatch(batchColorPicker);
+    });
+
+    // Eventos Modo Opacidad
+    const batchOpacityModeSelect = container.querySelector('#propBatchOpacityModeSelect');
     const batchOpacityContainer = container.querySelector('#propBatchOpacityContainer');
     const batchOpacityInput = container.querySelector('#propBatchOpacityInput');
 
+    batchOpacityModeSelect?.addEventListener('change', (e) => {
+      const isByLayer = e.target.value === 'BYLAYER';
+      const pctVal = parseFloat(batchOpacityInput ? batchOpacityInput.value : 100) || 100;
+      const val = pctVal / 100;
+      this._dispatchCommand({
+        opacityByLayer: isByLayer,
+        origOpacity: isByLayer ? undefined : val,
+        baseOpacity: isByLayer ? undefined : val,
+        opacity: isByLayer ? undefined : val
+      });
+    });
+
+    // Scrub Opacidad en lote
     this._attachScrubInput(batchOpacityContainer, batchOpacityInput, (pctVal) => {
       const val = pctVal / 100;
-      this._dispatchCommand({ opacityByLayer: false, origOpacity: val, opacity: val });
-    }, { min: 0, max: 100, step: 1, precision: 0 });
-  }
+      this._dispatchCommand({ opacityByLayer: false, origOpacity: val, baseOpacity: val, opacity: val });
+    }, {
+      min: 0, max: 100, step: 1, precision: 0,
+      onLiveChange: (val) => {
+        const opacityVal = val / 100;
+        this.selectedEntities.forEach(ent => {
+          if (!ent.data) ent.data = {};
+          ent.data.opacityByLayer = false;
+          ent.data.baseOpacity = opacityVal;
+          ent.opacity = opacityVal;
+        });
+        if (batchOpacityInput) {
+          batchOpacityInput.classList.remove('text-zinc-500');
+          batchOpacityInput.classList.add('text-white');
+        }
+        this._requestCanvasUpdate();
+      }
+    });
 
+    // Eventos Modo Grosor
+    const batchWidthModeSelect = container.querySelector('#propBatchWidthModeSelect');
+    const batchWidthContainer = container.querySelector('#propBatchWidthContainer');
+    const batchWidthInput = container.querySelector('#propBatchWidthInput');
+
+    batchWidthModeSelect?.addEventListener('change', (e) => {
+      const val = e.target.value;
+      if (val === 'BYLAYER') {
+        this._dispatchCommand({ widthByLayer: true, baseStrokeWidth: undefined });
+      } else if (val === 'CUSTOM') {
+        const num = parseFloat(batchWidthInput ? batchWidthInput.value : 1.0) || 1.0;
+        this._dispatchCommand({ widthByLayer: false, baseStrokeWidth: num, strokeWidth: num });
+      } else {
+        const num = parseFloat(val);
+        this._dispatchCommand({ widthByLayer: false, baseStrokeWidth: num, strokeWidth: num });
+      }
+    });
+
+    // Scrub Grosor en lote
+    this._attachScrubInput(batchWidthContainer, batchWidthInput, (widthVal) => {
+      this._dispatchCommand({ widthByLayer: false, baseStrokeWidth: widthVal, strokeWidth: widthVal });
+    }, {
+      min: 0, max: null, step: 0.1, precision: 1, isWidth: true,
+      onLiveChange: (val) => {
+        this.selectedEntities.forEach(ent => {
+          if (!ent.data) ent.data = {};
+          ent.data.widthByLayer = false;
+          ent.data.baseStrokeWidth = val;
+          ent.strokeWidth = val;
+        });
+        const isPreset = this._isPresetWidth(val);
+        if (batchWidthInput) {
+          batchWidthInput.classList.toggle('text-zinc-500', isPreset);
+          batchWidthInput.classList.toggle('text-white', !isPreset);
+        }
+        this._requestCanvasUpdate();
+      }
+    });
+  }
+  
   // --- DESPACHADOR DE COMANDOS UNDO/REDO PARA SELECCIÓN ---
-  _dispatchCommand(newStateObj, entityTarget = null) {
-    const cadService = this.service || window.cadService;
+  _dispatchCommand(newStateObj, entityTarget = null, customOldStateObj = null) {
+    const cadService = this.service || this.utils?.service || window.cadService;
     const targets = entityTarget ? [entityTarget] : this.selectedEntities;
     if (targets.length === 0) return;
 
-    // Sincronizar baseOpacity en newStateObj si se modifica la opacidad
     if (newStateObj.opacity !== undefined && newStateObj.baseOpacity === undefined) {
       newStateObj.baseOpacity = newStateObj.opacity;
     }
 
-    const oldStateObj = {};
-    Object.keys(newStateObj).forEach(key => {
-      oldStateObj[key] = targets[0]?.data?.[key] !== undefined ? targets[0].data[key] : targets[0]?.[key];
-    });
+    let oldStateObj = customOldStateObj;
+    if (!oldStateObj) {
+      if (targets.length > 1) {
+        // En selección múltiple, capturamos el estado original de CADA entidad
+        oldStateObj = targets.map(ent => {
+          const singleOld = {};
+          Object.keys(newStateObj).forEach(key => {
+            singleOld[key] = ent?.data?.[key] !== undefined ? ent.data[key] : ent?.[key];
+          });
+          return singleOld;
+        });
+      } else {
+        oldStateObj = {};
+        Object.keys(newStateObj).forEach(key => {
+          oldStateObj[key] = targets[0]?.data?.[key] !== undefined ? targets[0].data[key] : targets[0]?.[key];
+        });
+      }
+    }
 
     if (UpdateEntityPropertyCommand && cadService) {
       const cmd = new UpdateEntityPropertyCommand(cadService, targets, oldStateObj, newStateObj, this.utils);
       cadService.executeCommand(cmd);
     } else {
-      targets.forEach(ent => {
+      targets.forEach((ent, idx) => {
         if (!ent.data) ent.data = {};
-        Object.assign(ent.data, newStateObj);
-        if (newStateObj.name !== undefined) ent.name = newStateObj.name;
-        if (newStateObj.opacity !== undefined) {
-          ent.opacity = newStateObj.opacity;
-          ent.data.baseOpacity = newStateObj.opacity; // <-- Mantiene sincronizado baseOpacity
+        const stateToApply = Array.isArray(newStateObj) ? newStateObj[idx] : newStateObj;
+        Object.assign(ent.data, stateToApply);
+        if (stateToApply.name !== undefined) ent.name = stateToApply.name;
+        if (stateToApply.opacity !== undefined) {
+          ent.opacity = stateToApply.opacity;
+          ent.data.baseOpacity = stateToApply.opacity;
         }
       });
+      this._requestCanvasUpdate();
+      this.refresh();
+    }
+  }
+
+  _dispatchDefaultCommand(oldStateObj, newStateObj) {
+    const cadService = this.service || this.utils?.service || window.cadService;
+    const defaults = this.utils?.propertyManager?.defaultSettings;
+    if (!defaults) return;
+
+    if (UpdateDefaultSettingsCommand && cadService) {
+      const cmd = new UpdateDefaultSettingsCommand(cadService, defaults, oldStateObj, newStateObj, this.utils);
+      cadService.executeCommand(cmd);
+    } else {
+      Object.assign(defaults, newStateObj);
       this._requestCanvasUpdate();
       this.refresh();
     }
@@ -541,6 +1269,181 @@ export class PropertyPanelUI {
     });
   }
 
+  // --- EVENTOS: MODO CREACIÓN (SIN SELECCIÓN) ---
+  _attachDefaultSettingsEvents(container) {
+    const layerSelect = container.querySelector('#defLayerSelect');
+    const colorSelect = container.querySelector('#defColorSelect');
+    const colorPicker = container.querySelector('#defColorPicker');
+    
+    const opacityModeSelect = container.querySelector('#defOpacityModeSelect');
+    const opacityContainer = container.querySelector('#defOpacityContainer');
+    const opacityInput = container.querySelector('#defOpacityInput');
+    
+    const widthModeSelect = container.querySelector('#defWidthModeSelect');
+    const widthContainer = container.querySelector('#defWidthContainer');
+    const widthInput = container.querySelector('#defWidthInput');
+
+    const defaults = this.utils?.propertyManager?.defaultSettings;
+    const layerManager = this.utils?.layerManager;
+
+    const syncActiveDrawing = () => {
+      if (this.utils?.activePath && this.utils?.propertyManager) {
+        this.utils.propertyManager.applyDefaultSettings(this.utils.activePath);
+        if (this.utils.updateEntitiesStroke) this.utils.updateEntitiesStroke();
+        if (window.paper?.view) window.paper.view.update();
+      }
+    };
+
+    // Capa por defecto (con Undo/Redo y refresco de muestras BYLAYER)
+    layerSelect?.addEventListener('change', (e) => {
+      const newLayerId = e.target.value;
+      const oldLayerId = layerManager ? layerManager.activeLayerId : '0';
+      const cadService = this.service || this.utils?.service || window.cadService;
+
+      // 1. Registro en Undo/Redo a través de mando de comando
+      if (String(oldLayerId) !== String(newLayerId)) {
+        if (SetActiveLayerCommand && cadService && layerManager) {
+          const uiListener = window.layerPanelUI || this;
+          const cmd = new SetActiveLayerCommand(layerManager, oldLayerId, newLayerId, uiListener);
+          cadService.executeCommand(cmd);
+        } else if (layerManager) {
+          layerManager.setActiveLayer(newLayerId);
+          if (window.layerPanelUI) window.layerPanelUI.refresh();
+          this.refresh();
+        }
+      }
+
+      // 2. Sincronización visual de muestras y trazo activo (Tu funcionalidad original intacta)
+      const activeLayer = layerManager ? layerManager.getActiveLayer() : null;
+
+      if (defaults && defaults.color === 'BYLAYER' && colorPicker) {
+        colorPicker.value = this._getHexColor(activeLayer ? activeLayer.color : '#ffffff');
+      }
+
+      if (defaults && defaults.opacity === 'BYLAYER' && opacityInput) {
+        const layerOpacity = activeLayer?.opacity !== undefined ? activeLayer.opacity : 1;
+        opacityInput.value = Math.round(layerOpacity * 100);
+      }
+
+      if (defaults && defaults.strokeWidth === 'BYLAYER' && widthInput) {
+        const layerWidth = activeLayer?.strokeWidth !== undefined ? activeLayer.strokeWidth : 1;
+        widthInput.value = this._formatWidthDisplay(layerWidth);
+      }
+
+      syncActiveDrawing();
+    });
+
+    // Modo Color por Defecto
+    colorSelect?.addEventListener('change', (e) => {
+      if (!defaults) return;
+      const oldVal = defaults.color;
+      const newVal = e.target.value === 'BYLAYER' ? 'BYLAYER' : (colorPicker ? colorPicker.value : '#00e5ff');
+      if (oldVal !== newVal) {
+        this._dispatchDefaultCommand({ color: oldVal }, { color: newVal });
+      }
+    });
+
+    // Picker Color (Modo Creación / Defaults)
+    colorPicker?.addEventListener('click', (e) => {
+      e.preventDefault();
+      this._openColorPickerForDefaults(colorPicker);
+    });
+
+    // Modo Opacidad por Defecto
+    opacityModeSelect?.addEventListener('change', (e) => {
+      if (!defaults) return;
+      const isByLayer = e.target.value === 'BYLAYER';
+      const oldVal = defaults.opacity;
+      const newVal = isByLayer ? 'BYLAYER' : (parseFloat(opacityInput ? opacityInput.value : 100) / 100);
+      if (oldVal !== newVal) {
+        this._dispatchDefaultCommand({ opacity: oldVal }, { opacity: newVal });
+      }
+    });
+
+    // Scrub Opacidad por Defecto
+    let opacityScrubStart = defaults ? defaults.opacity : 1;
+    this._attachScrubInput(opacityContainer, opacityInput, (pctVal) => {
+      if (!defaults) return;
+      const newVal = pctVal / 100;
+      if (opacityScrubStart !== newVal) {
+        this._dispatchDefaultCommand({ opacity: opacityScrubStart }, { opacity: newVal });
+      }
+    }, {
+      min: 0, max: 100, step: 1, precision: 0,
+      onLiveChange: (val) => {
+        if (!defaults) return;
+        defaults.opacity = val / 100;
+        this._updateSelectValueSilently(opacityModeSelect, 'CUSTOM');
+        if (opacityInput) {
+          opacityInput.classList.remove('text-zinc-500');
+          opacityInput.classList.add('text-white');
+        }
+        if (opacityContainer) {
+          const span = opacityContainer.querySelector('span');
+          if (span) {
+            span.classList.remove('text-zinc-500');
+            span.classList.add('text-white');
+          }
+        }
+        syncActiveDrawing();
+      }
+    });
+
+    if (opacityContainer) {
+      // Usar pointerdown para garantizar la captura antes de iniciar el arrastre
+      opacityContainer.addEventListener('pointerdown', () => {
+        opacityScrubStart = defaults ? defaults.opacity : 1;
+      });
+    }
+
+    // Modo Grosor por Defecto
+    widthModeSelect?.addEventListener('change', (e) => {
+      if (!defaults) return;
+      const val = e.target.value;
+      const oldVal = defaults.strokeWidth;
+      let newVal = 'BYLAYER';
+
+      if (val === 'CUSTOM') {
+        newVal = parseFloat(widthInput ? widthInput.value : 1.0) || 1.0;
+      } else if (val !== 'BYLAYER') {
+        newVal = parseFloat(val);
+      }
+
+      if (oldVal !== newVal) {
+        this._dispatchDefaultCommand({ strokeWidth: oldVal }, { strokeWidth: newVal });
+      }
+    });
+
+    // Scrub Grosor por Defecto
+    let widthScrubStart = defaults ? defaults.strokeWidth : 1;
+    this._attachScrubInput(widthContainer, widthInput, (widthVal) => {
+      if (!defaults) return;
+      if (widthScrubStart !== widthVal) {
+        this._dispatchDefaultCommand({ strokeWidth: widthScrubStart }, { strokeWidth: widthVal });
+      }
+    }, {
+      min: 0, max: null, step: 0.1, precision: 1, isWidth: true,
+      onLiveChange: (widthVal) => {
+        if (defaults) defaults.strokeWidth = widthVal;
+        const isPreset = this._isPresetWidth(widthVal);
+        const targetSelectValue = isPreset ? (widthVal === 0 ? '0' : String(widthVal)) : 'CUSTOM';
+        this._updateSelectValueSilently(widthModeSelect, targetSelectValue);
+
+        if (widthInput) {
+          widthInput.classList.toggle('text-zinc-500', isPreset);
+          widthInput.classList.toggle('text-white', !isPreset);
+        }
+        syncActiveDrawing();
+      }
+    });
+
+    if (widthContainer) {
+      widthContainer.addEventListener('mousedown', () => {
+        widthScrubStart = defaults ? defaults.strokeWidth : 1;
+      });
+    }
+  }
+
   // --- EVENTOS ENTIDAD ÚNICA ---
   _attachSingleEntityEvents(container, entity) {
     const nameInput = container.querySelector('#propNameInput');
@@ -571,18 +1474,18 @@ export class PropertyPanelUI {
     // Modo Color
     colorModeSelect?.addEventListener('change', (e) => {
       const isByLayer = e.target.value === 'BYLAYER';
+      const curColor = colorPicker ? colorPicker.value : '#00e5ff';
       this._dispatchCommand({
         colorByLayer: isByLayer,
-        origStrokeColor: isByLayer ? undefined : (colorPicker ? colorPicker.value : '#00e5ff')
+        origStrokeColor: isByLayer ? undefined : curColor,
+        strokeColor: isByLayer ? (activeLayer ? activeLayer.color : '#ffffff') : curColor
       }, entity);
     });
 
     // Color Picker
-    colorPicker?.addEventListener('change', (e) => {
-      this._dispatchCommand({
-        colorByLayer: false,
-        origStrokeColor: e.target.value
-      }, entity);
+    colorPicker?.addEventListener('click', (e) => {
+      e.preventDefault(); // Bloquea el selector de color nativo del navegador
+      this._openColorPickerForEntity(entity, colorPicker);
     });
 
     // Modo Opacidad
@@ -625,15 +1528,15 @@ export class PropertyPanelUI {
     // Modo Grosor
     widthModeSelect?.addEventListener('change', (e) => {
       const val = e.target.value;
-
       if (val === 'BYLAYER') {
-        this._dispatchCommand({ widthByLayer: true, baseStrokeWidth: undefined }, entity);
+        const layerWidth = activeLayer?.strokeWidth !== undefined ? activeLayer.strokeWidth : 1;
+        this._dispatchCommand({ widthByLayer: true, baseStrokeWidth: undefined, strokeWidth: layerWidth }, entity);
       } else if (val === 'CUSTOM') {
         const num = parseFloat(widthInput ? widthInput.value : 1.0) || 1.0;
-        this._dispatchCommand({ widthByLayer: false, baseStrokeWidth: num }, entity);
+        this._dispatchCommand({ widthByLayer: false, baseStrokeWidth: num, strokeWidth: num }, entity);
       } else {
         const num = parseFloat(val);
-        this._dispatchCommand({ widthByLayer: false, baseStrokeWidth: num }, entity);
+        this._dispatchCommand({ widthByLayer: false, baseStrokeWidth: num, strokeWidth: num }, entity);
       }
     });
 
@@ -659,144 +1562,26 @@ export class PropertyPanelUI {
     });
   }
 
-  // --- EVENTOS: MODO CREACIÓN (SIN SELECCIÓN) ---
-  _attachDefaultSettingsEvents(container) {
-    const layerSelect = container.querySelector('#defLayerSelect');
-    const colorSelect = container.querySelector('#defColorSelect');
-    const colorPicker = container.querySelector('#defColorPicker');
-    
-    const opacityModeSelect = container.querySelector('#defOpacityModeSelect');
-    const opacityContainer = container.querySelector('#defOpacityContainer');
-    const opacityInput = container.querySelector('#defOpacityInput');
-    
-    const widthModeSelect = container.querySelector('#defWidthModeSelect');
-    const widthContainer = container.querySelector('#defWidthContainer');
-    const widthInput = container.querySelector('#defWidthInput');
-
-    const defaults = this.utils?.propertyManager?.defaultSettings;
-    const layerManager = this.utils?.layerManager;
-
-    const syncActiveDrawing = () => {
-      if (this.utils?.activePath && this.utils?.propertyManager) {
-        this.utils.propertyManager.applyDefaultSettings(this.utils.activePath);
-        if (this.utils.updateEntitiesStroke) this.utils.updateEntitiesStroke();
-        if (window.paper?.view) window.paper.view.update();
-      }
-    };
-
-    // Capa por defecto
-    layerSelect?.addEventListener('change', (e) => {
-      const newLayerId = e.target.value;
-      if (layerManager) {
-        layerManager.setActiveLayer(newLayerId);
-        if (window.layerPanelUI) window.layerPanelUI.refresh();
-      }
-
-      const activeLayer = layerManager ? layerManager.getActiveLayer() : null;
-
-      if (defaults && defaults.color === 'BYLAYER' && colorPicker) {
-        colorPicker.value = this._getHexColor(activeLayer ? activeLayer.color : '#ffffff');
-      }
-
-      if (defaults && defaults.opacity === 'BYLAYER' && opacityInput) {
-        const layerOpacity = activeLayer?.opacity !== undefined ? activeLayer.opacity : 1;
-        opacityInput.value = Math.round(layerOpacity * 100);
-      }
-
-      if (defaults && defaults.strokeWidth === 'BYLAYER' && widthInput) {
-        const layerWidth = activeLayer?.strokeWidth !== undefined ? activeLayer.strokeWidth : 1;
-        widthInput.value = this._formatWidthDisplay(layerWidth);
-      }
-
-      syncActiveDrawing();
-    });
-
-    // Modo Color
-    colorSelect?.addEventListener('change', (e) => {
-      if (!defaults) return;
-      defaults.color = e.target.value === 'BYLAYER' ? 'BYLAYER' : (colorPicker ? colorPicker.value : '#00e5ff');
-      syncActiveDrawing();
-    });
-
-    // Picker Color
-    colorPicker?.addEventListener('change', (e) => {
-      if (!defaults) return;
-      defaults.color = e.target.value;
-      this._updateSelectValue(colorSelect, 'CUSTOM');
-      syncActiveDrawing();
-    });
-
-    // Modo Opacidad
-    opacityModeSelect?.addEventListener('change', (e) => {
-      if (!defaults) return;
-      const isByLayer = e.target.value === 'BYLAYER';
-      defaults.opacity = isByLayer ? 'BYLAYER' : (parseFloat(opacityInput ? opacityInput.value : 100) / 100);
-
-      if (opacityInput) {
-        const opacityColorClass = this._getOpacityTextColorClass(isByLayer);
-        opacityInput.className = `w-9 bg-transparent text-right outline-none border-0 ${opacityColorClass} text-[11px] font-sans tabular-nums p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none cursor-ew-resize focus:cursor-text`;
-      }
-      syncActiveDrawing();
-    });
-
-    // Scrub Opacidad
-    this._attachScrubInput(opacityContainer, opacityInput, (pctVal) => {
-      if (!defaults) return;
-      defaults.opacity = pctVal / 100;
-      this._updateSelectValue(opacityModeSelect, 'CUSTOM');
-      
-      if (opacityInput) {
-        opacityInput.classList.remove('text-zinc-500');
-        opacityInput.classList.add('text-white');
-      }
-      syncActiveDrawing();
-    }, { min: 0, max: 100, step: 1, precision: 0 });
-
-    // Modo Grosor
-    widthModeSelect?.addEventListener('change', (e) => {
-      if (!defaults) return;
-      const val = e.target.value;
-      const isByLayer = val === 'BYLAYER';
-
-      if (isByLayer) {
-        defaults.strokeWidth = 'BYLAYER';
-      } else if (val === 'CUSTOM') {
-        defaults.strokeWidth = parseFloat(widthInput ? widthInput.value : 1.0) || 1.0;
-      } else {
-        defaults.strokeWidth = parseFloat(val);
-        if (widthInput) widthInput.value = this._formatWidthDisplay(defaults.strokeWidth);
-      }
-
-      if (widthInput) {
-        const isPreset = this._isPresetWidth(val);
-        const colorClass = (isByLayer || isPreset) ? 'text-zinc-500' : 'text-white';
-        widthInput.className = `w-9 bg-transparent text-right outline-none border-0 ${colorClass} text-[11px] font-sans tabular-nums p-0 cursor-ew-resize focus:cursor-text`;
-      }
-      syncActiveDrawing();
-    });
-
-    // Scrub Grosor
-    this._attachScrubInput(widthContainer, widthInput, (widthVal) => {
-      if (!defaults) return;
-      defaults.strokeWidth = widthVal;
-
-      const isPreset = this._isPresetWidth(widthVal);
-      const targetSelectValue = isPreset ? (widthVal === 0 ? '0' : String(widthVal)) : 'CUSTOM';
-      this._updateSelectValue(widthModeSelect, targetSelectValue);
-
-      if (widthInput) {
-        widthInput.classList.toggle('text-zinc-500', isPreset);
-        widthInput.classList.toggle('text-white', !isPreset);
-      }
-      syncActiveDrawing();
-    }, { min: 0, max: null, step: 0.1, precision: 1, isWidth: true });
-  }
-
   // Helper para sincronizar visualmente selects personalizados
   _updateSelectValue(selectEl, value) {
     if (!selectEl) return;
-    selectEl.value = value;
+    this._updateSelectValueSilently(selectEl, value);
     selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  _updateSelectValueSilently(selectEl, value) {
+    if (!selectEl) return;
+    selectEl.value = value;
+    
+    // Sincronizar el texto del botón del select personalizado sin disparar eventos
+    const wrapper = selectEl.nextElementSibling;
+    if (wrapper && wrapper.classList.contains('custom-select-wrapper')) {
+      const trigger = wrapper.querySelector('button');
+      const opt = selectEl.options[selectEl.selectedIndex];
+      if (trigger && opt) {
+        trigger.innerHTML = `<span class="truncate pr-1 text-left">${opt.text}</span><i class="fa-solid fa-chevron-down text-[8px] text-zinc-500 shrink-0"></i>`;
+      }
+    }
   }
 
   _getLayer(layerId) {

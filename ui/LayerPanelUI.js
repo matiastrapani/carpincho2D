@@ -10,6 +10,7 @@ import {
   RenameLayerCommand, 
   ReorderLayersCommand 
 } from '../services/commands/LayerCommands.js';
+import { ColorPickerPopover } from './components/ColorPickerPopover.js';
 
 export class LayerPanelUI {
   constructor(cadUtils, containerId = 'layerPanelContainer') {
@@ -76,11 +77,7 @@ export class LayerPanelUI {
   }
 
   _getPresetColors() {
-    return [
-      '#008800', '#00e5ff', '#ff3b30', '#ff9500', 
-      '#ffcc00', '#34c759', '#007aff', '#5856d6', 
-      '#af52de', '#ff2d55', '#ffffff', '#8e8e93'
-    ];
+    return ColorPickerPopover.getPresets();
   }
 
   _getRandomColor() {
@@ -196,7 +193,6 @@ export class LayerPanelUI {
   }
 
   refresh() {
-    this._closeColorPicker();
     const list = document.getElementById('layerListContainer');
     if (!list) return;
 
@@ -623,158 +619,98 @@ export class LayerPanelUI {
   _openColorPickerPopover(layer, triggerEl) {
     this._closeColorPicker();
 
-    const rect = triggerEl.getBoundingClientRect();
-    const presets = this._getPresetColors();
+    let initialColor = layer.color ? layer.color.substring(0, 7).toUpperCase() : '#00E5FF';
+    let initialOpacity = layer.opacity !== undefined ? layer.opacity : 1.0;
 
-    const popover = document.createElement('div');
-    popover.id = 'figmaColorPickerPopover';
-    popover.className = 'fixed z-50 bg-[#1c1c22] border border-[#2a2a32] rounded-lg shadow-2xl p-2.5 w-52 text-zinc-300 font-sans text-xs flex flex-col gap-2 select-none';
+    const snapshot = {
+      color: layer.color,
+      opacity: layer.opacity
+    };
 
-    const topPos = Math.min(rect.bottom + 4, window.innerHeight - 240);
-    const leftPos = Math.max(10, rect.left - 190);
+    let hasChanges = false;
 
-    popover.style.top = `${topPos}px`;
-    popover.style.left = `${leftPos}px`;
+    this.activePopover = new ColorPickerPopover({
+      color: initialColor,
+      opacity: initialOpacity,
+      anchorEl: triggerEl,
+      presets: this._getPresetColors(), // Muestras unificadas de 20 colores
 
-    popover.innerHTML = `
-      <div class="flex items-center justify-between pb-1 border-b border-[#2a2a32]">
-        <span class="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Color de Capa</span>
-        <button id="closeColorPickerBtn" class="text-zinc-500 hover:text-zinc-200 transition-colors text-xs p-0.5">
-          <i class="fa-solid fa-xmark"></i>
-        </button>
-      </div>
+      // Actualización en vivo (durante el arrastre)
+      onChange: (hexColor, alphaValue) => {
+        layer.color = hexColor;
+        layer.opacity = alphaValue;
 
-      <div class="relative w-full h-24 rounded overflow-hidden cursor-crosshair border border-[#2a2a32]">
-        <canvas id="squareColorCanvas" class="w-full h-full block"></canvas>
-      </div>
+        if (triggerEl) {
+          triggerEl.style.backgroundColor = hexColor;
+        }
 
-      <div class="grid grid-cols-6 gap-1.5">
-        ${presets
-          .map(
-            (c) => `
-          <button class="color-preset-btn w-6 h-5 rounded-sm hover:scale-105 transition-transform cursor-pointer ${
-            layer.color.toLowerCase() === c.toLowerCase() ? 'ring-1 ring-white' : ''
-          }" style="background-color: ${c}" data-color="${c}"></button>
-        `
-          )
-          .join('')}
-      </div>
+        hasChanges = true;
+        if (this.utils?.updateEntitiesStroke) this.utils.updateEntitiesStroke();
+        if (window.paper?.view) window.paper.view.update();
 
-      <div class="flex items-center gap-1.5 pt-0.5">
-        <div class="flex-1 flex items-center bg-[#121215] border border-[#27272a] rounded px-2 py-1 focus-within:border-[#008800]">
-          <span class="text-zinc-500 text-[10px] mr-1 font-mono">#</span>
-          <input type="text" id="hexColorInput" value="${layer.color.replace('#', '')}" maxlength="6" 
-            class="bg-transparent text-zinc-200 text-[10px] font-mono outline-none w-full uppercase">
-        </div>
-        <label class="w-6 h-6 rounded border border-[#27272a] bg-[#121215] hover:bg-[#27272a] flex items-center justify-center cursor-pointer text-zinc-400 hover:text-zinc-100 transition-colors" title="Paleta del Sistema">
-          <i class="fa-solid fa-eye-dropper text-[10px]"></i>
-          <input type="color" id="nativeColorFallback" value="${layer.color}" class="hidden">
-        </label>
-      </div>
-    `;
+        // Refresco en vivo del Panel de Propiedades mientras se arrastra
+        if (window.propertyPanelUI) {
+          window.propertyPanelUI.refresh();
+        }
+      },
 
-    document.body.appendChild(popover);
-    this.activePopover = popover;
+      // Registro en Undo/Redo al finalizar el arrastre
+      onChangeEnd: (hexColor, alphaValue, flags = {}) => {
+        let hasChangesCommand = false;
 
-    const canvas = popover.querySelector('#squareColorCanvas');
-    if (canvas) {
-      canvas.width = 180;
-      canvas.height = 96;
-      const ctx = canvas.getContext('2d');
+        if (flags.colorChanged && initialColor !== hexColor) {
+          if (this.utils?.service?.executeCommand) {
+            const cmd = new UpdateLayerPropertyCommand(this.manager, layer.id, 'color', initialColor, hexColor, this);
+            this.utils.service.executeCommand(cmd);
+          } else {
+            this.manager.updateLayerProperty(layer.id, 'color', hexColor);
+          }
+          initialColor = hexColor;
+          hasChangesCommand = true;
+        }
 
-      const hueGrad = ctx.createLinearGradient(0, 0, canvas.width, 0);
-      for (let i = 0; i <= 360; i += 60) {
-        hueGrad.addColorStop(i / 360, `hsl(${i}, 100%, 50%)`);
-      }
-      ctx.fillStyle = hueGrad;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+        if (flags.opacityChanged && Math.abs(initialOpacity - alphaValue) > 0.001) {
+          if (this.utils?.service?.executeCommand) {
+            const cmd = new UpdateLayerPropertyCommand(this.manager, layer.id, 'opacity', initialOpacity, alphaValue, this);
+            this.utils.service.executeCommand(cmd);
+          } else {
+            this.manager.updateLayerProperty(layer.id, 'opacity', alphaValue);
+          }
+          initialOpacity = alphaValue;
+          hasChangesCommand = true;
+        }
 
-      const lightGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-      lightGrad.addColorStop(0, 'rgba(255,255,255,0.2)');
-      lightGrad.addColorStop(0.5, 'rgba(0,0,0,0)');
-      lightGrad.addColorStop(1, 'rgba(0,0,0,0.85)');
-      ctx.fillStyle = lightGrad;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+        if (hasChangesCommand) {
+          this.refresh();
+        }
+      },
 
-      let isDragging = false;
-      const pickCanvasColor = (e) => {
-        const cRect = canvas.getBoundingClientRect();
-        const x = Math.max(0, Math.min(e.clientX - cRect.left, cRect.width));
-        const y = Math.max(0, Math.min(e.clientY - cRect.top, cRect.height));
-        
-        const canvasX = Math.floor((x / cRect.width) * canvas.width);
-        const canvasY = Math.floor((y / cRect.height) * canvas.height);
+      onCancel: () => {
+        if (!hasChanges) return;
+        layer.color = snapshot.color;
+        layer.opacity = snapshot.opacity;
 
-        const pixel = ctx.getImageData(canvasX, canvasY, 1, 1).data;
-        const hex = `#${((1 << 24) + (pixel[0] << 16) + (pixel[1] << 8) + pixel[2]).toString(16).slice(1)}`;
-        applyColor(hex);
-      };
+        if (triggerEl) {
+          triggerEl.style.backgroundColor = snapshot.color;
+        }
 
-      canvas.addEventListener('pointerdown', (e) => {
-        isDragging = true;
-        pickCanvasColor(e);
-      });
-
-      canvas.addEventListener('pointermove', (e) => {
-        if (isDragging) pickCanvasColor(e);
-      });
-
-      window.addEventListener('pointerup', () => { isDragging = false; }, { once: true });
-    }
-
-    const applyColor = (colorHex) => {
-      const oldVal = layer.color;
-      if (oldVal === colorHex) return;
-
-      if (this.utils?.service?.executeCommand) {
-        const cmd = new UpdateLayerPropertyCommand(this.manager, layer.id, 'color', oldVal, colorHex, this);
-        this.utils.service.executeCommand(cmd);
-      } else {
-        this.manager.updateLayerProperty(layer.id, 'color', colorHex);
         this.refresh();
         if (this.utils?.updateEntitiesStroke) this.utils.updateEntitiesStroke();
         if (window.paper?.view) window.paper.view.update();
-      }
-    };
+        if (window.propertyPanelUI) window.propertyPanelUI.refresh();
+      },
 
-    popover.querySelectorAll('.color-preset-btn').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        applyColor(e.currentTarget.getAttribute('data-color'));
-      });
-    });
-
-    const hexInput = popover.querySelector('#hexColorInput');
-    hexInput?.addEventListener('input', (e) => {
-      const val = e.target.value.trim();
-      if (/^[0-9A-Fa-f]{6}$/.test(val)) {
-        applyColor(`#${val}`);
+      onClose: () => {
+        this.activePopover = null;
       }
     });
-
-    const nativeInput = popover.querySelector('#nativeColorFallback');
-    nativeInput?.addEventListener('input', (e) => {
-      applyColor(e.target.value);
-    });
-
-    popover.querySelector('#closeColorPickerBtn')?.addEventListener('click', () => {
-      this._closeColorPicker();
-    });
-
-    setTimeout(() => {
-      const outsideClickListener = (e) => {
-        if (popover && !popover.contains(e.target) && !triggerEl.contains(e.target)) {
-          this._closeColorPicker();
-          document.removeEventListener('pointerdown', outsideClickListener);
-        }
-      };
-      document.addEventListener('pointerdown', outsideClickListener);
-    }, 0);
   }
 
   _closeColorPicker() {
-    if (this.activePopover) {
-      this.activePopover.remove();
+    if (this.activePopover && typeof this.activePopover.close === 'function') {
+      this.activePopover.close();
       this.activePopover = null;
     }
   }
+
 }

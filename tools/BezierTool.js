@@ -12,6 +12,12 @@ export class BezierTool extends BaseTool {
   }
 
   onMouseDown(event) {
+    // Procesar ÚNICAMENTE el clic izquierdo
+    if (event.event && event.event.button !== 0) return;
+
+    const isShift = event.event ? event.event.shiftKey : false;
+    let pt = event.point;
+    
     // Clic derecho -> Finalizar curva o salir
     if (event.event.button === 2) {
       if (this.utils.activePath) {
@@ -21,11 +27,6 @@ export class BezierTool extends BaseTool {
       }
       return;
     }
-
-    if (event.event.button !== 0) return; // Solo procesar clic izquierdo
-
-    const isShift = event.event ? event.event.shiftKey : false;
-    let pt = event.point;
 
     // 1. Evaluar OSNAP sobre el punto REAL del cursor
     const osnap = this.service.calculateOsnap(
@@ -176,7 +177,7 @@ export class BezierTool extends BaseTool {
     this.clearPreview();
   }
 
-  // Desactivación estándar (llamada por ToolManager)
+  // Limpieza al cambiar o desactivar la herramienta
   cancel() {
     this.clearPreview();
     if (this.utils.activePath) {
@@ -184,12 +185,14 @@ export class BezierTool extends BaseTool {
     }
   }
 
-  // Respuesta a clic derecho
+  // Clic derecho: 1.° finaliza el trazo activo, 2.° sale a Selección
   onContextMenu(event) {
     if (this.utils.activePath) {
+      this.clearPreview();
       this.utils.finishCurrentDrawing();
+      this.setPrompt(this.promptText);
     } else {
-      this.cancelAndExit();
+      this.exitToSelect();
     }
     return true;
   }

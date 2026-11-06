@@ -110,6 +110,13 @@ export class SelectTool extends BaseTool {
         const root = getRootEntity(res.item);
         if (!this.service.demoEntities.includes(root)) return false;
 
+        // ✅ FILTRO DE CAPA BLOQUEADA EN EL MATCH:
+        // Si la capa está bloqueada, el hitTest ignora este objeto y busca si hay algo debajo
+        const layerId = String(root.data?.layerId || '0');
+        const layerManager = this.utils?.layerManager || window.cadUtils?.layerManager;
+        const layer = layerManager?.layers?.get(layerId);
+        if (layer && layer.locked) return false;
+
         if (root instanceof paper.Raster || res.item instanceof paper.Raster) return true;
         if (root.data?.isPointEntity || res.item.data?.isPointEntity) return true;
         if (res.type === 'stroke') return true;
@@ -125,12 +132,6 @@ export class SelectTool extends BaseTool {
 
     if (hitEntity && hitEntity.item) {
       const targetItem = getRootEntity(hitEntity.item);
-
-      // GUARDIÁN DE CAPA BLOQUEADA
-      const layerId = String(targetItem.data?.layerId || '0');
-      const layerManager = this.service.layerManager || this.utils?.layerManager;
-      const layer = layerManager?.layers?.get(layerId);
-      if (layer && layer.locked) return;
 
       // DETECCIÓN DE DOBLE CLIC -> ENTRAR EN MODO EDICIÓN DE NODOS
       const now = Date.now();
@@ -1024,6 +1025,22 @@ export class SelectTool extends BaseTool {
     }
 
     if (paper.view) paper.view.update();
+  }
+
+  onContextMenu(event) {
+    // 1. Si hay elementos seleccionados, limpia la selección
+    if (this.service.selectedEntities && this.service.selectedEntities.length > 0) {
+      this.service.deselectAllEntities();
+      this.service.editingEntities = [];
+      this.service.deselectAllSegments();
+      if (this.utils.renderBezierHandles) this.utils.renderBezierHandles();
+      if (this.utils.updateEntitiesStroke) this.utils.updateEntitiesStroke();
+      if (window.paper?.view) window.paper.view.update();
+      return true; // Cancela selección sin activar repetición
+    }
+
+    // 2. Si el lienzo está limpio, retorna false para que cadUtils reactive la última herramienta
+    return false;
   }
 
   cancel() {
