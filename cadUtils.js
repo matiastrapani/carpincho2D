@@ -68,7 +68,7 @@ window.CAD_THEME = CAD_THEME;
 
 import { LayerManager } from './services/LayerManager.js';
 import { PropertyManager } from './services/PropertyManager.js';
-import { SelectTool } from './tools/SelectTool.js';
+import { SelectTool } from './tools/select/SelectTool.js';
 import { LineTool } from './tools/LineTool.js';
 import { PolylineTool } from './tools/PolylineTool.js';
 import { CircleTool } from './tools/CircleTool.js';
@@ -77,11 +77,15 @@ import { BezierTool } from './tools/BezierTool.js';
 import { PointTool } from './tools/PointTool.js';
 import { TrimTool } from './tools/TrimTool.js';
 import { ExtendTool } from './tools/ExtendTool.js';
-import { ImageController } from './controllers/ImageController.js';
 import { ToolManager } from './tools/ToolManager.js';
 
 import { DeleteCommand, AddLineCommand, AddEntityCommand, ImportSVGCommand } from './services/commands/cadCommands.js';
-
+import { HUDManager } from './ui/HUDManager.js';
+import { CommandBarManager } from './ui/CommandBarManager.js';
+import { CanvasViewportManager } from './services/CanvasViewportManager.js';
+import { SelectionRenderEngine } from './services/renderers/SelectionRenderEngine.js';
+import { InputDispatcher } from './services/input/InputDispatcher.js';
+import { CADIOService } from './services/io/ioService.js';
 
 export class CADUtils {
   constructor(canvasId, service) {
@@ -97,17 +101,21 @@ export class CADUtils {
     this.propertyManager = new PropertyManager(this.service, this);
     this.service.propertyManager = this.propertyManager;
 
+    this.selectionRenderEngine = new SelectionRenderEngine(window.cadService);
+    this.inputDispatcher = new InputDispatcher(this.service);
+    this.ioService = new CADIOService(this.service, this);
+
     // 3. Estado de Herramientas y Modos de Edición
     this.currentToolMode = 'line';
     this.lastActiveToolMode = 'line';
     this.isChangingTool = false;
 
-    // 4. Estado de Vista y Navegación (Nivel de Zoom, Pan, Grilla)
-    this.isGridVisible = true;
+    // 4. Estado de Vista y Navegación (Zoom, Pan, Grilla)
+    this.viewportManager = new CanvasViewportManager(this);
     this.isPanning = false;
     this.panStartPoint = null;
     this.lastMousePoint = null;
-    this.zoomAnimationRequestId = null;
+    
 
     // 5. Estado de Dibujo Activo y Previsualización Temporal
     this.activePath = null;
@@ -132,8 +140,29 @@ export class CADUtils {
 
     // 9. Registro Organizado de Herramientas
     this._registerTools();
+
   }
 
+  // Getters/Setters de retrocompatibilidad para el Viewport
+  get isGridVisible() { return this.viewportManager.isGridVisible; }
+  set isGridVisible(val) { this.viewportManager.isGridVisible = val; }
+
+  get gridGroup() { return this.viewportManager.gridGroup; }
+  set gridGroup(val) { this.viewportManager.gridGroup = val; }
+
+  get zoomAnimationRequestId() { return this.viewportManager.zoomAnimationRequestId; }
+  set zoomAnimationRequestId(val) { this.viewportManager.zoomAnimationRequestId = val; }
+
+  get controlHandlesGroup() {
+    return this.selectionRenderEngine?.controlHandlesGroup;
+  }
+
+  set controlHandlesGroup(val) {
+    if (this.selectionRenderEngine) {
+      this.selectionRenderEngine.controlHandlesGroup = val;
+    }
+  }
+  
   /**
    * Registro centralizado de herramientas clasificadas por categoría
    */
@@ -161,10 +190,7 @@ export class CADUtils {
     this.toolManager.registerTool('extend', new ExtendTool(this.service, this));
   }
 
-
-
   // --- MÉTODOS PUENTE / DELEGADOS HACIA MÓDULOS ---
-
   setPrompt(text) {
     this.commandBar.setPrompt(text);
   }
@@ -176,308 +202,13 @@ export class CADUtils {
   }
 
   updatePointEntitiesScale() {
-    if (!paper || !paper.view) return;
-    const zoom = paper.view.zoom;
-
-    const nodeTheme = CAD_THEME?.node || {};
-    const nodeSelectionTheme = CAD_THEME?.selection?.node || {};
-
-    this.service.demoEntities.forEach(ent => {
-      if (ent && ent.data && ent.data.isPointEntity && ent.bounds) {
-        const isSelected = this.service.selectedEntities.includes(ent);
-        const isHovered = this.service.hoveredEntity === ent;
-
-        // 1. Radio (Crecimiento sutil de +0.5px en Hover)
-        let radiusPx = isSelected 
-          ? (nodeSelectionTheme.selectedRadiusPx || nodeTheme.selectedRadiusPx || 4.0) 
-          : (nodeSelectionTheme.normalRadiusPx || nodeTheme.normalRadiusPx || 3.5);
-
-        if (isHovered && !isSelected) {
-          radiusPx += 0.5;
-        }
-
-        const targetRadius = radiusPx / zoom;
-        const center = ent.position.clone();
-        ent.bounds.width = targetRadius * 2;
-        ent.bounds.height = targetRadius * 2;
-        ent.position = center;
-
-        // 2. Espesor del borde (1.5x en Hover, manteniendo su color original)
-        let strokeWidthPx = isSelected 
-          ? (nodeSelectionTheme.selectedWidthPx || nodeTheme.selectedStrokeWidthPx || 2.0) 
-          : (nodeSelectionTheme.normalWidthPx || nodeTheme.strokeWidthPx || 1.0);
-
-        if (isHovered && !isSelected) {
-          strokeWidthPx *= 1.5;
-        }
-
-        ent.strokeWidth = strokeWidthPx / zoom;
-      }
-    });
+    return this.selectionRenderEngine.updatePointEntitiesScale();
   }
 
   updateEntitiesStroke() {
-    if (!paper || !paper.view) return;
-    const zoom = paper.view.zoom;
-
-    const entitiesToUpdate = [...(this.service?.demoEntities || [])];
-    if (this.activePath) {
-      entitiesToUpdate.push(this.activePath);
-    }
-
-    entitiesToUpdate.forEach(ent => {
-      if (!ent) return;
-      if (!ent.data) ent.data = {};
-
-      // 0. Visibilidad y Bloqueo de Capa
-      const layerId = ent.data?.layerId || '0';
-      const layer = this.layerManager?.layers?.get(String(layerId));
-      const isLayerVisible = layer ? (layer.visible !== false) : true;
-      const isLayerLocked = layer ? (layer.locked === true) : false;
-      
-      ent.visible = isLayerVisible;
-      if (!isLayerVisible) return;
-
-      const layerOpacity = (layer && layer.opacity !== undefined) ? layer.opacity : 1.0;
-      const resolvedOpacity = ent.data.opacityByLayer !== false 
-        ? layerOpacity 
-        : (ent.data.origOpacity !== undefined ? ent.data.origOpacity : (ent.opacity ?? 1.0));
-
-      // Si la capa está bloqueada, ignora los estados de selección y hover
-      const isSelected = !isLayerLocked && this.service.selectedEntities.includes(ent);
-      const isHovered = !isLayerLocked && this.service.hoveredEntity === ent;
-
-      // --- NODOS / PUNTOS ---
-      if (ent.data.isPointEntity) {
-        const nodeTheme = CAD_THEME?.node || {};
-        const nodeSelectionTheme = CAD_THEME?.selection?.node || {};
-        
-        ent.opacity = 1.0;
-        ent.fillColor = isSelected 
-          ? (nodeSelectionTheme.fillColor || nodeTheme.defaultFillColor || '#10141D') 
-          : (ent.data.origFillColor || nodeTheme.defaultFillColor || '#10141D');
-          
-        const resolvedPointColor = this.propertyManager 
-          ? this.propertyManager.getResolvedColor(ent) 
-          : (ent.data.origStrokeColor || nodeTheme.defaultStrokeColor || '#18fcf1');
-
-        const strokeHex = isSelected 
-          ? (nodeSelectionTheme.strokeColor || '#ffff00') 
-          : resolvedPointColor;
-
-        const strokeColorObj = new paper.Color(strokeHex);
-        strokeColorObj.alpha = isSelected ? 1.0 : resolvedOpacity;
-        ent.strokeColor = strokeColorObj;
-
-        this.updatePointEntitiesScale();
-        return;
-      }
-
-      // --- RASTERS / IMÁGENES ---
-      if (ent instanceof paper.Raster) {
-        const isByLayer = ent.data?.opacityByLayer !== false;
-        const resolvedOpacity = (isByLayer && layer && layer.opacity !== undefined)
-          ? layer.opacity
-          : (ent.data?.baseOpacity ?? ent.data?.origOpacity ?? ent.opacity ?? 1.0);
-
-        ent.opacity = resolvedOpacity;
-        ent.data.baseOpacity = resolvedOpacity;
-        return;
-      }
-
-      // --- LÍNEAS Y GEOMETRÍAS ---
-      if (ent instanceof paper.Path || ent instanceof paper.CompoundPath) {
-        if (ent instanceof paper.Path) {
-          ent.strokeJoin = 'miter';
-          ent.miterLimit = 3;
-        }
-
-        if (ent.data.origFillColor !== undefined) {
-          ent.fillColor = ent.data.origFillColor;
-        }
-
-        const styleConfig = ent.data.isCircleEntity 
-          ? (CAD_THEME?.selection?.circle || {}) 
-          : (CAD_THEME?.selection?.line || {});
-
-        const effectiveColor = this.propertyManager 
-          ? this.propertyManager.getResolvedColor(ent) 
-          : (ent.data.origStrokeColor || '#00e5ff');
-
-        const effectiveBaseWidth = this.propertyManager 
-          ? this.propertyManager.getResolvedStrokeWidth(ent) 
-          : (ent.data.baseStrokeWidth !== undefined ? ent.data.baseStrokeWidth : 0);
-
-        if (isSelected) {
-          ent.opacity = 1.0;
-          ent.strokeColor = styleConfig.strokeColor || '#ffff00';
-          if (ent.fillColor) {
-            const fillCol = new paper.Color(ent.fillColor);
-            fillCol.alpha = resolvedOpacity;
-            ent.fillColor = fillCol;
-          }
-        } else {
-          ent.opacity = resolvedOpacity;
-          ent.strokeColor = effectiveColor;
-          if (ent.fillColor) {
-            const fillCol = new paper.Color(ent.fillColor);
-            fillCol.alpha = 1.0;
-            ent.fillColor = fillCol;
-          }
-        }
-
-        let mult = isSelected ? (styleConfig.widthMultiplier || 1.5) : 1;
-        if (isHovered && !isSelected) {
-          mult *= 1.5;
-        }
-
-        if (effectiveBaseWidth === 0) {
-          ent.strokeWidth = (1 * mult) / zoom;
-        } else {
-          ent.strokeWidth = effectiveBaseWidth * mult;
-        }
-      }
-    });
+    return this.selectionRenderEngine.updateEntitiesStroke();
   }
 
-
-  importImageToCanvas(imageSrc, dropPosition = null) {
-    const raster = new paper.Raster(imageSrc);
-
-    raster.on('load', () => {
-      raster.data.controller = new ImageController(raster);
-      raster.position = dropPosition || paper.view.center.clone();
-
-      if (!raster.data) raster.data = {};
-      raster.data.isImageEntity = true;
-
-      // 1. Asignar nombre correlativo ("Imagen 1", "Imagen 2")
-      const imageName = this.generateNextEntityName ? this.generateNextEntityName('Imagen') : 'Imagen';
-      raster.name = imageName;
-      raster.data.name = imageName;
-
-      // 2. Vincular propiedades por defecto (Capa activa, Color Por Capa/Personalizado y Opacidad)
-      if (this.propertyManager) {
-        this.propertyManager.applyDefaultSettings(raster);
-      }
-
-      // Sincronizar baseOpacity para ImageController
-      raster.data.baseOpacity = raster.opacity;
-
-      // 3. Vincular Controlador Paramétrico
-      raster.data.controller = new ImageController(raster);
-
-      raster.sendToBack();
-      if (this.gridGroup) this.gridGroup.sendToBack();
-
-      // 4. Registrar comando en el historial para soporte de Undo / Redo
-      const cmd = new AddEntityCommand(this.service, raster);
-      this.service.executeCommand(cmd);
-
-      this.service.selectEntity(raster, false);
-      this.updateEntitiesStroke();
-      this.renderBezierHandles();
-
-      if (window.cadUI && typeof window.cadUI.updatePropertyPanel === 'function') {
-        window.cadUI.updatePropertyPanel(raster);
-      }
-
-      this.setPrompt('Imagen importada al lienzo.');
-    });
-  }
-
-  importSVGToCanvas(svgString, dropPosition) {
-    // 1. Obtener la capa activa del LayerManager y su contenedor Paper.js real (paperGroup)
-    const layerManager = this.service?.layerManager || this.layerManager;
-    const activeCadLayer = layerManager ? layerManager.getActiveLayer() : null;
-
-    // El contenedor gráfico en Paper.js es 'paperGroup' o 'drawLayer' por defecto
-    const targetContainer = activeCadLayer?.paperGroup || this.drawLayer || paper.project.activeLayer;
-
-    // Solo activamos si es un objeto nativo paper.Layer
-    if (targetContainer && typeof targetContainer.activate === 'function') {
-      targetContainer.activate();
-    }
-
-    paper.project.importSVG(svgString, {
-      expandShapes: true,
-      insert: true,
-      onLoad: (item) => {
-        if (!item) return;
-
-        item.applyMatrix = true;
-        item.position = dropPosition || paper.view.center.clone();
-
-        const importedEntities = [];
-
-        // Extraer el color asignado a la capa en LayerManager
-        const layerColor = activeCadLayer?.color || (activeCadLayer?.data && activeCadLayer.data.color) || null;
-
-        const processVectorEntity = (ent) => {
-          if (!ent) return;
-          ent.data = ent.data || {};
-
-          if (layerColor) {
-            ent.strokeColor = layerColor;
-          }
-
-          ent.data.origStrokeColor = ent.strokeColor ? (ent.strokeColor.toCSS ? ent.strokeColor.toCSS() : ent.strokeColor) : null;
-          ent.data.origFillColor = ent.fillColor ? (ent.fillColor.toCSS ? ent.fillColor.toCSS() : ent.fillColor) : null;
-          ent.data.baseStrokeWidth = ent.strokeWidth || 1;
-          ent.data.isSvgEntity = true;
-
-          // Asignar ID de la capa activa a la entidad
-          if (activeCadLayer?.id) {
-            ent.data.layerId = String(activeCadLayer.id);
-          }
-
-          if (ent instanceof paper.Path && ent.fillColor && !ent.closed) {
-            ent.closed = true;
-          }
-
-          // Mover al contenedor de Paper.js correspondiente
-          if (targetContainer && typeof targetContainer.addChild === 'function') {
-            targetContainer.addChild(ent);
-          }
-
-          if (this.service && typeof this.service.registerEntity === 'function') {
-            this.service.registerEntity(ent);
-          }
-          importedEntities.push(ent);
-        };
-
-        const registerChildren = (parent) => {
-          if (!parent) return;
-          if (parent instanceof paper.CompoundPath) {
-            processVectorEntity(parent);
-          } else if (parent.children && parent.children.length > 0) {
-            const children = [...parent.children];
-            children.forEach(child => registerChildren(child));
-          } else if (parent instanceof paper.Path) {
-            processVectorEntity(parent);
-          }
-        };
-
-        registerChildren(item);
-
-        // Eliminar el contenedor temporal generado por importSVG
-        item.remove();
-
-        // 2. Registrar el comando de Undo/Redo usando ImportSVGCommand (definido arriba en cadUtils.js)
-        if (importedEntities.length > 0) {
-          const cmd = new ImportSVGCommand(this.service, this, importedEntities, []);
-          if (this.service && typeof this.service.executeCommand === 'function') {
-            this.service.executeCommand(cmd);
-          }
-        }
-
-        this.updateEntitiesStroke();
-        this.renderBezierHandles();
-        if (paper.view) paper.view.update();
-        this.setPrompt('Dibujo SVG importado en la capa activa.');
-      }
-    });
-  }
 
   renderSnapMarker(point, type) {
     if (this.hud) {
@@ -508,7 +239,6 @@ export class CADUtils {
   }
 
   // --- INICIALIZACIÓN DE PAPER.JS Y EVENTOS DEL CANVAS ---
-
   initPaper() {
     paper.setup(this.canvasElement);
     paper.view.center = new paper.Point(0, 0);
@@ -599,81 +329,6 @@ export class CADUtils {
     }
     this.updateEntitiesStroke();
     paper.view.update();
-  }
-
-  handleCanvasResize() {
-    if (!paper || !paper.view) return;
-
-    const viewportEl = document.getElementById('mainViewport');
-    if (!viewportEl) return;
-
-    const newWidth = viewportEl.clientWidth;
-    const newHeight = viewportEl.clientHeight;
-    if (newWidth === 0 || newHeight === 0) return;
-
-    const currentCenter = paper.view.center.clone();
-    const currentZoom = paper.view.zoom;
-
-    paper.view.viewSize = new paper.Size(newWidth, newHeight);
-    paper.view.center = currentCenter;
-    paper.view.zoom = currentZoom;
-
-    this.drawGrid();
-    this.updatePointEntitiesScale();
-    this.renderBezierHandles();
-    paper.view.requestUpdate();
-  }
-
-  drawGrid() {
-    if (this.gridGroup) this.gridGroup.remove();
-    if (!this.isGridVisible) return;
-
-    this.gridGroup = new paper.Group();
-    this.gridGroup.sendToBack();
-
-    const bounds = paper.view.bounds;
-    const zoom = paper.view.zoom;
-
-    let mainStep = zoom > 3 ? 20 : (zoom < 0.3 ? 500 : 100);
-    let subStep = zoom > 3 ? 4 : (zoom < 0.3 ? 100 : 20);
-
-    const startX = Math.floor(bounds.left / subStep) * subStep;
-    const endX = Math.ceil(bounds.right / subStep) * subStep;
-    const startY = Math.floor(bounds.top / subStep) * subStep;
-    const endY = Math.ceil(bounds.bottom / subStep) * subStep;
-
-    // Líneas Verticales (Eje X)
-    for (let x = startX; x <= endX; x += subStep) {
-      const roundedX = Math.round(x);
-      const isMain = Math.abs(roundedX) % mainStep === 0;
-
-      const line = new paper.Path.Line(new paper.Point(x, bounds.top), new paper.Point(x, bounds.bottom));
-      line.strokeColor = isMain ? new paper.Color(1, 1, 1, 0.08) : new paper.Color(1, 1, 1, 0.03);
-      line.strokeWidth = (isMain ? 1.2 : 1.0) / zoom;
-      this.gridGroup.addChild(line);
-    }
-
-    // Líneas Horizontales (Eje Y)
-    for (let y = startY; y <= endY; y += subStep) {
-      const roundedY = Math.round(y);
-      const isMain = Math.abs(roundedY) % mainStep === 0;
-
-      const line = new paper.Path.Line(new paper.Point(bounds.left, y), new paper.Point(bounds.right, y));
-      line.strokeColor = isMain ? new paper.Color(1, 1, 1, 0.08) : new paper.Color(1, 1, 1, 0.03);
-      line.strokeWidth = (isMain ? 1.2 : 1.0) / zoom;
-      this.gridGroup.addChild(line);
-    }
-
-    // Ejes Principales X e Y (Origen 0,0)
-    const axisX = new paper.Path.Line(new paper.Point(bounds.left, 0), new paper.Point(bounds.right, 0));
-    axisX.strokeColor = new paper.Color(0.71, 0.85, 1, 0.2);
-    axisX.strokeWidth = 1.5 / zoom;
-    this.gridGroup.addChild(axisX);
-
-    const axisY = new paper.Path.Line(new paper.Point(0, bounds.top), new paper.Point(0, bounds.bottom));
-    axisY.strokeColor = new paper.Color(0.71, 0.85, 1, 0.2);
-    axisY.strokeWidth = 1.5 / zoom;
-    this.gridGroup.addChild(axisY);
   }
 
   setupPaperTool() {
@@ -891,514 +546,16 @@ export class CADUtils {
     }
   }
 
-  handleGlobalKeyup(e) {
-    // Al soltar Shift, re-evaluamos inmediatamente la posición actual del cursor
-    if ((e.key === 'Shift' || e.keyCode === 16) && this.lastMousePoint && this.toolManager.activeTool) {
-      const mockEvent = {
-        point: this.lastMousePoint.clone(),
-        event: { shiftKey: true }
-      };
-      this.toolManager.activeTool.onMouseMove(mockEvent);
-    }
-  }
-
   handleGlobalKeydown(e) {
-
-    const activeTag = document.activeElement ? document.activeElement.tagName : '';
-    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(activeTag)) {
-      if (e.key === 'Escape') {
-        document.activeElement.blur();
-      }
-      return; // Detiene la ejecución de borrado de entidades o atajos de herramientas
-    }
-
-    // Delegar teclas a la herramienta activa (Enter / Space)
-    if (this.toolManager.activeTool && typeof this.toolManager.activeTool.onKeyDown === 'function') {
-      const handled = this.toolManager.activeTool.onKeyDown(e);
-      if (handled) return;
-    }
-    
-    if (e.key === 'Shift' && this.lastMousePoint && this.activePath && this.toolManager.activeTool) {
-      const mockEvent = {
-        point: this.lastMousePoint.clone(),
-        event: e
-      };
-      this.toolManager.activeTool.onMouseMove(mockEvent);
-    }
-
-    if (document.activeElement === document.getElementById('cmdInput')) {
-      if (e.key === 'Escape') document.getElementById('cmdInput').blur();
-      return;
-    }
-
-    // Delegar teclas a la herramienta activa (Enter / Space)
-    if (this.toolManager.activeTool && typeof this.toolManager.activeTool.onKeyDown === 'function') {
-      const handled = this.toolManager.activeTool.onKeyDown(e);
-      if (handled) return;
-    }
-
-    const isCtrlOrCmd = e.ctrlKey || e.metaKey;
-
-    if (isCtrlOrCmd && e.key.toLowerCase() === 'z' && !e.shiftKey) {
-      e.preventDefault();
-      this.finishCurrentDrawing();
-      this.service.undo();
-      this.updateEntitiesStroke();
-      this.renderBezierHandles();
-      return;
-    }
-
-    if ((isCtrlOrCmd && e.key.toLowerCase() === 'y') || (isCtrlOrCmd && e.shiftKey && e.key.toLowerCase() === 'z')) {
-      e.preventDefault();
-      this.finishCurrentDrawing();
-      this.service.redo();
-      this.updateEntitiesStroke();
-      this.renderBezierHandles();
-      return;
-    }
-
-    if (e.key === 'F3') {
-      e.preventDefault();
-      this.toggleSnapMaster();
-    } else if (e.key === 'F7') {
-      e.preventDefault();
-      this.toggleGrid();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-
-      // 1. CERRAR MENÚS DESPLEGABLES DEL DOM EN INTERFAZ
-      this.closeAllMenus();
-
-      this.selectedHandle = null;
-
-      if (this.activePath) {
-        this.activePath.remove();
-        this.activePath = null;
-        this.finishCurrentDrawing();
-        this.setTool('select');
-      } else if (this.currentToolMode === 'trim') {
-        this.service.trimCuttingBoundaries = [];
-        this.service.isTrimCuttingPhase = false;
-        this.service.deselectAllEditingEntities();
-        this.setTool('select');
-      } else {
-        // LÓGICA DE DOS NIVELES DE ESCAPE:
-        if (this.service.selectedEntities.length > 0 || this.service.selectedSegments.length > 0) {
-          // 1.er ESCAPE: Deselecciona la entidad pero MANTIENE el Modo Edición de Nodos (nodos visibles en reposo)
-          this.service.deselectAllEntities();
-        } else if (this.service.editingEntities.length > 0) {
-          // 2.º ESCAPE: Sale totalmente del Modo Edición de Nodos (oculta manejadores/vértices)
-          this.service.deselectAllEditingEntities();
-        }
-        this.setTool('select');
-      }
-    } else if (e.key === 'Delete' || e.key === 'Backspace') {
-      this.deleteSelectedHandleOrSegment();
-    } else if (e.key === 'Enter' || e.key === ' ') {
-      if (this.currentToolMode === 'trim') {
-        const activeTool = this.toolManager.activeTool;
-        if (activeTool && typeof activeTool.confirmTrimBoundaries === 'function') {
-          activeTool.confirmTrimBoundaries();
-          return;
-        }
-      }
-      this.finishCurrentDrawing();
-    } else if (e.key.toLowerCase() === 'l') {
-      this.setTool('line');
-    } else if (e.key.toLowerCase() === 'p') {
-      this.setTool('polyline');
-    } else if (e.key.toLowerCase() === 's') {
-      this.setTool('spline');
-    } else if (e.key.toLowerCase() === 'b') {
-      this.setTool('bezier');
-    } else if (e.key.toLowerCase() === 't') {
-      this.setTool('trim');
-    } else if (e.key.toLowerCase() === 'e' && !e.ctrlKey && !e.metaKey) {
-      this.setTool('extend');
-    }
+    return this.inputDispatcher.handleGlobalKeydown(e);
   }
 
-  handleMagicMouseWheel(e) {
-    e.preventDefault();
-
-    const view = paper.view;
-    const mousePosition = view.viewToProject(new paper.Point(e.clientX, e.clientY));
-    this.updateHUD(mousePosition);
-
-    const isZoomIntent = e.altKey || e.ctrlKey || e.metaKey || e.pinching;
-
-    if (isZoomIntent) {
-      const delta = e.deltaY;
-      const zoomFactor = Math.pow(0.997, delta);
-      const oldZoom = view.zoom;
-      const newZoom = Math.max(0.05, Math.min(oldZoom * zoomFactor, 80));
-
-      view.zoom = newZoom;
-
-      const newMousePosition = view.viewToProject(new paper.Point(e.clientX, e.clientY));
-      view.center = view.center.add(mousePosition.subtract(newMousePosition));
-    } else {
-      const panSensitivity = 1 / view.zoom;
-      const deltaX = e.deltaX * panSensitivity;
-      const deltaY = e.deltaY * panSensitivity;
-
-      view.center = view.center.add(new paper.Point(deltaX, deltaY));
-    }
-
-    this.drawGrid();
-    this.updatePointEntitiesScale();
-    this.updateEntitiesStroke();
-    this.renderBezierHandles();
-    if (this.hud && typeof this.hud.refreshSnapMarkerScale === 'function') {
-      this.hud.refreshSnapMarkerScale();
-    }
-    if (this.activePath && this.rubberBandLine) {
-      const activeWidth = this.propertyManager ? this.propertyManager.getResolvedStrokeWidth(this.activePath) : 0;
-      this.rubberBandLine.strokeWidth = activeWidth === 0 ? (1 / view.zoom) : activeWidth;
-      this.rubberBandLine.dashArray = [2 / view.zoom, 2 / view.zoom];
-    }
-    this.updateHUD(view.viewToProject(new paper.Point(e.clientX, e.clientY)));
-
+  handleGlobalKeyup(e) {
+    return this.inputDispatcher.handleGlobalKeyup(e);
   }
 
   renderBezierHandles() {
-    if (this.controlHandlesGroup) this.controlHandlesGroup.remove();
-    this.controlHandlesGroup = new paper.Group();
-
-    // 1. Purga de edición para elementos huérfanos o eliminados
-    if (this.service.editingEntities && this.service.editingEntities.length > 0) {
-      this.service.editingEntities = this.service.editingEntities.filter(
-        ent => ent && ent.parent && this.service.demoEntities.includes(ent)
-      );
-
-      if (this.service.editingEntities.length === 0) {
-        if (typeof this.service.deselectAllSegments === 'function') {
-          this.service.deselectAllSegments();
-        } else {
-          this.service.selectedSegments = [];
-        }
-        if (typeof this.service.deselectAllCurves === 'function') {
-          this.service.deselectAllCurves();
-        } else if (Array.isArray(this.service.selectedCurves)) {
-          this.service.selectedCurves = [];
-        }
-        if (typeof this.service.deselectAllHandles === 'function') {
-          this.service.deselectAllHandles();
-        } else {
-          this.service.selectedHandles = [];
-        }
-      }
-    }
-
-    const zoom = paper.view.zoom;
-    const cfg = CAD_THEME?.handles || {};
-
-    // Excluir entidades pertenecientes a capas bloqueadas
-    const activeEntities = (this.service.editingEntities || []).filter(ent => {
-      if (!ent || !ent.parent) return false;
-      const lId = String(ent.data?.layerId || '0');
-      const layer = this.layerManager?.layers?.get(lId);
-      return !layer || !layer.locked;
-    });
-
-    // 2. Renderizado de Nodos Bézier y Vértices
-    activeEntities.forEach(entity => {
-      if (!entity.visible) return;
-
-      if (entity instanceof paper.Path && entity.segments && entity.segments.length >= 2 && !entity.data?.isPointEntity) {
-        
-        const entityColor = entity.strokeColor 
-          ? (entity.strokeColor.toCSS ? entity.strokeColor.toCSS() : entity.strokeColor)
-          : (entity.data?.origStrokeColor || '#ffff00');
-
-        if (entity.curves) {
-          const selectedChains = [];
-          let currentChain = [];
-
-          entity.curves.forEach((curve) => {
-            const isCurveSelected = this.service.selectedSegments.includes(curve.segment1) && 
-                                    this.service.selectedSegments.includes(curve.segment2);
-
-            if (isCurveSelected) {
-              if (currentChain.length === 0) {
-                currentChain.push(curve.segment1, curve.segment2);
-              } else {
-                if (currentChain[currentChain.length - 1] === curve.segment1) {
-                  currentChain.push(curve.segment2);
-                } else {
-                  selectedChains.push(currentChain);
-                  currentChain = [curve.segment1, curve.segment2];
-                }
-              }
-            } else {
-              if (currentChain.length > 0) {
-                selectedChains.push(currentChain);
-                currentChain = [];
-              }
-            }
-          });
-
-          if (currentChain.length > 0) {
-            selectedChains.push(currentChain);
-          }
-
-          if (entity.closed && selectedChains.length > 1) {
-            const firstChain = selectedChains[0];
-            const lastChain = selectedChains[selectedChains.length - 1];
-            if (lastChain[lastChain.length - 1] === firstChain[0]) {
-              selectedChains[0] = lastChain.concat(firstChain.slice(1));
-              selectedChains.pop();
-            }
-          }
-
-          selectedChains.forEach(chainSegments => {
-            const strokeColor = cfg.anchorStrokeSelected || '#ffff00';
-            const baseW = entity.data?.baseStrokeWidth || 1.5;
-            const mult = 1.8;
-
-            let isClosedLoop = false;
-            let segmentsToRender = chainSegments;
-
-            if (chainSegments.length > 2 && chainSegments[0] === chainSegments[chainSegments.length - 1]) {
-              isClosedLoop = true;
-              segmentsToRender = chainSegments.slice(0, chainSegments.length - 1);
-            }
-
-            const highlightedPath = new paper.Path({
-              segments: segmentsToRender.map(s => new paper.Segment(s.point, s.handleIn, s.handleOut)),
-              strokeColor: strokeColor,
-              strokeWidth: (baseW * mult) / (entity.data?.isDynamicStroke !== false ? zoom : 1),
-              strokeJoin: entity.strokeJoin || 'miter',
-              strokeCap: entity.strokeCap || 'butt',
-              miterLimit: entity.miterLimit || 3,
-              closed: isClosedLoop,
-              insert: false
-            });
-
-            highlightedPath.guide = true;
-            this.controlHandlesGroup.addChild(highlightedPath);
-          });
-
-          if (this.hoveredCurve && this.hoveredCurve.path === entity) {
-            const c = this.hoveredCurve;
-            const isHoveredSelected = this.service.selectedSegments.includes(c.segment1) && 
-                                      this.service.selectedSegments.includes(c.segment2);
-
-            if (!isHoveredSelected) {
-              const baseW = entity.data?.baseStrokeWidth || 1.5;
-              const mult = 1.4;
-
-              const hoveredCurvePath = new paper.Path({
-                segments: [
-                  new paper.Segment(c.segment1.point, c.segment1.handleIn, c.segment1.handleOut),
-                  new paper.Segment(c.segment2.point, c.segment2.handleIn, c.segment2.handleOut)
-                ],
-                strokeColor: entityColor,
-                strokeWidth: (baseW * mult) / (entity.data?.isDynamicStroke !== false ? zoom : 1),
-                strokeJoin: entity.strokeJoin || 'miter',
-                strokeCap: entity.strokeCap || 'butt',
-                miterLimit: entity.miterLimit || 3,
-                insert: false
-              });
-
-              hoveredCurvePath.guide = true;
-              this.controlHandlesGroup.addChild(hoveredCurvePath);
-            }
-          }
-        }
-        
-        entity.segments.forEach(segment => {
-          const isEntitySelected = this.service.selectedEntities.includes(entity);
-          const isSegSelected = !isEntitySelected && this.service.selectedSegments.includes(segment);
-
-          ['handleIn', 'handleOut'].forEach(handleType => {
-            if (!segment[handleType].isZero()) {
-              const handlePt = segment.point.add(segment[handleType]);
-
-              const isHandleSelected = !isEntitySelected && this.service.isSelectedHandle(segment, handleType);
-              const isArmActive = isSegSelected && isHandleSelected;
-              const canHover = !isEntitySelected;
-
-              const isHandleHovered = canHover && !isHandleSelected && 
-                                      !!(this.hoveredHandle && 
-                                        this.hoveredHandle.segment === segment && 
-                                        this.hoveredHandle.type === handleType);
-
-              const isArmHovered = canHover && !isArmActive && 
-                                   !!(this.hoveredHandle && 
-                                     this.hoveredHandle.segment === segment && 
-                                     this.hoveredHandle.type === 'arm' && 
-                                     this.hoveredHandle.handleType === handleType);
-
-              const armColor = isArmActive 
-                ? (cfg.bezierArmStrokeSelected || '#ffff00') 
-                : entityColor;
-
-              let armWidth = cfg.bezierArmStrokeWidthPx || 1.0;
-              if (isArmActive) {
-                armWidth = cfg.anchorStrokeWidthSelectedPx || 1.5;
-              } else if (isArmHovered) {
-                armWidth = cfg.bezierArmStrokeWidthHoverPx || 1.8;
-              }
-
-              const arm = new paper.Path.Line({
-                from: segment.point,
-                to: handlePt,
-                strokeColor: armColor,
-                strokeWidth: armWidth / zoom
-              });
-              arm.data = { type: 'arm', handleType: handleType, segment: segment };
-
-              const handleStrokeColor = isHandleSelected 
-                ? (cfg.bezierHandleStrokeSelected || '#ffff00') 
-                : entityColor;
-
-              let handleStrokeWidth = cfg.bezierHandleStrokeWidthPx || 1.0;
-              if (isHandleSelected) {
-                handleStrokeWidth = cfg.anchorStrokeWidthSelectedPx || 1.5;
-              } else if (isHandleHovered) {
-                handleStrokeWidth = cfg.bezierHandleStrokeWidthHoverPx || 1.8;
-              }
-
-              const sizePx = isHandleSelected 
-                ? (cfg.bezierHandleSizePx + 1.0) 
-                : (isHandleHovered ? cfg.bezierHandleSizePx + 0.5 : cfg.bezierHandleSizePx);
-
-              const handleSquare = new paper.Path.Rectangle({
-                point: [handlePt.x - sizePx / (2 * zoom), handlePt.y - sizePx / (2 * zoom)],
-                size: [sizePx / zoom, sizePx / zoom],
-                fillColor: cfg.bezierHandleFill || '#10141D',
-                strokeColor: handleStrokeColor,
-                strokeWidth: handleStrokeWidth / zoom
-              });
-              handleSquare.data = { type: handleType, segment: segment };
-
-              this.controlHandlesGroup.addChild(arm);
-              this.controlHandlesGroup.addChild(handleSquare);
-            }
-          });
-
-          const isAnchorHovered = !isEntitySelected && !isSegSelected && 
-                                  !!(this.hoveredHandle && 
-                                    this.hoveredHandle.segment === segment && 
-                                    this.hoveredHandle.type === 'anchor');
-
-          const baseSide = isSegSelected 
-            ? (cfg.anchorSizeSelectedPx || 7.5) 
-            : (isAnchorHovered ? (cfg.anchorSizeNormalPx || 7.0) + 0.5 : (cfg.anchorSizeNormalPx || 7.0));
-
-          // Si está seleccionado, aplica estrictamente el grosor de selección sin sumar hover
-          let strokeW = isSegSelected 
-            ? (cfg.anchorStrokeWidthSelectedPx || 1.5) 
-            : (isAnchorHovered ? (cfg.anchorStrokeWidthHoverPx || 1.8) : (cfg.anchorStrokeWidthNormalPx || 1.0));
-
-          const anchorSquare = new paper.Path.Rectangle({
-            point: [segment.point.x - (baseSide / zoom) / 2, segment.point.y - (baseSide / zoom) / 2],
-            size: [baseSide / zoom, baseSide / zoom],
-            fillColor: isSegSelected ? (cfg.anchorFillSelected || '#10141D') : (cfg.anchorFillNormal || '#10141D'),
-            strokeColor: isSegSelected ? (cfg.anchorStrokeSelected || '#ffff00') : entityColor,
-            strokeWidth: strokeW / zoom
-          });
-          anchorSquare.data = { type: 'anchor', segment: segment };
-          this.controlHandlesGroup.addChild(anchorSquare);
-        });
-      }
-    });
-
-    // 3. Renderizado de Contornos y Grips Paramétricos
-    const selectableEntities = (this.service.selectedEntities || []).filter(ent => {
-      const lId = String(ent.data?.layerId || '0');
-      const layer = this.layerManager?.layers?.get(lId);
-      return !layer || !layer.locked;
-    });
-
-    selectableEntities.forEach(entity => {
-      if (!entity.visible) return;
-
-      if (entity.data && entity.data.controller) {
-        const controller = entity.data.controller;
-        const { grips, outlineSegments } = controller.getGrips();
-
-        const rawColor = this.propertyManager 
-          ? this.propertyManager.getResolvedColor(entity)
-          : '#00e5ff';
-
-        const entityColor = new paper.Color(rawColor);
-        entityColor.alpha = 1.0;
-
-        if (outlineSegments && outlineSegments.length > 1) {
-          const boundingOutline = new paper.Path({
-            segments: outlineSegments,
-            closed: true,
-            strokeColor: entityColor,
-            strokeWidth: 1 / zoom,
-            insert: false
-          });
-          boundingOutline.guide = true;
-          this.controlHandlesGroup.addChild(boundingOutline);
-        }
-
-        grips.forEach(grip => {
-          const isCenter = grip.id === 'center';
-          const isHovered = this.hoveredParametricGrip && 
-                            this.hoveredParametricGrip.entity === entity && 
-                            this.hoveredParametricGrip.gripId === grip.id;
-          
-          const isActiveGrip = this.activeParametricGrip && 
-                              this.activeParametricGrip.entity === entity && 
-                              this.activeParametricGrip.gripId === grip.id;
-
-          const normalSide = isCenter ? 8.0 : (cfg.anchorSizeNormalPx || 7.0);
-          const selectedSide = isCenter ? 9.0 : (cfg.anchorSizeSelectedPx || 7.5);
-
-          let sizePx = normalSide;
-          let strokeW = cfg.anchorStrokeWidthNormalPx || 1.0;
-          let strokeColor = entityColor;
-          let fillColor = cfg.anchorFillNormal || '#10141D';
-
-          if (isActiveGrip) {
-            sizePx = selectedSide;
-            strokeW = cfg.anchorStrokeWidthSelectedPx || 1.5;
-          } else if (isHovered) {
-            sizePx = normalSide;
-            strokeW = cfg.anchorStrokeWidthHoverPx || 1.8;
-          }
-
-          const size = sizePx / zoom;
-
-          let gripMarker;
-          if (isCenter) {
-            gripMarker = new paper.CompoundPath({
-              children: [
-                new paper.Path.Circle({ center: grip.point, radius: size / 1.5 }),
-                new paper.Path.Line(grip.point.subtract([size, 0]), grip.point.add([size, 0])),
-                new paper.Path.Line(grip.point.subtract([0, size]), grip.point.add([0, size]))
-              ],
-              strokeColor: strokeColor,
-              strokeWidth: strokeW / zoom,
-              fillColor: null
-            });
-          } else {
-            gripMarker = new paper.Path.Rectangle({
-              point: [grip.point.x - size / 2, grip.point.y - size / 2],
-              size: [size, size],
-              fillColor: fillColor,
-              strokeColor: strokeColor,
-              strokeWidth: strokeW / zoom
-            });
-          }
-
-          gripMarker.data = { 
-            isParametricGrip: true, 
-            gripId: grip.id, 
-            entity: entity,
-            cursor: grip.cursor
-          };
-
-          this.controlHandlesGroup.addChild(gripMarker);
-        });
-      }
-    });
+    return this.selectionRenderEngine.renderBezierHandles();
   }
   
   // Delegación directa a HUDManager
@@ -1567,13 +724,6 @@ export class CADUtils {
     if (chip) chip.classList.toggle('active', isActive);
   }
 
-  toggleGrid() {
-    this.isGridVisible = !this.isGridVisible;
-    const btnGrid = document.getElementById('btnGrid');
-    if (btnGrid) btnGrid.classList.toggle('active', this.isGridVisible);
-    this.drawGrid();
-  }
-
   closeAllMenus() {
     // Ajusta las clases CSS al nombre exacto que use tu barra de herramientas HTML
     document.querySelectorAll('.dropdown-menu, .toolbar-dropdown, .submenu, .menu-open').forEach(el => {
@@ -1581,85 +731,6 @@ export class CADUtils {
     });
   }
   
-  resetView() {
-    if (this.zoomAnimationRequestId) {
-      cancelAnimationFrame(this.zoomAnimationRequestId);
-      this.zoomAnimationRequestId = null;
-    }
-
-    let targetCenter = new paper.Point(0, 0);
-    let targetZoom = 1;
-
-    const validEntities = this.service.demoEntities.filter(
-      ent => ent && ent.bounds && ent.bounds.width > 0 && ent.bounds.height > 0
-    );
-
-    if (validEntities.length > 0) {
-      let combinedBounds = validEntities[0].strokeBounds 
-        ? validEntities[0].strokeBounds.clone() 
-        : validEntities[0].bounds.clone();
-
-      for (let i = 1; i < validEntities.length; i++) {
-        const b = validEntities[i].strokeBounds || validEntities[i].bounds;
-        combinedBounds = combinedBounds.unite(b);
-      }
-
-      if (combinedBounds && combinedBounds.width > 0 && combinedBounds.height > 0) {
-        const viewSizePx = paper.view.element.getBoundingClientRect();
-
-        // 1. Medir la altura real ocupada por el panel inferior de la UI
-        const bottomBarEl = document.querySelector('#app-ui-container > div');
-        const bottomInset = bottomBarEl ? bottomBarEl.getBoundingClientRect().height : 90;
-        const topInset = 20;
-        const horizontalPadding = 80;
-
-        // 2. Calcular las dimensiones del área útil visible
-        const visibleWidth = Math.max(viewSizePx.width - horizontalPadding, 100);
-        const visibleHeight = Math.max(viewSizePx.height - bottomInset - topInset, 100);
-
-        // 3. Zoom ajustado al área útil (con un margen del 85%)
-        const zoomX = (visibleWidth * 0.85) / combinedBounds.width;
-        const zoomY = (visibleHeight * 0.85) / combinedBounds.height;
-        targetZoom = Math.max(0.05, Math.min(Math.min(zoomX, zoomY), 50));
-
-        // 4. Compensar el centro visual desplazándolo según la barra inferior
-        const offsetYPx = (bottomInset - topInset) / 2;
-        targetCenter = combinedBounds.center.add(new paper.Point(0, offsetYPx / targetZoom));
-      }
-    }
-
-    const startCenter = paper.view.center.clone();
-    const startZoom = paper.view.zoom;
-    const startTime = performance.now();
-    const duration = 400;
-
-    const animateZoom = (time) => {
-      const elapsed = time - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      const easeOut = 1 - Math.pow(1 - progress, 3);
-
-      const currentCenterX = startCenter.x + (targetCenter.x - startCenter.x) * easeOut;
-      const currentCenterY = startCenter.y + (targetCenter.y - startCenter.y) * easeOut;
-      paper.view.center = new paper.Point(currentCenterX, currentCenterY);
-
-      paper.view.zoom = startZoom + (targetZoom - startZoom) * easeOut;
-
-      this.drawGrid();
-      this.updatePointEntitiesScale();
-      this.updateEntitiesStroke();
-      this.renderBezierHandles();
-      this.updateHUD(paper.view.center);
-
-      if (progress < 1) {
-        this.zoomAnimationRequestId = requestAnimationFrame(animateZoom);
-      } else {
-        this.zoomAnimationRequestId = null;
-      }
-    };
-
-    this.zoomAnimationRequestId = requestAnimationFrame(animateZoom);
-  }
-
   clearCanvas() {
     this.service.clearCanvas(() => this.renderBezierHandles());
     if (this.activePath) { this.activePath.remove(); this.activePath = null; }
@@ -1667,56 +738,16 @@ export class CADUtils {
     if (this.hud) this.hud.clear();
   }
 
-  setupDragAndDrop() {
-    if (!this.canvasElement) return;
+  importImageToCanvas(imageSrc, dropPosition = null) {
+    return this.ioService.importImageToCanvas(imageSrc, dropPosition);
+  }
 
-    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-      this.canvasElement.addEventListener(eventName, (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-      }, false);
-    });
+  importSVGToCanvas(svgString, dropPosition) {
+    return this.ioService.importSVGToCanvas(svgString, dropPosition);
+  }
 
-    ['dragenter', 'dragover'].forEach(eventName => {
-      this.canvasElement.addEventListener(eventName, () => {
-        this.canvasElement.classList.add('drag-over');
-      }, false);
-    });
-
-    ['dragleave', 'drop'].forEach(eventName => {
-      this.canvasElement.addEventListener(eventName, () => {
-        this.canvasElement.classList.remove('drag-over');
-      }, false);
-    });
-
-    this.canvasElement.addEventListener('drop', (e) => {
-      const dt = e.dataTransfer;
-      const files = dt.files;
-
-      if (files && files.length > 0) {
-        const file = files[0];
-        const viewPoint = paper.view.getEventPoint(e);
-
-        // 1. CASO SVG: Detecta si es vectorial y lo lee como texto XML puro
-        if (file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg')) {
-          const reader = new FileReader();
-          reader.onload = (event) => {
-            const svgString = event.target.result;
-            this.importSVGToCanvas(svgString, viewPoint);
-          };
-          reader.readAsText(file);
-        } 
-        // 2. CASO IMAGEN RÁSTER: Mantiene tu importImageToCanvas intacto
-        else if (file.type.startsWith('image/')) {
-          const reader = new FileReader();
-          reader.onload = (event) => {
-            const imageSrc = event.target.result;
-            this.importImageToCanvas(imageSrc, viewPoint);
-          };
-          reader.readAsDataURL(file);
-        }
-      }
-    });
+  setupDragAndDrop(canvasElement) {
+    return this.ioService.setupDragAndDrop(canvasElement || this.canvasElement);
   }
 
   applyOrthoConstraint(fromPt, toPt, isShiftPressed) {
@@ -1772,5 +803,25 @@ export class CADUtils {
     });
 
     return `${basePrefix} ${maxNum + 1}`;
+  }
+
+  handleCanvasResize() {
+    this.viewportManager.handleCanvasResize();
+  }
+
+  drawGrid() {
+    this.viewportManager.drawGrid();
+  }
+
+  handleMagicMouseWheel(e) {
+    this.viewportManager.handleMagicMouseWheel(e);
+  }
+
+  toggleGrid() {
+    this.viewportManager.toggleGrid();
+  }
+
+  resetView() {
+    this.viewportManager.resetView();
   }
 }

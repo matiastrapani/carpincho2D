@@ -1,7 +1,7 @@
 /**
  * tools/submodules/HandleSelectionHandler.js
  */
-import { MoveCommand } from '../services/commands/cadCommands.js';
+import { MoveCommand } from '../../services/commands/cadCommands.js';
 
 export class HandleSelectionHandler {
   constructor(cadService, cadUtils) {
@@ -28,7 +28,17 @@ export class HandleSelectionHandler {
       stroke: true,
       segments: true,
       tolerance: 8 / zoom,
-      match: (res) => res.item && res.item.data && res.item.data.segment
+      match: (res) => {
+        if (!res.item || !res.item.data || !res.item.data.segment) return false;
+
+        // Ignorar tiradores si la entidad completa ya está seleccionada como objeto
+        const parentPath = res.item.data.segment.path;
+        if (parentPath && this.service.selectedEntities.includes(parentPath)) {
+          return false;
+        }
+
+        return true;
+      }
     });
   }
 
@@ -163,15 +173,23 @@ export class HandleSelectionHandler {
 
     let finalPoint = rawTargetPoint;
     if (!isShift) {
+      const activePaths = Array.from(new Set(
+        (this.selectedSegmentsStartData || []).map(item => item.path).filter(Boolean)
+      ));
+      const activeSegments = (this.selectedSegmentsStartData || []).map(item => item.segment).filter(Boolean);
+
       const osnap = this.service.calculateOsnap(
         rawTargetPoint,
         (snapPt, type) => this.utils.renderSnapMarker(snapPt, type),
         null,
-        { path: activeSeg.path, segment: activeSeg }
+        { 
+          path: activeSeg.path, 
+          segment: activeSeg,
+          ignoreEntities: activePaths,
+          ignoreSegments: activeSegments
+        }
       );
       finalPoint = osnap.point;
-    } else {
-      this.utils.clearHUD();
     }
 
     const currentHandlePt = handleType === 'anchor'

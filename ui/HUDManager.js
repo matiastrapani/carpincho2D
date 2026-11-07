@@ -1,7 +1,7 @@
 /**
  * ui/HUDManager.js - Gestión de Overlays, Coordenadas y Marcadores Visuales (OSNAP/HUD)
  */
-class HUDManager {
+export class HUDManager {
   constructor(cadUtils) {
     this.utils = cadUtils;
     // Soporte para acceso directo por this.cadUtils o this.utils
@@ -254,4 +254,3 @@ class HUDManager {
   }
 }
 
-window.HUDManager = HUDManager;
