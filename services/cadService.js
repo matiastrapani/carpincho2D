@@ -4,9 +4,16 @@
 
 import { CommandHistory } from './commandHistory.js';
 import { DeleteCommand, TrimCommand, AddEntityCommand } from './commands/cadCommands.js';
+import { OsnapEngine } from './engines/OsnapEngine.js';
+import { GeometryEngine } from './engines/GeometryEngine.js';
+import { SelectionManager } from './SelectionManager.js';
 
 export class CADService {
   constructor() {
+    this.osnapEngine = new OsnapEngine(this);
+    this.geometryEngine = new GeometryEngine(this);
+    this.selectionManager = new SelectionManager(this);
+
     this.demoEntities = [];
     this.selectedEntities = [];
     this.selectedSegments = [];
@@ -33,6 +40,19 @@ export class CADService {
     this.trimCuttingBoundaries = [];
     this.isTrimCuttingPhase = false;
   }
+
+  get selectedEntities() { return this.selectionManager.selectedEntities; }
+  set selectedEntities(val) { this.selectionManager.selectedEntities = val; }
+
+  get selectedSegments() { return this.selectionManager.selectedSegments; }
+  set selectedSegments(val) { this.selectionManager.selectedSegments = val; }
+
+  get editingEntities() { return this.selectionManager.editingEntities; }
+  set editingEntities(val) { this.selectionManager.editingEntities = val; }
+
+  get selectedHandles() { return this.selectionManager.selectedHandles; }
+  set selectedHandles(val) { this.selectionManager.selectedHandles = val; }
+
 
   executeCommand(command) {
     this.history.execute(command);
@@ -66,626 +86,62 @@ export class CADService {
   }
 
   calculateOsnap(mousePoint, renderMarkerFn, activePath = null, ignoreContext = null) {
-
-    if (!this.isSnapMasterEnabled) {
-      if (renderMarkerFn) renderMarkerFn(null, null);
-      return { point: mousePoint, type: null };
-    }
-
-    const zoom = paper.view.zoom;
-    const snapRadius = 14 / zoom;
-    const EPSILON = 0.01;
-    let candidatePoints = [];
-
-    const draggedPath = ignoreContext?.path || (ignoreContext instanceof paper.Path ? ignoreContext : null);
-    const draggedSegment = ignoreContext?.segment || null;
-    const ignoreEntities = ignoreContext?.ignoreEntities || [];
-    const ignoreSegments = ignoreContext?.ignoreSegments || [];
-    const selectedPointsCoords = ignoreContext?.selectedPointsCoords || [];
-
-    const isSelfPoint = (pt) => {
-      if (!pt) return false;
-      return selectedPointsCoords.some(startPt => startPt.getDistance(pt) < EPSILON);
-    };
-
-    // Helper para filtrar strictly entidades válidas de dibujo
-    const isValidSnapEntity = (ent) => {
-      if (!ent) return false;
-      if (ent.visible === false) return false;
-      if (ent.clipMask || ent.data?.isClipMask) return false;
-      if (ent.data?.isGrid || ent.data?.isAuxiliary || ent.data?.isHandle) return false;
-      
-      if (ent.layer && ent.layer.name === 'hudLayer') return false;
-      if (this.gridGroup && (ent === this.gridGroup || ent.isChildOf(this.gridGroup))) return false;
-
-      // Las imágenes (paper.Raster) no tienen strokeColor ni fillColor
-      const isRaster = ent instanceof paper.Raster || ent.className === 'Raster' || ent.data?.isImageEntity;
-      if (!isRaster) {
-        const hasStroke = ent.strokeColor && ent.strokeColor.alpha > 0;
-        const hasFill = ent.fillColor && ent.fillColor.alpha > 0;
-        if (!hasStroke && !hasFill) return false;
-      }
-
-      return true;
-    };
-
-    // =========================================================================
-    // OPTIMIZACIÓN AABB: Caja de búsqueda rápida alrededor del ratón
-    // =========================================================================
-    const snapBox = new paper.Rectangle(
-      mousePoint.subtract(new paper.Point(snapRadius, snapRadius)),
-      new paper.Size(snapRadius * 2, snapRadius * 2)
-    );
-
-    // Separar objetivos de Snap por tipo
-    const circleTargets = this.demoEntities.filter(ent => {
-      if (!isValidSnapEntity(ent) || !ent.data?.isCircleEntity) return false;
-      if (draggedPath && ent === draggedPath) return false;
-      if (ignoreEntities.includes(ent)) return false;
-      return ent.bounds && ent.bounds.intersects(snapBox); // Filtro espacial
-    });
-
-    const snapTargets = this.demoEntities.filter(ent => {
-      if (!isValidSnapEntity(ent) || !(ent instanceof paper.Path) || ent.data?.isPointEntity || ent.data?.isCircleEntity) return false;
-      if (draggedPath && ent === draggedPath) return false;
-      if (ignoreEntities.includes(ent)) return false;
-      
-      // Guardián seguro de bounds + filtro espacial AABB
-      return ent.bounds && ent.bounds.intersects(snapBox);
-    });
-
-    const pointTargets = this.demoEntities.filter(ent => {
-      if (!isValidSnapEntity(ent) || !ent.data?.isPointEntity) return false;
-      if (draggedPath && ent === draggedPath) return false;
-      if (ignoreEntities.includes(ent)) return false;
-      return ent.bounds && ent.bounds.intersects(snapBox); // Filtro espacial
-    });
-
-    const rasterTargets = this.demoEntities.filter(ent => {
-      if (!isValidSnapEntity(ent) || !(ent instanceof paper.Raster || ent.className === 'Raster')) return false;
-      if (ignoreEntities.includes(ent)) return false;
-      return ent.bounds && ent.bounds.intersects(snapBox); // Filtro espacial
-    });
-
-    if (activePath && activePath instanceof paper.Path && activePath.segments && activePath.segments.length > 0 && !activePath.data?.isCircleEntity) {
-      if (!activePath.clipMask && !snapTargets.includes(activePath)) {
-        snapTargets.push(activePath);
-      }
-    }
-
-    // 1. OSNAP PARA CÍRCULOS (Centro y Cuadrantes)
-    circleTargets.forEach(circle => {
-      const center = circle.position.clone();
-      const radius = circle.data?.radius || (circle.bounds.width / 2);
-
-      if (circle.data) {
-        circle.data.centerPt = center.clone();
-      }
-
-      const distToCenter = center.getDistance(mousePoint);
-
-      if (this.snapFilters.quadrant) {
-        const quadrants = [
-          center.add(new paper.Point(radius, 0)),
-          center.add(new paper.Point(0, -radius)),
-          center.add(new paper.Point(-radius, 0)),
-          center.add(new paper.Point(0, radius))
-        ];
-
-        quadrants.forEach(qPt => {
-          if (isSelfPoint(qPt)) return;
-          const d = qPt.getDistance(mousePoint);
-          if (d <= snapRadius) {
-            candidatePoints.push({ point: qPt, type: 'quadrant', dist: d, priority: 0 });
-          }
-        });
-      }
-
-      if (this.snapFilters.center) {
-        if (isSelfPoint(center)) return;
-        const distToEdge = Math.abs(distToCenter - radius);
-
-        if (distToCenter <= snapRadius) {
-          candidatePoints.push({ point: center.clone(), type: 'center', dist: distToCenter, priority: 0 });
-        } else if (distToEdge <= snapRadius) {
-          candidatePoints.push({ point: center.clone(), type: 'center', dist: distToEdge + (5 / zoom), priority: 1 });
-        }
-      }
-    });
-
-    // 2. OSNAP PARA IMÁGENES (Centro, Esquinas y Puntos Medios)
-    rasterTargets.forEach(raster => {
-      const contour = this.getRasterContourPath(raster);
-      if (!contour) return;
-
-      if (this.snapFilters.center) {
-        const centerPt = raster.position;
-        if (!isSelfPoint(centerPt)) {
-          const d = centerPt.getDistance(mousePoint);
-          if (d <= snapRadius) {
-            candidatePoints.push({ point: centerPt.clone(), type: 'center', dist: d, priority: 0 });
-          }
-        }
-      }
-
-      if (this.snapFilters.endpoint) {
-        contour.segments.forEach(seg => {
-          if (isSelfPoint(seg.point)) return;
-          const d = seg.point.getDistance(mousePoint);
-          if (d <= snapRadius) {
-            candidatePoints.push({ point: seg.point.clone(), type: 'endpoint', dist: d, priority: 1 });
-          }
-        });
-      }
-
-      if (this.snapFilters.midpoint) {
-        contour.curves.forEach(curve => {
-          if (curve && curve.length > 0) {
-            const mid = curve.getPointAt(curve.length * 0.5);
-            if (mid && !isSelfPoint(mid)) {
-              const d = mid.getDistance(mousePoint);
-              if (d <= snapRadius) {
-                candidatePoints.push({ point: mid, type: 'midpoint', dist: d, priority: 2 });
-              }
-            }
-          }
-        });
-      }
-
-      contour.remove();
-    });
-
-    // 3. OSNAP PARA NODOS / PUNTOS
-    if (this.snapFilters.node) {
-      pointTargets.forEach(ent => {
-        const pt = ent.position;
-        if (isSelfPoint(pt)) return;
-
-        const d = pt.getDistance(mousePoint);
-        if (d <= snapRadius) {
-          candidatePoints.push({ point: new paper.Point(pt.x, pt.y), type: 'node', dist: d, priority: 0 });
-        }
-      });
-    }
-
-    // 4. OSNAP PARA ENDPOINTS DE LÍNEAS / POLILÍNEAS
-    if (this.snapFilters.endpoint) {
-      snapTargets.forEach(path => {
-        if (path && path.segments) {
-          path.segments.forEach((seg, idx) => {
-            if (path === activePath && idx === path.segments.length - 1) return;
-            if (path === draggedPath && seg === draggedSegment) return;
-            if (ignoreSegments.includes(seg)) return;
-            
-            if (isSelfPoint(seg.point)) return;
-
-            const d = seg.point.getDistance(mousePoint);
-            if (d <= snapRadius) {
-              candidatePoints.push({ point: seg.point.clone(), type: 'endpoint', dist: d, priority: 1 });
-            }
-          });
-        }
-      });
-    }
-
-    // 5. OSNAP PARA MIDPOINTS DE LÍNEAS / POLILÍNEAS
-    if (this.snapFilters.midpoint) {
-      snapTargets.forEach(path => {
-        if (path && path.curves) {
-          path.curves.forEach(curve => {
-            if (path === draggedPath && draggedSegment) {
-              if (curve.segment1 === draggedSegment || curve.segment2 === draggedSegment) return;
-            }
-            if (ignoreSegments.includes(curve.segment1) || ignoreSegments.includes(curve.segment2)) return;
-
-            if (curve && curve.length > 0) {
-              const mid = curve.getPointAt(curve.length * 0.5);
-              if (mid) {
-                if (isSelfPoint(mid)) return;
-
-                const d = mid.getDistance(mousePoint);
-                if (d <= snapRadius) {
-                  candidatePoints.push({ point: mid, type: 'midpoint', dist: d, priority: 2 });
-                }
-              }
-            }
-          });
-        }
-      });
-    }
-
-    // Cambio menor en el bloque 6 (Intersecciones):
-    if (this.snapFilters.intersection && snapTargets.length > 1) { // <-- Condición > 1 agregada
-      for (let i = 0; i < snapTargets.length; i++) {
-        for (let j = i + 1; j < snapTargets.length; j++) {
-          const pathA = snapTargets[i];
-          const pathB = snapTargets[j];
-
-          if (!pathA || !pathB || pathA === pathB) continue;
-          if (draggedPath && (pathA === draggedPath || pathB === draggedPath)) continue;
-
-          // Doble chequeo ultra-rápido de cajas delimitadoras
-          if (!pathA.bounds.intersects(pathB.bounds)) continue;
-
-          const crossings = pathA.getIntersections(pathB);
-          crossings.forEach(cross => {
-            if (cross && cross.point) {
-              if (isSelfPoint(cross.point)) return;
-
-              const d = cross.point.getDistance(mousePoint);
-              if (d <= snapRadius) {
-                candidatePoints.push({ point: cross.point.clone(), type: 'intersection', dist: d, priority: 0 });
-              }
-            }
-          });
-        }
-      }
-    }
-
-    // Ordenar y devolver el candidato más cercano / prioritario
-    if (candidatePoints.length > 0) {
-      candidatePoints.sort((a, b) => a.priority - b.priority || a.dist - b.dist);
-      const best = candidatePoints[0];
-      if (renderMarkerFn) renderMarkerFn(best.point, best.type);
-      return { point: best.point, type: best.type };
-    }
-
-    // 7. SNAP A GRILLA (Fallback)
-    if (this.snapFilters.grid === true) {
-      let subStep = zoom > 3 ? 4 : (zoom < 0.3 ? 100 : 20);
-      const gridSnappedX = Math.round(mousePoint.x / subStep) * subStep;
-      const gridSnappedY = Math.round(mousePoint.y / subStep) * subStep;
-      const gridPoint = new paper.Point(gridSnappedX, gridSnappedY);
-
-      if (gridPoint.getDistance(mousePoint) <= snapRadius * 0.8) {
-        if (renderMarkerFn) renderMarkerFn(gridPoint, 'grid');
-        return { point: gridPoint, type: 'grid' };
-      }
-    }
-
-    if (renderMarkerFn) renderMarkerFn(null, null);
-    return { point: mousePoint, type: null };
+    return this.osnapEngine.calculateOsnap(mousePoint, renderMarkerFn, activePath, ignoreContext);
   }
 
   //SELECTION SECTION
   selectEntity(entity, addToSelection = false) {
-    if (!entity) return;
-
-    // Guardián: Bloquear selección si la capa está marcada como locked
-    const layerId = String(entity.data?.layerId || '0');
-    const layerManager = this.utils?.layerManager || window.cadUtils?.layerManager;
-    const layer = layerManager?.layers?.get(layerId);
-    if (layer && layer.locked) return;
-
-    if (!addToSelection) {
-      this.deselectAllEntities();
-      this.editingEntities = []; // Restablece el grupo activo de edición
-    }
-
-    if (!this.selectedEntities.includes(entity)) {
-      if (!entity.data) entity.data = {};
-      
-      if (!entity.data.origStrokeColor && entity.strokeColor) {
-        entity.data.origStrokeColor = entity.strokeColor.toCSS ? entity.strokeColor.toCSS() : entity.strokeColor;
-      }
-      if (!entity.data.origFillColor && entity.fillColor) {
-        entity.data.origFillColor = entity.fillColor.toCSS ? entity.fillColor.toCSS() : entity.fillColor;
-      }
-      if (!entity.data.origStrokeWidth && entity.strokeWidth) {
-        entity.data.origStrokeWidth = entity.strokeWidth;
-      }
-
-      this.selectedEntities.push(entity);
-      
-      if (!this.editingEntities.includes(entity)) {
-        this.editingEntities.push(entity);
-      }
-
-      if (entity instanceof paper.Path && entity.segments && !entity.data?.isPointEntity) {
-        entity.segments.forEach(seg => {
-          if (!this.selectedSegments.includes(seg)) {
-            this.selectedSegments.push(seg);
-          }
-        });
-      }
-
-      entity.selected = false;
-    }
-
-    if (window.cadUtils) {
-      window.cadUtils.updateEntitiesStroke();
-      window.cadUtils.renderBezierHandles();
-    }
+    return this.selectionManager.selectEntity(entity, addToSelection);
   }
 
-
-
-
-
-  
   deselectAllEntities() {
-    this.selectedEntities = [];
-    this.selectedSegments = [];
-    this.deselectAllHandles();
-
-    if (window.cadUtils) {
-      window.cadUtils.updateEntitiesStroke();
-      window.cadUtils.renderBezierHandles();
-    }
-
-    if (window.cadUI && typeof window.cadUI.updatePropertyPanel === 'function') {
-      window.cadUI.updatePropertyPanel(null);
-    }
+    return this.selectionManager.deselectAllEntities();
   }
 
   selectHandle(segment, type, addToSelection = false) {
-    if (!segment || !segment.path || !type) return;
-
-    const layerId = String(segment.path.data?.layerId || '0');
-    const layerManager = this.utils?.layerManager || window.cadUtils?.layerManager;
-    const layer = layerManager?.layers?.get(layerId);
-    if (layer && layer.locked) return;
-
-    if (!addToSelection) {
-      this.deselectAllHandles();
-    }
-    const exists = this.selectedHandles.some(h => h.segment === segment && h.type === type);
-    if (!exists) {
-      this.selectedHandles.push({ segment, type });
-    }
-    if (window.cadUtils) {
-      window.cadUtils.renderBezierHandles();
-    }
+    return this.selectionManager.selectHandle(segment, type, addToSelection);
   }
 
   deselectHandle(segment, type) {
-    this.selectedHandles = this.selectedHandles.filter(h => !(h.segment === segment && h.type === type));
-    if (window.cadUtils) {
-      window.cadUtils.renderBezierHandles();
-    }
+    return this.selectionManager.deselectHandle(segment, type);
   }
 
   deselectAllHandles() {
-    this.selectedHandles = [];
+    return this.selectionManager.deselectAllHandles();
   }
-
+  
   isSelectedHandle(segment, type) {
-    return this.selectedHandles.some(h => h.segment === segment && h.type === type);
+    return this.selectionManager.isSelectedHandle(segment, type);
   }
-
+  
   deselectEntity(entity) {
-    const index = this.selectedEntities.indexOf(entity);
-    if (index !== -1) {
-      this.selectedEntities.splice(index, 1);
-    }
-    
-    // Remover también sus segmentos si estaban seleccionados
-    if (entity instanceof paper.Path && entity.segments) {
-      entity.segments.forEach(seg => this.deselectSegment(seg));
-    }
-
-    if (window.cadUtils) {
-      window.cadUtils.updateEntitiesStroke();
-      window.cadUtils.renderBezierHandles();
-    }
-
-    // Refrescar el panel con la entidad restante o limpiarlo si no queda ninguna
-    if (window.cadUI && typeof window.cadUI.updatePropertyPanel === 'function') {
-      const remaining = this.selectedEntities[this.selectedEntities.length - 1] || null;
-      window.cadUI.updatePropertyPanel(remaining);
-    }
+    return this.selectionManager.deselectEntity(entity);
   }
-
+  
   deselectAllEditingEntities() {
-    this.selectedEntities = [];
-    this.selectedSegments = [];
-    this.editingEntities = [];
-    this.deselectAllHandles();
-
-    if (window.cadUtils) {
-      window.cadUtils.updateEntitiesStroke();
-      window.cadUtils.renderBezierHandles();
-    }
+    return this.selectionManager.deselectAllEditingEntities();
   }
-
+  
   selectSegment(segment, addToSelection = false) {
-    if (!segment || !segment.path) return;
-
-    const layerId = String(segment.path.data?.layerId || '0');
-    const layerManager = this.utils?.layerManager || window.cadUtils?.layerManager;
-    const layer = layerManager?.layers?.get(layerId);
-    if (layer && layer.locked) return;
-    
-    if (!addToSelection) {
-      this.selectedSegments = [];
-    }
-    if (!this.selectedSegments.includes(segment)) {
-      this.selectedSegments.push(segment);
-    }
+    return this.selectionManager.selectSegment(segment, addToSelection);
   }
-
+  
   deselectSegment(segment) {
-    const index = this.selectedSegments.indexOf(segment);
-    if (index !== -1) {
-      this.selectedSegments.splice(index, 1);
-    }
-
-    if (window.cadUtils) {
-      window.cadUtils.renderBezierHandles();
-    }
+    return this.selectionManager.deselectSegment(segment);
   }
-
+  
   deselectAllSegments() {
-    this.selectedSegments = [];
+    return this.selectionManager.deselectAllSegments();
+  }
+  
+  deleteSelectedElements(renderBezierFn) {
+    return this.selectionManager.deleteSelectedElements(renderBezierFn);
   }
   //SELECTION SECTION
 
 
   performTrim(targetPath, clickPt, renderBezierFn) {
-    if (!this.trimCuttingBoundaries.length || !targetPath || this.trimCuttingBoundaries.includes(targetPath)) return;
-
-    // Guardián de capa bloqueada para recorte (Trim)
-    const layerId = String(targetPath.data?.layerId || '0');
-    const layerManager = this.layerManager || window.cadUtils?.layerManager;
-    const layer = layerManager?.layers?.get(layerId);
-    if (layer && layer.locked) return;
-
-    let intersections = [];
-    this.trimCuttingBoundaries.forEach(boundary => {
-      const crossings = targetPath.getIntersections(boundary);
-      crossings.forEach(c => {
-        if (c && c.offset !== undefined) {
-          intersections.push({ offset: c.offset, point: c.point });
-        }
-      });
-    });
-
-    if (intersections.length === 0) return;
-
-    intersections.sort((a, b) => a.offset - b.offset);
-
-    const EPSILON = 0.05;
-    const uniqueCutOffsets = [];
-    intersections.forEach(item => {
-      if (!uniqueCutOffsets.some(existing => Math.abs(existing - item.offset) < EPSILON)) {
-        uniqueCutOffsets.push(item.offset);
-      }
-    });
-
-    if (uniqueCutOffsets.length === 0) return;
-
-    const clickLoc = targetPath.getNearestLocation(clickPt);
-    if (!clickLoc) return;
-    const tolerance = 15 / paper.view.zoom;
-    if (clickLoc.point.getDistance(clickPt) > tolerance) return;
-
-    const origStrokeColor = targetPath.strokeColor || '#00e5ff';
-    const origStrokeWidth = targetPath.strokeWidth || 2;
-    const origIdx = this.demoEntities.indexOf(targetPath);
-
-    let currentPath = targetPath.clone();
-    
-    if (currentPath.closed) {
-      currentPath.splitAt(uniqueCutOffsets[0]);
-    }
-
-    let splitLocs = [];
-    this.trimCuttingBoundaries.forEach(boundary => {
-      const crossings = currentPath.getIntersections(boundary);
-      crossings.forEach(c => {
-        if (c && c.offset !== undefined && c.offset > 0.01 && c.offset < currentPath.length - 0.01) {
-          splitLocs.push(c.offset);
-        }
-      });
-    });
-
-    splitLocs.sort((a, b) => b - a);
-
-    let subPaths = [currentPath];
-    splitLocs.forEach(off => {
-      for (let i = 0; i < subPaths.length; i++) {
-        const p = subPaths[i];
-        const loc = p.getLocationAt(off);
-        if (loc) {
-          const remainder = p.splitAt(loc);
-          if (remainder) {
-            subPaths.push(remainder);
-          }
-          break;
-        }
-      }
-    });
-
-    let clickedPathIndex = -1;
-    let minDistance = Infinity;
-
-    subPaths.forEach((p, idx) => {
-      const nearest = p.getNearestLocation(clickPt);
-      if (nearest) {
-        const dist = nearest.point.getDistance(clickPt);
-        if (dist < minDistance) {
-          minDistance = dist;
-          clickedPathIndex = idx;
-        }
-      }
-    });
-
-    const remainingPaths = [];
-    subPaths.forEach((p, idx) => {
-      if (idx === clickedPathIndex) {
-        p.remove();
-      } else {
-        p.strokeColor = origStrokeColor;
-        p.strokeWidth = origStrokeWidth;
-        p.closed = false;
-        remainingPaths.push(p);
-      }
-    });
-
-    // Instanciar directamente el comando importado en lugar de usar window
-    const trimCmd = new TrimCommand(this, targetPath, remainingPaths, origIdx);
-    this.executeCommand(trimCmd);
-
-    if (renderBezierFn) renderBezierFn();
-  }
-
-  deleteSelectedElements(renderBezierFn) {
-    // A. Borrado de PUNTOS DE CONTROL (Vértices/Anclas seleccionados)
-    if (this.selectedSegments.length > 0) {
-      const pathSegmentMap = new Map();
-
-      this.selectedSegments.forEach(seg => {
-        if (seg && seg.path) {
-          if (!pathSegmentMap.has(seg.path)) {
-            pathSegmentMap.set(seg.path, []);
-          }
-          pathSegmentMap.get(seg.path).push(seg);
-        }
-      });
-
-      const pathsAffected = [];
-
-      pathSegmentMap.forEach((segs, path) => {
-        const originalSegmentsState = path.segments.map(s => ({
-          point: s.point.clone(),
-          handleIn: s.handleIn.clone(),
-          handleOut: s.handleOut.clone()
-        }));
-
-        const indicesToDelete = segs
-          .map(s => s.index)
-          .filter(idx => idx !== undefined && idx !== -1)
-          .sort((a, b) => b - a);
-
-        pathsAffected.push({
-          path: path,
-          indicesToDelete: indicesToDelete,
-          originalSegmentsState: originalSegmentsState
-        });
-      });
-
-      const deleteCmd = new DeleteCommand(this, {
-        type: 'segments',
-        pathsAffected: pathsAffected
-      });
-
-      this.executeCommand(deleteCmd);
-      if (renderBezierFn) renderBezierFn();
-      return;
-    }
-
-    // B. Borrado de ENTIDAD COMPLETA
-    if (this.selectedEntities.length > 0) {
-      const entitiesToDelete = [...this.selectedEntities];
-
-      const deleteCmd = new DeleteCommand(this, {
-        type: 'entities',
-        entities: entitiesToDelete
-      });
-
-      this.executeCommand(deleteCmd);
-      if (renderBezierFn) renderBezierFn();
-    }
+    return this.geometryEngine.performTrim(targetPath, clickPt, renderBezierFn);
   }
 
   clearCanvas(renderBezierFn) {
@@ -695,8 +151,6 @@ export class CADService {
     this.selectedSegments = [];
     if (renderBezierFn) renderBezierFn();
   }
-
-
 
   createDemoEntities() {
     const rect = new paper.Path.Rectangle({
@@ -818,88 +272,11 @@ export class CADService {
   }
 
   divideEntityByCount(entity, count, renderBezierFn, options = {}) {
-    if (!entity || count < 2 || !entity.length) return [];
-    const totalLen = entity.length;
-    const step = totalLen / count;
-    const pointsCreated = [];
-
-    const isClosed = entity.closed || false;
-    const maxIndex = isClosed ? (count - 1) : count;
-
-    for (let i = 0; i <= maxIndex; i++) {
-      let offset = i * step;
-      if (i === count) offset = totalLen;
-
-      const pt = entity.getPointAt(offset);
-      if (pt) {
-        const pointEntity = this.createPointEntity(pt, options);
-        if (pointEntity) pointsCreated.push(pointEntity);
-      }
-    }
-
-    if (renderBezierFn) renderBezierFn();
-    return pointsCreated;
+    return this.geometryEngine.divideEntityByCount(entity, count, renderBezierFn, options);
   }
 
   divideEntityByDistance(entity, distance, renderBezierFn, options = {}, customStartPt = null) {
-    if (!entity || distance <= 0 || !entity.length) return [];
-    const totalLen = entity.length;
-    if (distance > totalLen) return [];
-
-    const pointsCreated = [];
-    const isClosed = entity.closed || false;
-
-    // 1. Determinar el offset del punto de inicio elegido
-    let startOffset = 0;
-    if (customStartPt) {
-      const loc = entity.getNearestLocation(customStartPt);
-      if (loc) startOffset = loc.offset;
-    }
-
-    // 2. Crear punto en la posición de inicio
-    const startPt = entity.getPointAt(startOffset);
-    if (startPt) {
-      const pointEntity = this.createPointEntity(startPt, options);
-      if (pointEntity) pointsCreated.push(pointEntity);
-    }
-
-    if (isClosed) {
-      // Curva cerrada: división circular completa partiendo del offset de inicio
-      const count = Math.floor(totalLen / distance);
-      for (let i = 1; i < count; i++) {
-        const offset = (startOffset + i * distance) % totalLen;
-        const pt = entity.getPointAt(offset);
-        if (pt) {
-          const pointEntity = this.createPointEntity(pt, options);
-          if (pointEntity) pointsCreated.push(pointEntity);
-        }
-      }
-    } else {
-      // Curva abierta: División hacia adelante (hacia el final de la curva)
-      let fwdOffset = startOffset + distance;
-      while (fwdOffset <= totalLen + 0.001) {
-        const pt = entity.getPointAt(Math.min(fwdOffset, totalLen));
-        if (pt) {
-          const pointEntity = this.createPointEntity(pt, options);
-          if (pointEntity) pointsCreated.push(pointEntity);
-        }
-        fwdOffset += distance;
-      }
-
-      // Curva abierta: División hacia atrás (hacia el inicio de la curva)
-      let bwdOffset = startOffset - distance;
-      while (bwdOffset >= -0.001) {
-        const pt = entity.getPointAt(Math.max(bwdOffset, 0));
-        if (pt) {
-          const pointEntity = this.createPointEntity(pt, options);
-          if (pointEntity) pointsCreated.push(pointEntity);
-        }
-        bwdOffset -= distance;
-      }
-    }
-
-    if (renderBezierFn) renderBezierFn();
-    return pointsCreated;
+    return this.geometryEngine.divideEntityByDistance(entity, distance, renderBezierFn, options, customStartPt);
   }
 
   createLineEntity(fromPt, toPt, isDynamic = true, baseWidth = 1) {
@@ -976,26 +353,4 @@ export class CADService {
     this.demoEntities.push(entity);
     return true;
   }
-
-  getRasterContourPath(raster) {
-    if (!raster || !raster.width || !raster.height) return null;
-
-    const halfW = raster.width / 2;
-    const halfH = raster.height / 2;
-    const m = raster.matrix;
-
-    const corners = [
-      m.transform(new paper.Point(-halfW, -halfH)), // Esquina superior izquierda
-      m.transform(new paper.Point(halfW, -halfH)),  // Esquina superior derecha
-      m.transform(new paper.Point(halfW, halfH)),   // Esquina inferior derecha
-      m.transform(new paper.Point(-halfW, halfH))   // Esquina inferior izquierda
-    ];
-
-    return new paper.Path({
-      segments: corners,
-      closed: true,
-      insert: false
-    });
-  }
-  
 }

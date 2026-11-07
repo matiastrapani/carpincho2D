@@ -1,7 +1,7 @@
 /**
  * ui/CommandBarManager.js - Gestión del Prompt, Consola e Historial Flotante [F2]
  */
-class CommandBarManager {
+export class CommandBarManager {
   constructor(cadUtils) {
     this.utils = cadUtils;
     this.cmdPrompt = document.getElementById('commandPrompt');
@@ -173,4 +173,3 @@ class CommandBarManager {
   }
 }
 
-window.CommandBarManager = CommandBarManager;

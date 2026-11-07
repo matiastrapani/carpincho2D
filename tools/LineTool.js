@@ -12,89 +12,83 @@ export class LineTool extends BaseTool {
   }
 
   onMouseDown(event) {
-    // Clic derecho -> Finalizar y salir a herramienta de selección
-    if (event.event && event.event.button === 2) {
-      this.exitToSelect();
+    // 1. Ignorar cualquier clic que NO sea el izquierdo (button 0)
+    if (event.event && event.event.button !== 0) {
       return;
     }
 
     // Clic izquierdo -> Dibujar
-    if (!event.event || event.event.button === 0) {
-      const isShift = event.event ? event.event.shiftKey : false;
-      let pt = event.point;
+    const isShift = event.event ? event.event.shiftKey : false;
+    let pt = event.point;
 
-      // 1. Evaluar OSNAP sobre el punto REAL del cursor del ratón
-      const osnap = this.service.calculateOsnap(
-        event.point, 
-        (snapPt, type) => this.utils.renderSnapMarker(snapPt, type)
-      );
+    // 1. Evaluar OSNAP sobre el punto REAL del cursor del ratón
+    const osnap = this.service.calculateOsnap(
+      event.point, 
+      (snapPt, type) => this.utils.renderSnapMarker(snapPt, type)
+    );
 
-      if (osnap && osnap.type) {
-        pt = osnap.point;
-      } else if (this.utils.activePath && isShift) {
-        const startPt = this.utils.activePath.firstSegment.point;
-        pt = this.utils.applyOrthoConstraint(startPt, event.point, true);
+    if (osnap && osnap.type) {
+      pt = osnap.point;
+    } else if (this.utils.activePath && isShift) {
+      const startPt = this.utils.activePath.firstSegment.point;
+      pt = this.utils.applyOrthoConstraint(startPt, event.point, true);
+    }
+
+    const propMgr = this.utils.propertyManager;
+
+    if (!this.utils.activePath) {
+      // Primer clic: Iniciar segmento
+      this.utils.activePath = new paper.Path.Line({
+        from: pt, 
+        to: pt
+      });
+
+      if (!this.utils.activePath.data) this.utils.activePath.data = {};
+
+      const lineName = this.utils.generateNextEntityName ? this.utils.generateNextEntityName('Línea') : 'Línea 1';
+      this.utils.activePath.name = lineName;
+      this.utils.activePath.data.name = lineName;
+
+      if (propMgr) {
+        propMgr.applyDefaultSettings(this.utils.activePath);
       }
 
-      const propMgr = this.utils.propertyManager;
+      this.utils.updateEntitiesStroke();
+      this.setPrompt('Especifique el punto final de la línea:');
+    } else {
+      // Segundo clic: Confirmar segmento actual
+      this.utils.activePath.lastSegment.point = pt;
+      
+      const cmd = new AddLineCommand(this.service, this.utils.activePath);
+      this.service.executeCommand(cmd);
 
-      if (!this.utils.activePath) {
-        // Primer clic: Iniciar segmento
-        this.utils.activePath = new paper.Path.Line({
-          from: pt, 
-          to: pt
-        });
+      const startNextPt = pt.clone();
+      const nextPath = new paper.Path.Line({
+        from: startNextPt,
+        to: startNextPt
+      });
 
-        if (!this.utils.activePath.data) this.utils.activePath.data = {};
+      if (!nextPath.data) nextPath.data = {};
 
-        // Auto-nombrar entidad de forma secuencial ('Línea 1', 'Línea 2', ...)
-        const lineName = this.utils.generateNextEntityName ? this.utils.generateNextEntityName('Línea') : 'Línea 1';
-        this.utils.activePath.name = lineName;
-        this.utils.activePath.data.name = lineName;
+      const nextLineName = this.utils.generateNextEntityName ? this.utils.generateNextEntityName('Línea') : 'Línea 1';
+      nextPath.name = nextLineName;
+      nextPath.data.name = nextLineName;
 
-        if (propMgr) {
-          propMgr.applyDefaultSettings(this.utils.activePath);
-        }
+      if (propMgr) {
+        propMgr.applyDefaultSettings(nextPath);
+      }
 
-        this.utils.updateEntitiesStroke();
-        this.setPrompt('Especifique el punto final de la línea:');
-      } else {
-        // Segundo clic: Confirmar segmento actual
-        this.utils.activePath.lastSegment.point = pt;
-        
-        // Registrar en historial Undo / Redo
-        const cmd = new AddLineCommand(this.service, this.utils.activePath);
-        this.service.executeCommand(cmd);
+      this.utils.activePath = nextPath;
+      this.utils.updateEntitiesStroke();
 
-        // Encadenar siguiente segmento con su propio nombre correlativo
-        const startNextPt = pt.clone();
-        const nextPath = new paper.Path.Line({
-          from: startNextPt,
-          to: startNextPt
-        });
+      if (this.utils.rubberBandLine) {
+        this.utils.rubberBandLine.remove();
+        this.utils.rubberBandLine = null;
+      }
 
-        if (!nextPath.data) nextPath.data = {};
-
-        const nextLineName = this.utils.generateNextEntityName ? this.utils.generateNextEntityName('Línea') : 'Línea 1';
-        nextPath.name = nextLineName;
-        nextPath.data.name = nextLineName;
-
-        if (propMgr) {
-          propMgr.applyDefaultSettings(nextPath);
-        }
-
-        this.utils.activePath = nextPath;
-        this.utils.updateEntitiesStroke();
-
-        if (this.utils.rubberBandLine) {
-          this.utils.rubberBandLine.remove();
-          this.utils.rubberBandLine = null;
-        }
-
-        this.setPrompt('Especifique el punto siguiente o presione ENTER/ESC para finalizar:');
-        if (this.utils.renderBezierHandles) {
-          this.utils.renderBezierHandles();
-        }
+      this.setPrompt('Especifique el punto siguiente o presione ENTER/ESC para finalizar:');
+      if (this.utils.renderBezierHandles) {
+        this.utils.renderBezierHandles();
       }
     }
   }
