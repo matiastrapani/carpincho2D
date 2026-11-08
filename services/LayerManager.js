@@ -123,8 +123,8 @@ export class LayerManager {
     }
 
     if (this.utils) {
-      this.utils.updateEntitiesStroke();
-      this.utils.renderBezierHandles();
+      this.utils.selectionRenderEngine.updateEntitiesStroke();
+      this.utils.selectionRenderEngine.renderBezierHandles();
       if (paper?.view) paper.view.update();
     }
   }
@@ -141,8 +141,8 @@ export class LayerManager {
     }
 
     if (this.utils) {
-      this.utils.updateEntitiesStroke();
-      this.utils.renderBezierHandles();
+      this.utils.selectionRenderEngine.updateEntitiesStroke();
+      this.utils.selectionRenderEngine.renderBezierHandles();
       if (paper?.view) paper.view.update();
     }
 

@@ -20,7 +20,7 @@ export class PolylineTool extends BaseTool {
     // 1. Evaluar OSNAP sobre el punto REAL del cursor del ratón
     const osnap = this.service.calculateOsnap(
       event.point, 
-      (snapPt, type) => this.utils.renderSnapMarker(snapPt, type),
+      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type),
       this.utils.activePath
     );
 
@@ -51,7 +51,7 @@ export class PolylineTool extends BaseTool {
         this.utils.propertyManager.applyDefaultSettings(this.utils.activePath);
       }
 
-      this.utils.updateEntitiesStroke();
+      this.utils.selectionRenderEngine.updateEntitiesStroke();
       this.setPrompt('Especifique el siguiente punto o [ENTER / Clic derecho para finalizar]:');
     } else {
       const firstPt = this.utils.activePath.firstSegment.point;
@@ -74,7 +74,7 @@ export class PolylineTool extends BaseTool {
       }
 
       this.utils.activePath.add(pt);
-      this.utils.updateEntitiesStroke();
+      this.utils.selectionRenderEngine.updateEntitiesStroke();
     }
   }
 
@@ -85,7 +85,7 @@ export class PolylineTool extends BaseTool {
     // 1. Evaluar OSNAP directamente en el cursor real del ratón
     const osnap = this.service.calculateOsnap(
       event.point, 
-      (snapPt, type) => this.utils.renderSnapMarker(snapPt, type),
+      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type),
       this.utils.activePath
     );
 
@@ -97,7 +97,7 @@ export class PolylineTool extends BaseTool {
       pt = this.utils.applyOrthoConstraint(lastPt, event.point, true);
     }
 
-    this.utils.updateHUD(pt);
+    this.utils.hud.updateHUD(pt);
 
     if (this.utils.activePath && this.utils.activePath.segments.length > 0) {
       const lastPt = this.utils.activePath.lastSegment.point;
@@ -124,7 +124,7 @@ export class PolylineTool extends BaseTool {
         this.utils.rubberBandLine.opacity = activeOpacity;
       }
 
-      this.utils.updateFeedbackLabels(lastPt, pt);
+      this.utils.hud.updateFeedbackLabels(lastPt, pt);
     }
   }
 

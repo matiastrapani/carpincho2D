@@ -21,7 +21,7 @@ export class TrimTool extends BaseTool {
       // Usar la selección previa directamente como límites de corte y pasar a cortar
       this.service.trimCuttingBoundaries = [...preSelected];
       this.service.isTrimCuttingPhase = true;
-      this.utils.renderBezierHandles();
+      this.utils.selectionRenderEngine.renderBezierHandles();
       this.setPrompt(`TRIM: ${this.service.trimCuttingBoundaries.length} entidad(es) de corte pre-seleccionada(s). Haz clic en los segmentos que deseas eliminar. Clic derecho para salir.`);
     } else {
       // Fase de selección manual de límites de corte
@@ -81,13 +81,13 @@ export class TrimTool extends BaseTool {
         if (!this.service.trimCuttingBoundaries.includes(hitEntity.item)) {
           this.service.trimCuttingBoundaries.push(hitEntity.item);
           this.service.selectEntity(hitEntity.item, true);
-          this.utils.renderBezierHandles();
+          this.utils.selectionRenderEngine.renderBezierHandles();
           this.setPrompt(`TRIM: ${this.service.trimCuttingBoundaries.length} entidad(es) de corte seleccionada(s). Clic derecho o ENTER para confirmar.`);
         }
       }
     } else {
       if (hitEntity && hitEntity.item && !this.service.trimCuttingBoundaries.includes(hitEntity.item)) {
-        this.service.performTrim(hitEntity.item, event.point, () => this.utils.renderBezierHandles());
+        this.service.performTrim(hitEntity.item, event.point, () => this.utils.selectionRenderEngine.renderBezierHandles());
       }
     }
   }
@@ -96,13 +96,13 @@ export class TrimTool extends BaseTool {
     if (this.utils.snapMarkersGroup) {
       this.utils.snapMarkersGroup.removeChildren();
     }
-    this.utils.updateHUD(event.point);
+    this.utils.hud.updateHUD(event.point);
   }
 
   cancel() {
     this.service.trimCuttingBoundaries = [];
     this.service.isTrimCuttingPhase = false;
     this.service.deselectAllEntities();
-    this.utils.renderBezierHandles();
+    this.utils.selectionRenderEngine.renderBezierHandles();
   }
 }

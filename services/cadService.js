@@ -207,8 +207,8 @@ export class CADService {
     this.createPointEntity(new paper.Point(-120, -120), { layerId: '0', colorByLayer: true });
     this.createPointEntity(new paper.Point(-60, -120), { layerId: '0', colorByLayer: true });
 
-    if (this.utils?.updateEntitiesStroke) {
-      this.utils.updateEntitiesStroke();
+    if (this.utils?.selectionRenderEngine?.updateEntitiesStroke) {
+      this.utils.selectionRenderEngine.updateEntitiesStroke();
     }
   }
 

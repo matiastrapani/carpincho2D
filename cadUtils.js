@@ -195,44 +195,6 @@ export class CADUtils {
     this.commandBar.setPrompt(text);
   }
 
-  updateHUD(point) {
-    if (this.hud) {
-      this.hud.updateHUD(point);
-    }
-  }
-
-  updatePointEntitiesScale() {
-    return this.selectionRenderEngine.updatePointEntitiesScale();
-  }
-
-  updateEntitiesStroke() {
-    return this.selectionRenderEngine.updateEntitiesStroke();
-  }
-
-
-  renderSnapMarker(point, type) {
-    if (this.hud) {
-      this.hud.renderSnapMarker(point, type);
-    }
-  }
-
-  updateFeedbackLabels(fromPt, toPt) {
-    if (this.hud) {
-      this.hud.updateFeedbackLabels(fromPt, toPt);
-    }
-  }
-
-  clearHUD() {
-    if (this.hud) {
-      this.hud.clear();
-    }
-  }
-
-  clearFeedbackLabels() {
-    if (this.hud) {
-      this.hud.clear();
-    }
-  }
 
   clearSelectedHandle() {
     this.selectedHandle = null;
@@ -263,19 +225,19 @@ export class CADUtils {
     // Dejar la capa de dibujo activa por defecto para que los trazos vayan allí
     this.drawLayer.activate();
 
-    this.drawGrid();
+    this.viewportManager.drawGrid();
     this.setupPaperTool();
     this.setupDragAndDrop();
 
-    window.addEventListener('resize', () => this.handleCanvasResize());
+    window.addEventListener('resize', () => this.viewportManager.handleCanvasResize());
 
     const viewportEl = document.getElementById('mainViewport');
     if (viewportEl) {
-      const resizeObserver = new ResizeObserver(() => this.handleCanvasResize());
+      const resizeObserver = new ResizeObserver(() => this.viewportManager.handleCanvasResize());
       resizeObserver.observe(viewportEl);
     }
 
-    this.canvasElement.addEventListener('wheel', (e) => this.handleMagicMouseWheel(e), { passive: false });
+    this.canvasElement.addEventListener('wheel', (e) => this.viewportManager.handleMagicMouseWheel(e), { passive: false });
 
     this.canvasElement.addEventListener('contextmenu', e => {
       e.preventDefault();
@@ -322,12 +284,12 @@ export class CADUtils {
     }
 
     // Reemplazamos la llamada a (0,0) por una limpieza transparente del HUD
-    this.clearHUD();
+    this.hud.clear();
 
     if (this.canvasElement) {
       this.canvasElement.focus();
     }
-    this.updateEntitiesStroke();
+    this.selectionRenderEngine.updateEntitiesStroke();
     paper.view.update();
   }
 
@@ -353,7 +315,7 @@ export class CADUtils {
         );
         paper.view.center = delta;
         this.panStartPoint = event.event;
-        this.drawGrid();
+        this.viewportManager.drawGrid();
         return;
       }
 
@@ -374,7 +336,7 @@ export class CADUtils {
 
     tool.onMouseMove = (event) => {
       this.lastMousePoint = event.point.clone();
-      this.updateHUD(event.point);
+      this.hud.updateHUD(event.point);
 
       if (this.toolManager.activeTool) {
         this.toolManager.onMouseMove(event);
@@ -405,14 +367,14 @@ export class CADUtils {
           this.service.selectEntity(parentPath, true);
         }
 
-        this.renderBezierHandles();
+        this.selectionRenderEngine.renderBezierHandles();
         return;
       }
     }
 
     // Resetear la referencia huérfana ANTES de borrar elementos
     this.selectedHandle = null;
-    this.service.deleteSelectedElements(() => this.renderBezierHandles());
+    this.service.deleteSelectedElements(() => this.selectionRenderEngine.renderBezierHandles());
   }
 
   finishCurrentDrawing() {
@@ -440,7 +402,7 @@ export class CADUtils {
         // Generar comando para Undo/Redo si aplica
         const cmd = new AddLineCommand(this.service, this.activePath);
         this.service.executeCommand(cmd);
-        this.renderBezierHandles();
+        this.selectionRenderEngine.renderBezierHandles();
       }
       
       this.activePath = null;
@@ -504,7 +466,7 @@ export class CADUtils {
               this.propertyManager.applyDefaultSettings(this.activePath);
             }
 
-            this.updateEntitiesStroke();
+            this.selectionRenderEngine.updateEntitiesStroke();
           } else {
             this.activePath.add(newPt);
           }
@@ -536,7 +498,7 @@ export class CADUtils {
                 this.propertyManager.applyDefaultSettings(this.activePath);
               }
 
-              this.updateEntitiesStroke();
+              this.selectionRenderEngine.updateEntitiesStroke();
             } else {
               this.activePath.add(newPt);
             }
@@ -552,17 +514,6 @@ export class CADUtils {
 
   handleGlobalKeyup(e) {
     return this.inputDispatcher.handleGlobalKeyup(e);
-  }
-
-  renderBezierHandles() {
-    return this.selectionRenderEngine.renderBezierHandles();
-  }
-  
-  // Delegación directa a HUDManager
-  updateHUD(point) {
-    if (this.hud) {
-      this.hud.updateHUD(point);
-    }
   }
 
   // Selección de herramienta con registro automático en consola
@@ -683,7 +634,7 @@ export class CADUtils {
   clearHoverHighlight() {
     if (this.service.hoveredEntity) {
       this.service.hoveredEntity = null;
-      this.updateEntitiesStroke();
+      this.selectionRenderEngine.updateEntitiesStroke();
     }
   }
 
@@ -732,7 +683,7 @@ export class CADUtils {
   }
   
   clearCanvas() {
-    this.service.clearCanvas(() => this.renderBezierHandles());
+    this.service.clearCanvas(() => this.selectionRenderEngine.renderBezierHandles());
     if (this.activePath) { this.activePath.remove(); this.activePath = null; }
     if (this.rubberBandLine) { this.rubberBandLine.remove(); this.rubberBandLine = null; }
     if (this.hud) this.hud.clear();
@@ -805,23 +756,4 @@ export class CADUtils {
     return `${basePrefix} ${maxNum + 1}`;
   }
 
-  handleCanvasResize() {
-    this.viewportManager.handleCanvasResize();
-  }
-
-  drawGrid() {
-    this.viewportManager.drawGrid();
-  }
-
-  handleMagicMouseWheel(e) {
-    this.viewportManager.handleMagicMouseWheel(e);
-  }
-
-  toggleGrid() {
-    this.viewportManager.toggleGrid();
-  }
-
-  resetView() {
-    this.viewportManager.resetView();
-  }
 }

@@ -46,8 +46,8 @@ export class CADIOService {
       cadService.executeCommand(cmd);
 
       cadService.selectEntity(raster, false);
-      if (utils?.updateEntitiesStroke) utils.updateEntitiesStroke();
-      if (utils?.renderBezierHandles) utils.renderBezierHandles();
+      if (utils?.selectionRenderEngine.updateEntitiesStroke) utils.selectionRenderEngine.updateEntitiesStroke();
+      if (utils?.selectionRenderEngine.renderBezierHandles) utils.selectionRenderEngine.renderBezierHandles();
 
       if (window.cadUI && typeof window.cadUI.updatePropertyPanel === 'function') {
         window.cadUI.updatePropertyPanel(raster);
@@ -135,8 +135,8 @@ export class CADIOService {
           }
         }
 
-        if (utils?.updateEntitiesStroke) utils.updateEntitiesStroke();
-        if (utils?.renderBezierHandles) utils.renderBezierHandles();
+        if (utils?.selectionRenderEngine?.updateEntitiesStroke) utils.selectionRenderEngine.updateEntitiesStroke();
+        if (utils?.selectionRenderEngine?.renderBezierHandles) utils.selectionRenderEngine.renderBezierHandles();
         if (paper.view) paper.view.update();
         if (utils?.setPrompt) utils.setPrompt('Dibujo SVG importado en la capa activa.');
       }

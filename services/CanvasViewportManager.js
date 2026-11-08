@@ -80,11 +80,11 @@ export class CanvasViewportManager {
     paper.view.zoom = currentZoom;
 
     this.drawGrid();
-    if (typeof this.utils.updatePointEntitiesScale === 'function') {
-      this.utils.updatePointEntitiesScale();
+    if (typeof this.utils.selectionRenderEngine.updatePointEntitiesScale === 'function') {
+      this.utils.selectionRenderEngine.updatePointEntitiesScale();
     }
-    if (typeof this.utils.renderBezierHandles === 'function') {
-      this.utils.renderBezierHandles();
+    if (typeof this.utils.selectionRenderEngine.renderBezierHandles === 'function') {
+      this.utils.selectionRenderEngine.renderBezierHandles();
     }
     paper.view.requestUpdate();
   }
@@ -94,8 +94,8 @@ export class CanvasViewportManager {
 
     const view = paper.view;
     const mousePosition = view.viewToProject(new paper.Point(e.clientX, e.clientY));
-    if (typeof this.utils.updateHUD === 'function') {
-      this.utils.updateHUD(mousePosition);
+    if (typeof this.utils.hud?.updateHUD === 'function') {
+      this.utils.hud.updateHUD(mousePosition);
     }
 
     const isZoomIntent = e.altKey || e.ctrlKey || e.metaKey || e.pinching;
@@ -119,14 +119,14 @@ export class CanvasViewportManager {
     }
 
     this.drawGrid();
-    if (typeof this.utils.updatePointEntitiesScale === 'function') {
-      this.utils.updatePointEntitiesScale();
+    if (typeof this.utils.selectionRenderEngine.updatePointEntitiesScale === 'function') {
+      this.utils.selectionRenderEngine.updatePointEntitiesScale();
     }
-    if (typeof this.utils.updateEntitiesStroke === 'function') {
-      this.utils.updateEntitiesStroke();
+    if (typeof this.utils.selectionRenderEngine.updateEntitiesStroke === 'function') {
+      this.utils.selectionRenderEngine.updateEntitiesStroke();
     }
-    if (typeof this.utils.renderBezierHandles === 'function') {
-      this.utils.renderBezierHandles();
+    if (typeof this.utils.selectionRenderEngine.renderBezierHandles === 'function') {
+      this.utils.selectionRenderEngine.renderBezierHandles();
     }
     if (this.utils.hud && typeof this.utils.hud.refreshSnapMarkerScale === 'function') {
       this.utils.hud.refreshSnapMarkerScale();
@@ -138,8 +138,8 @@ export class CanvasViewportManager {
       this.utils.rubberBandLine.strokeWidth = activeWidth === 0 ? (1 / view.zoom) : activeWidth;
       this.utils.rubberBandLine.dashArray = [2 / view.zoom, 2 / view.zoom];
     }
-    if (typeof this.utils.updateHUD === 'function') {
-      this.utils.updateHUD(view.viewToProject(new paper.Point(e.clientX, e.clientY)));
+    if (typeof this.utils.hud?.updateHUD === 'function') {
+      this.utils.hud.updateHUD(view.viewToProject(new paper.Point(e.clientX, e.clientY)));
     }
   }
 
@@ -210,17 +210,17 @@ export class CanvasViewportManager {
       paper.view.zoom = startZoom + (targetZoom - startZoom) * easeOut;
 
       this.drawGrid();
-      if (typeof this.utils.updatePointEntitiesScale === 'function') {
-        this.utils.updatePointEntitiesScale();
+      if (typeof this.utils.selectionRenderEngine.updatePointEntitiesScale === 'function') {
+        this.utils.selectionRenderEngine.updatePointEntitiesScale();
       }
-      if (typeof this.utils.updateEntitiesStroke === 'function') {
-        this.utils.updateEntitiesStroke();
+      if (typeof this.utils.selectionRenderEngine.updateEntitiesStroke === 'function') {
+        this.utils.selectionRenderEngine.updateEntitiesStroke();
       }
-      if (typeof this.utils.renderBezierHandles === 'function') {
-        this.utils.renderBezierHandles();
+      if (typeof this.utils.selectionRenderEngine.renderBezierHandles === 'function') {
+        this.utils.selectionRenderEngine.renderBezierHandles();
       }
-      if (typeof this.utils.updateHUD === 'function') {
-        this.utils.updateHUD(paper.view.center);
+      if (typeof this.utils.hud?.updateHUD === 'function') {
+        this.utils.hud.updateHUD(paper.view.center);
       }
 
       if (progress < 1) {

@@ -154,8 +154,8 @@ export class BoxSelectHandler {
       }
     }
 
-    if (this.utils?.updateEntitiesStroke) this.utils.updateEntitiesStroke();
-    if (this.utils?.renderBezierHandles) this.utils.renderBezierHandles();
+    if (this.utils?.selectionRenderEngine?.updateEntitiesStroke) this.utils.selectionRenderEngine.updateEntitiesStroke();
+    if (this.utils?.selectionRenderEngine?.renderBezierHandles) this.utils.selectionRenderEngine.renderBezierHandles();
 
     this.clean();
   }

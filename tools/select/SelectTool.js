@@ -39,7 +39,11 @@ export class SelectTool extends BaseTool {
   }
 
   onMouseDown(event) {
-    this.utils.clearHUD();
+    if (event.event && (event.event.button === 2 || event.event.which === 3)) {
+      return;
+    }
+
+    this.utils.hud.clear();
     
     // Resetear estados temporales de hover para evitar arrastrar grosores residuales
     this.utils.hoveredHandle = null;
@@ -131,8 +135,8 @@ export class SelectTool extends BaseTool {
         this.service.deselectAllSegments();
         this.service.deselectAllHandles();
 
-        this.utils.renderBezierHandles();
-        this.utils.updateEntitiesStroke();
+        this.utils.selectionRenderEngine.renderBezierHandles();
+        this.utils.selectionRenderEngine.updateEntitiesStroke();
         this.utils.setPrompt('Modo edición de nodos activo. Presiona Esc para salir.');
         
         this.dragState.dragAnchorEntity = null;
@@ -162,7 +166,7 @@ export class SelectTool extends BaseTool {
               if (seg1) this.service.selectSegment(seg1, true);
               if (seg2) this.service.selectSegment(seg2, true);
             }
-            this.utils.renderBezierHandles();
+            this.utils.selectionRenderEngine.renderBezierHandles();
             return;
           }
 
@@ -202,7 +206,7 @@ export class SelectTool extends BaseTool {
           }));
 
           this.dragState.mouseStartPt = event.point.clone();
-          this.utils.renderBezierHandles();
+          this.utils.selectionRenderEngine.renderBezierHandles();
 
           if (this.dragState.pivotPoint) {
             this.utils.renderPivotMarker(this.dragState.pivotPoint);
@@ -335,7 +339,7 @@ export class SelectTool extends BaseTool {
         };
       });
 
-      this.utils.renderBezierHandles();
+      this.utils.selectionRenderEngine.renderBezierHandles();
 
       if (this.dragState.pivotPoint && !this.dragState.isPivotFromPoint) {
         this.utils.renderPivotMarker(this.dragState.pivotPoint);
@@ -399,7 +403,7 @@ export class SelectTool extends BaseTool {
 
           const osnap = this.service.calculateOsnap(
             currentPivotPos,
-            (pt, type) => this.utils.renderSnapMarker(pt, type),
+            (pt, type) => this.utils.hud.renderSnapMarker(pt, type),
             null,
             { 
               path: pivotSegData.path,
@@ -414,7 +418,7 @@ export class SelectTool extends BaseTool {
             globalDelta = osnap.point.subtract(pivotSegData.initialPt);
           }
         } else {
-          this.utils.clearHUD();
+          this.utils.hud.clear();
         }
 
         // Mantiene visible el marcador de PIVOT en la posición final ajustada por el OSNAP
@@ -428,7 +432,7 @@ export class SelectTool extends BaseTool {
         }
       });
 
-      this.utils.renderBezierHandles();
+      this.utils.selectionRenderEngine.renderBezierHandles();
       return;
     }
 
@@ -451,7 +455,7 @@ export class SelectTool extends BaseTool {
       // El OSNAP calcula la atracción magnética sobre el VÉRTICE MÁS CERCANO
       const osnap = this.service.calculateOsnap(
         projectedPivot, 
-        (pt, type) => this.utils.renderSnapMarker(pt, type),
+        (pt, type) => this.utils.hud.renderSnapMarker(pt, type),
         null,
         { ignoreEntities: this.service.selectedEntities }
       );
@@ -473,7 +477,7 @@ export class SelectTool extends BaseTool {
         }
       });
 
-      this.utils.renderBezierHandles();
+      this.utils.selectionRenderEngine.renderBezierHandles();
       
       // Dibujar pivote SOLO si NO es un punto
       if (!this.dragState.isPivotFromPoint) {
@@ -484,7 +488,7 @@ export class SelectTool extends BaseTool {
     }
 
     // 4. Selección por Cuadro
-    this.utils.clearHUD();
+    this.utils.hud.clear();
     if (this.dragState.selectionStartPoint) {
       this.boxSelectHandler.updateBox(event.point);
     }
@@ -591,7 +595,7 @@ export class SelectTool extends BaseTool {
   }
 
   onMouseMove(event) {
-    this.utils.clearHUD();
+    this.utils.hud.clear();
 
     if (this.dragState.selectionStartPoint || this.dragState.mouseStartPt) {
       return;
@@ -631,7 +635,7 @@ export class SelectTool extends BaseTool {
         if (this.utils.hoveredHandle !== handleData) {
           this.utils.hoveredHandle = handleData;
           this.utils.hoveredCurve = null;
-          this.utils.renderBezierHandles();
+          this.utils.selectionRenderEngine.renderBezierHandles();
         }
         return;
       }
@@ -662,7 +666,7 @@ export class SelectTool extends BaseTool {
         if (this.utils.hoveredCurve !== hitCurve || this.utils.hoveredHandle) {
           this.utils.hoveredHandle = null;
           this.utils.hoveredCurve = hitCurve;
-          this.utils.renderBezierHandles();
+          this.utils.selectionRenderEngine.renderBezierHandles();
         }
         return;
       }
@@ -670,7 +674,7 @@ export class SelectTool extends BaseTool {
       if (this.utils.hoveredHandle || this.utils.hoveredCurve) {
         this.utils.hoveredHandle = null;
         this.utils.hoveredCurve = null;
-        this.utils.renderBezierHandles();
+        this.utils.selectionRenderEngine.renderBezierHandles();
       }
     }
 
@@ -717,7 +721,7 @@ export class SelectTool extends BaseTool {
         if (this.service.hoveredEntity !== targetItem) {
           this.utils.clearHoverHighlight();
           this.service.hoveredEntity = targetItem;
-          this.utils.updateEntitiesStroke();
+          this.utils.selectionRenderEngine.updateEntitiesStroke();
         }
       } else {
         if (this.service.hoveredEntity) {
@@ -754,8 +758,8 @@ export class SelectTool extends BaseTool {
           this.utils.setPrompt('Herramienta Selección: selecciona objetos o haz doble clic en un trazo para editar sus nodos.');
         }
 
-        if (this.utils.renderBezierHandles) this.utils.renderBezierHandles();
-        if (this.utils.updateEntitiesStroke) this.utils.updateEntitiesStroke();
+        if (this.utils.selectionRenderEngine.renderBezierHandles) this.utils.selectionRenderEngine.renderBezierHandles();
+        if (this.utils.selectionRenderEngine.updateEntitiesStroke) this.utils.selectionRenderEngine.updateEntitiesStroke();
         if (paper.view) paper.view.update();
         return true;
       }
@@ -786,8 +790,8 @@ export class SelectTool extends BaseTool {
     this.resetDragState();
 
     // Actualizar color de trazos y refrescar pantalla
-    this.utils.updateEntitiesStroke();
-    this.utils.renderBezierHandles();
+    this.utils.selectionRenderEngine.updateEntitiesStroke();
+    this.utils.selectionRenderEngine.renderBezierHandles();
 
     if (window.propertyPanelUI) {
       window.propertyPanelUI.setSelectedEntities(this.service.selectedEntities);
@@ -797,13 +801,19 @@ export class SelectTool extends BaseTool {
   }
 
   onContextMenu(event) {
+    // Limpiar el estado de hover si existía
+    if (this.service.hoveredEntity) {
+      this.utils.clearHoverHighlight();
+      this.service.hoveredEntity = null;
+    }
+    
     // 1. Si hay elementos seleccionados, limpia la selección
     if (this.service.selectedEntities && this.service.selectedEntities.length > 0) {
       this.service.deselectAllEntities();
       this.service.editingEntities = [];
       this.service.deselectAllSegments();
-      if (this.utils.renderBezierHandles) this.utils.renderBezierHandles();
-      if (this.utils.updateEntitiesStroke) this.utils.updateEntitiesStroke();
+      if (this.utils.selectionRenderEngine.renderBezierHandles) this.utils.selectionRenderEngine.renderBezierHandles();
+      if (this.utils.selectionRenderEngine.updateEntitiesStroke) this.utils.selectionRenderEngine.updateEntitiesStroke();
       if (window.paper?.view) window.paper.view.update();
       return true; // Cancela selección sin activar repetición
     }
@@ -814,7 +824,7 @@ export class SelectTool extends BaseTool {
 
   cancel() {
     this.cleanBox();
-    this.utils.clearHUD();
+    this.utils.hud.clear();
     this.service.editingEntities = [];
     this.service.deselectAllEntities();
     this.service.deselectAllSegments();
@@ -823,7 +833,7 @@ export class SelectTool extends BaseTool {
       window.propertyPanelUI.setSelectedEntities([]);
     }
 
-    this.utils.renderBezierHandles();
+    this.utils.selectionRenderEngine.renderBezierHandles();
     paper.view.update();
   }
 }

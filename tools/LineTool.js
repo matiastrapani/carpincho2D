@@ -24,7 +24,7 @@ export class LineTool extends BaseTool {
     // 1. Evaluar OSNAP sobre el punto REAL del cursor del ratón
     const osnap = this.service.calculateOsnap(
       event.point, 
-      (snapPt, type) => this.utils.renderSnapMarker(snapPt, type)
+      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type)
     );
 
     if (osnap && osnap.type) {
@@ -53,7 +53,7 @@ export class LineTool extends BaseTool {
         propMgr.applyDefaultSettings(this.utils.activePath);
       }
 
-      this.utils.updateEntitiesStroke();
+      this.utils.selectionRenderEngine.updateEntitiesStroke();
       this.setPrompt('Especifique el punto final de la línea:');
     } else {
       // Segundo clic: Confirmar segmento actual
@@ -79,7 +79,7 @@ export class LineTool extends BaseTool {
       }
 
       this.utils.activePath = nextPath;
-      this.utils.updateEntitiesStroke();
+      this.utils.selectionRenderEngine.updateEntitiesStroke();
 
       if (this.utils.rubberBandLine) {
         this.utils.rubberBandLine.remove();
@@ -87,8 +87,8 @@ export class LineTool extends BaseTool {
       }
 
       this.setPrompt('Especifique el punto siguiente o presione ENTER/ESC para finalizar:');
-      if (this.utils.renderBezierHandles) {
-        this.utils.renderBezierHandles();
+      if (this.utils.selectionRenderEngine.renderBezierHandles) {
+        this.utils.selectionRenderEngine.renderBezierHandles();
       }
     }
   }
@@ -99,7 +99,7 @@ export class LineTool extends BaseTool {
 
     const osnap = this.service.calculateOsnap(
       event.point, 
-      (snapPt, type) => this.utils.renderSnapMarker(snapPt, type)
+      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type)
     );
 
     if (osnap.type) {
@@ -109,7 +109,7 @@ export class LineTool extends BaseTool {
       pt = this.utils.applyOrthoConstraint(lastConfirmedPt, event.point, true);
     }
 
-    this.utils.updateHUD(pt);
+    this.utils.hud.updateHUD(pt);
 
     if (this.utils.activePath) {
       const lastConfirmedPt = this.utils.activePath.firstSegment.point;
@@ -136,7 +136,7 @@ export class LineTool extends BaseTool {
         this.utils.rubberBandLine.opacity = activeOpacity;
       }
 
-      this.utils.updateFeedbackLabels(lastConfirmedPt, pt);
+      this.utils.hud.updateFeedbackLabels(lastConfirmedPt, pt);
     }
   }
 

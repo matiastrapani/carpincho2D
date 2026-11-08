@@ -129,7 +129,7 @@ export class ExtendTool extends BaseTool {
       }
     }
 
-    this.utils.renderBezierHandles();
+    this.utils.selectionRenderEngine.renderBezierHandles();
   }
 
   restorePathToBackup(path, backup) {
@@ -319,7 +319,7 @@ export class ExtendTool extends BaseTool {
     this.extendData = null;
     this.lastMouseEvent = null;
     this.service.deselectAllEntities();
-    this.utils.renderBezierHandles();
+    this.utils.selectionRenderEngine.renderBezierHandles();
     this.setPrompt('EXTEND: Extensión confirmada. Selecciona otra entidad o presiona ESC.');
   }
 
@@ -332,7 +332,7 @@ export class ExtendTool extends BaseTool {
     this.extendData = null;
     this.lastMouseEvent = null;
     this.service.deselectAllEntities();
-    this.utils.renderBezierHandles();
+    this.utils.selectionRenderEngine.renderBezierHandles();
     this.setPrompt('EXTEND: Operación cancelada.');
   }
 }

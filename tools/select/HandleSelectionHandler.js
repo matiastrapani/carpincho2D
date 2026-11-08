@@ -146,7 +146,7 @@ export class HandleSelectionHandler {
       })) : null
     }));
 
-    this.utils.renderBezierHandles();
+    this.utils.selectionRenderEngine.renderBezierHandles();
   }
 
   onMouseDrag(event) {
@@ -180,7 +180,7 @@ export class HandleSelectionHandler {
 
       const osnap = this.service.calculateOsnap(
         rawTargetPoint,
-        (snapPt, type) => this.utils.renderSnapMarker(snapPt, type),
+        (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type),
         null,
         { 
           path: activeSeg.path, 
@@ -237,7 +237,7 @@ export class HandleSelectionHandler {
       });
     }
 
-    this.utils.renderBezierHandles();
+    this.utils.selectionRenderEngine.renderBezierHandles();
   }
 
   onMouseUp(event) {

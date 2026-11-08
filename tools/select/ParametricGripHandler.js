@@ -38,14 +38,14 @@ export class ParametricGripHandler {
           this.utils.hoveredParametricGrip.entity !== newHover.entity || 
           this.utils.hoveredParametricGrip.gripId !== newHover.gripId) {
         this.utils.hoveredParametricGrip = newHover;
-        if (this.utils.renderBezierHandles) this.utils.renderBezierHandles();
+        if (this.utils.selectionRenderEngine.renderBezierHandles) this.utils.selectionRenderEngine.renderBezierHandles();
       }
       return true;
     } 
     
     if (this.utils.hoveredParametricGrip) {
       this.utils.hoveredParametricGrip = null;
-      if (this.utils.renderBezierHandles) this.utils.renderBezierHandles();
+      if (this.utils.selectionRenderEngine.renderBezierHandles) this.utils.selectionRenderEngine.renderBezierHandles();
     }
     return false;
   }
@@ -60,7 +60,7 @@ export class ParametricGripHandler {
     this.gripStartPoint = point.clone();
 
     this.utils.activeParametricGrip = { entity: itemData.entity, gripId: itemData.gripId };
-    if (this.utils.renderBezierHandles) this.utils.renderBezierHandles();
+    if (this.utils.selectionRenderEngine.renderBezierHandles) this.utils.selectionRenderEngine.renderBezierHandles();
 
     const controller = this.activeGripEntity?.data?.controller;
     if (controller && typeof controller.startTransform === 'function') {
@@ -79,7 +79,7 @@ export class ParametricGripHandler {
     // OSNAP omitiendo la entidad que se está transformando
     const osnap = this.service.calculateOsnap(
       point,
-      (snapPt, type) => this.utils.renderSnapMarker(snapPt, type),
+      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type),
       null,
       { ignoreEntities: [this.activeGripEntity] }
     );
@@ -90,7 +90,7 @@ export class ParametricGripHandler {
 
     if (controller && typeof controller.onGripDrag === 'function') {
       controller.onGripDrag(this.activeGripId, targetPt, this.gripStartPoint, { isShiftPressed });
-      if (this.utils.renderBezierHandles) this.utils.renderBezierHandles();
+      if (this.utils.selectionRenderEngine.renderBezierHandles) this.utils.selectionRenderEngine.renderBezierHandles();
       paper.view.update();
     }
 
@@ -120,7 +120,7 @@ export class ParametricGripHandler {
     }
 
     this.reset();
-    if (this.utils?.renderBezierHandles) this.utils.renderBezierHandles();
+    if (this.utils?.selectionRenderEngine?.renderBezierHandles) this.utils.selectionRenderEngine.renderBezierHandles();
     return true;
   }
 

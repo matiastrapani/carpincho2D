@@ -339,7 +339,7 @@ export class LayerPanelUI {
       } else {
         this.manager.updateLayerProperty(layer.id, prop, newValue);
         this.refresh();
-        if (this.utils?.updateEntitiesStroke) this.utils.updateEntitiesStroke();
+        if (this.utils?.selectionRenderEngine?.updateEntitiesStroke) this.utils.selectionRenderEngine.updateEntitiesStroke();
         if (window.paper?.view) window.paper.view.update();
       }
     };
@@ -645,7 +645,7 @@ export class LayerPanelUI {
         }
 
         hasChanges = true;
-        if (this.utils?.updateEntitiesStroke) this.utils.updateEntitiesStroke();
+        if (this.utils?.selectionRenderEngine?.updateEntitiesStroke) this.utils.selectionRenderEngine.updateEntitiesStroke();
         if (window.paper?.view) window.paper.view.update();
 
         // Refresco en vivo del Panel de Propiedades mientras se arrastra
@@ -695,7 +695,7 @@ export class LayerPanelUI {
         }
 
         this.refresh();
-        if (this.utils?.updateEntitiesStroke) this.utils.updateEntitiesStroke();
+        if (this.utils?.selectionRenderEngine?.updateEntitiesStroke) this.utils.selectionRenderEngine.updateEntitiesStroke();
         if (window.paper?.view) window.paper.view.update();
         if (window.propertyPanelUI) window.propertyPanelUI.refresh();
       },

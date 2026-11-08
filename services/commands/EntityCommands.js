@@ -102,9 +102,9 @@ export class AddEntityCommand {
       }
     });
 
-    if (window.cadUtils) {
-      window.cadUtils.updateEntitiesStroke();
-      window.cadUtils.renderBezierHandles();
+    if (window.cadUtils?.selectionRenderEngine) {
+      window.cadUtils.selectionRenderEngine.updateEntitiesStroke();
+      window.cadUtils.selectionRenderEngine.renderBezierHandles();
     }
     paper.view.update();
   }
@@ -126,9 +126,9 @@ export class AddEntityCommand {
       }
     });
 
-    if (window.cadUtils) {
-      window.cadUtils.updateEntitiesStroke();
-      window.cadUtils.renderBezierHandles();
+    if (window.cadUtils?.selectionRenderEngine) {
+      window.cadUtils.selectionRenderEngine.updateEntitiesStroke();
+      window.cadUtils.selectionRenderEngine.renderBezierHandles();
     }
     paper.view.update();
   }
@@ -165,8 +165,8 @@ export class ImportSVGCommand {
 
     if (window.layerPanelUI && typeof window.layerPanelUI.refresh === 'function') window.layerPanelUI.refresh();
     if (this.utils) {
-      this.utils.updateEntitiesStroke();
-      this.utils.renderBezierHandles();
+      this.utils.selectionRenderEngine.updateEntitiesStroke();
+      this.utils.selectionRenderEngine.renderBezierHandles();
       if (window.paper?.view) window.paper.view.update();
     }
   }
@@ -195,9 +195,9 @@ export class ImportSVGCommand {
     }
 
     if (window.layerPanelUI && typeof window.layerPanelUI.refresh === 'function') window.layerPanelUI.refresh();
-    if (this.utils) {
-      this.utils.updateEntitiesStroke();
-      this.utils.renderBezierHandles();
+    if (this.utils?.selectionRenderEngine) {
+      this.utils.selectionRenderEngine.updateEntitiesStroke();
+      this.utils.selectionRenderEngine.renderBezierHandles();
       if (window.paper?.view) window.paper.view.update();
     }
   }

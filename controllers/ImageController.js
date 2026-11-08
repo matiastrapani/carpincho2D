@@ -195,8 +195,8 @@ export class ImageController {
     this.raster.data.baseOpacity = val;
 
     // Refresca la opacidad en el lienzo
-    if (window.cadUtils) {
-      window.cadUtils.updateEntitiesStroke();
+    if (window.cadUtils?.selectionRenderEngine) {
+      window.cadUtils.selectionRenderEngine.updateEntitiesStroke();
       if (window.paper?.view) paper.view.update();
     }
   }

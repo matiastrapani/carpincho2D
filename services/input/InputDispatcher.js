@@ -48,8 +48,8 @@ export class InputDispatcher {
       e.preventDefault();
       if (cadUtils?.finishCurrentDrawing) cadUtils.finishCurrentDrawing();
       this.service?.undo();
-      if (cadUtils?.updateEntitiesStroke) cadUtils.updateEntitiesStroke();
-      if (cadUtils?.renderBezierHandles) cadUtils.renderBezierHandles();
+      if (cadUtils?.selectionRenderEngine?.updateEntitiesStroke) cadUtils.selectionRenderEngine.updateEntitiesStroke();
+      if (cadUtils?.selectionRenderEngine?.renderBezierHandles) cadUtils.selectionRenderEngine.renderBezierHandles();
       return;
     }
 
@@ -57,8 +57,8 @@ export class InputDispatcher {
       e.preventDefault();
       if (cadUtils?.finishCurrentDrawing) cadUtils.finishCurrentDrawing();
       this.service?.redo();
-      if (cadUtils?.updateEntitiesStroke) cadUtils.updateEntitiesStroke();
-      if (cadUtils?.renderBezierHandles) cadUtils.renderBezierHandles();
+      if (cadUtils?.selectionRenderEngine?.updateEntitiesStroke) cadUtils.selectionRenderEngine.updateEntitiesStroke();
+      if (cadUtils?.selectionRenderEngine?.renderBezierHandles) cadUtils.selectionRenderEngine.renderBezierHandles();
       return;
     }
 
@@ -68,7 +68,7 @@ export class InputDispatcher {
       this.service?.toggleSnapMaster();
     } else if (e.key === 'F7') {
       e.preventDefault();
-      if (cadUtils?.toggleGrid) cadUtils.toggleGrid();
+      if (this.service.viewportManager?.toggleGrid) this.service.viewportManager.toggleGrid();
     } else if (e.key === 'Escape') {
       e.preventDefault();
 

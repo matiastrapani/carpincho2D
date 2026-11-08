@@ -209,13 +209,13 @@ export class CADUIManager {
     if (btnSnap) btnSnap.addEventListener('click', () => this.cadUtils.toggleSnapMaster());
 
     const btnGrid = document.getElementById('btnGrid');
-    if (btnGrid) btnGrid.addEventListener('click', () => this.cadUtils.toggleGrid());
+    if (btnGrid) btnGrid.addEventListener('click', () => this.cadUtils.viewportManager.toggleGrid());
 
     const btnExtents = document.getElementById('btnExtents');
-    if (btnExtents) btnExtents.addEventListener('click', () => this.cadUtils.resetView());
+    if (btnExtents) btnExtents.addEventListener('click', () => this.cadUtils.viewportManager.resetView());
 
     const btnCmdOk = document.getElementById('btnCmdOk');
-    if (btnCmdOk) btnCmdOk.addEventListener('click', () => this.cadUtils.executeCommandLine());
+    if (btnCmdOk) btnCmdOk.addEventListener('click', () => this.cadUtils.viewportManager.executeCommandLine());
   }
 
   // 4. Modos OSNAP
@@ -580,8 +580,8 @@ export class CADUIManager {
         if (this.cadUtils && this.cadService) {
           this.cadUtils.finishCurrentDrawing(); // Cancela o cierra cualquier trazo en progreso
           this.cadService.undo();
-          this.cadUtils.updateEntitiesStroke();
-          this.cadUtils.renderBezierHandles();
+          this.cadUtils.selectionRenderEngine.selectionRenderEngine.updateEntitiesStroke();
+          this.cadUtils.selectionRenderEngine.selectionRenderEngine.renderBezierHandles();
           paper.view.update();
           this.updateUndoRedoUI();
         }
@@ -596,8 +596,8 @@ export class CADUIManager {
         if (this.cadUtils && this.cadService) {
           this.cadUtils.finishCurrentDrawing();
           this.cadService.redo();
-          this.cadUtils.updateEntitiesStroke();
-          this.cadUtils.renderBezierHandles();
+          this.cadUtils.selectionRenderEngine.updateEntitiesStroke();
+          this.cadUtils.selectionRenderEngine.renderBezierHandles();
           paper.view.update();
           this.updateUndoRedoUI();
         }

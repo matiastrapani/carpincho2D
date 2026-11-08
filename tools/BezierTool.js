@@ -31,7 +31,7 @@ export class BezierTool extends BaseTool {
     // 1. Evaluar OSNAP sobre el punto REAL del cursor
     const osnap = this.service.calculateOsnap(
       event.point, 
-      (snapPt, type) => this.utils.renderSnapMarker(snapPt, type),
+      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type),
       this.utils.activePath
     );
 
@@ -60,7 +60,7 @@ export class BezierTool extends BaseTool {
         this.utils.propertyManager.applyDefaultSettings(this.utils.activePath);
       }
 
-      this.utils.updateEntitiesStroke();
+      this.utils.selectionRenderEngine.updateEntitiesStroke();
       this.setPrompt('Especifique el siguiente punto o [ENTER / Clic derecho para finalizar]:');
     } else {
       // Evitar duplicar vértices si se hace clic en la misma posición
@@ -72,7 +72,7 @@ export class BezierTool extends BaseTool {
       }
 
       this.utils.activePath.add(pt);
-      this.utils.updateEntitiesStroke();
+      this.utils.selectionRenderEngine.updateEntitiesStroke();
     }
   }
 
@@ -85,8 +85,8 @@ export class BezierTool extends BaseTool {
       lastSeg.handleIn = handleVec.multiply(-1);
 
       this.renderBezierPreview();
-      if (this.utils.updateEntitiesStroke) {
-        this.utils.updateEntitiesStroke();
+      if (this.utils.selectionRenderEngine.updateEntitiesStroke) {
+        this.utils.selectionRenderEngine.updateEntitiesStroke();
       }
     }
   }
@@ -97,7 +97,7 @@ export class BezierTool extends BaseTool {
 
     const osnap = this.service.calculateOsnap(
       event.point, 
-      (snapPt, type) => this.utils.renderSnapMarker(snapPt, type),
+      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type),
       this.utils.activePath
     );
 
@@ -108,7 +108,7 @@ export class BezierTool extends BaseTool {
       currentPt = this.utils.applyOrthoConstraint(lastConfirmedPt, event.point, true);
     }
 
-    this.utils.updateHUD(currentPt);
+    this.utils.hud.updateHUD(currentPt);
 
     if (this.utils.activePath && this.utils.activePath.segments.length > 0) {
       const lastConfirmedPt = this.utils.activePath.lastSegment.point;
@@ -136,7 +136,7 @@ export class BezierTool extends BaseTool {
         this.utils.rubberBandLine.opacity = activeOpacity;
       }
 
-      this.utils.updateFeedbackLabels(lastConfirmedPt, currentPt);
+      this.utils.hud.updateFeedbackLabels(lastConfirmedPt, currentPt);
     }
   }
 

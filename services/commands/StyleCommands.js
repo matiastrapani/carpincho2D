@@ -78,11 +78,11 @@ export class UpdateEntityPropertyCommand {
       if (entityState.origStrokeColor !== undefined && !entityState.colorByLayer) entity.strokeColor = entityState.origStrokeColor;
     });
 
-    if (this.utils?.updateEntitiesStroke) {
-      this.utils.updateEntitiesStroke();
+    if (this.utils?.selectionRenderEngine?.updateEntitiesStroke) {
+      this.utils.selectionRenderEngine.updateEntitiesStroke();
     }
-    if (this.utils?.renderBezierHandles) {
-      this.utils.renderBezierHandles();
+    if (this.utils?.selectionRenderEngine?.renderBezierHandles) {
+      this.utils.selectionRenderEngine.renderBezierHandles();
     }
     if (window.paper?.view) {
       window.paper.view.update();
@@ -118,8 +118,8 @@ export class UpdateDefaultSettingsCommand {
     if (this.utils?.activePath && this.utils?.propertyManager) {
       this.utils.propertyManager.applyDefaultSettings(this.utils.activePath);
     }
-    if (this.utils?.updateEntitiesStroke) {
-      this.utils.updateEntitiesStroke();
+    if (this.utils?.selectionRenderEngine?.updateEntitiesStroke) {
+      this.utils.selectionRenderEngine.updateEntitiesStroke();
     }
     if (window.paper?.view) {
       window.paper.view.update();

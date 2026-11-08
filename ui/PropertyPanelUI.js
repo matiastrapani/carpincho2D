@@ -125,8 +125,8 @@ export class PropertyPanelUI {
           if (this.utils?.activePath && this.utils?.propertyManager) {
             this.utils.propertyManager.applyDefaultSettings(this.utils.activePath);
           }
-          if (this.utils?.updateEntitiesStroke) {
-            this.utils.updateEntitiesStroke();
+          if (this.utils?.selectionRenderEngine?.updateEntitiesStroke) {
+            this.utils.selectionRenderEngine.updateEntitiesStroke();
           }
           this._requestCanvasUpdate();
         }
@@ -247,8 +247,8 @@ export class PropertyPanelUI {
 
         if (colorChanged || opacityChanged) {
           hasChanges = true;
-          if (this.utils?.updateEntitiesStroke) {
-            this.utils.updateEntitiesStroke();
+          if (this.utils?.selectionRenderEngine?.updateEntitiesStroke) {
+            this.utils.selectionRenderEngine.updateEntitiesStroke();
           }
           this._requestCanvasUpdate();
         }
@@ -421,8 +421,8 @@ export class PropertyPanelUI {
 
         if (colorChanged || opacityChanged) {
           hasChanges = true;
-          if (this.utils?.updateEntitiesStroke) {
-            this.utils.updateEntitiesStroke();
+          if (this.utils?.selectionRenderEngine?.updateEntitiesStroke) {
+            this.utils.selectionRenderEngine.updateEntitiesStroke();
           }
           this._requestCanvasUpdate();
         }
@@ -1289,7 +1289,7 @@ export class PropertyPanelUI {
     const syncActiveDrawing = () => {
       if (this.utils?.activePath && this.utils?.propertyManager) {
         this.utils.propertyManager.applyDefaultSettings(this.utils.activePath);
-        if (this.utils.updateEntitiesStroke) this.utils.updateEntitiesStroke();
+        if (this.utils.selectionRenderEngine.updateEntitiesStroke) this.utils.selectionRenderEngine.updateEntitiesStroke();
         if (window.paper?.view) window.paper.view.update();
       }
     };
@@ -1594,8 +1594,8 @@ export class PropertyPanelUI {
   }
 
   _requestCanvasUpdate() {
-    if (this.utils?.updateEntitiesStroke) {
-      this.utils.updateEntitiesStroke();
+    if (this.utils?.selectionRenderEngine?.updateEntitiesStroke) {
+      this.utils.selectionRenderEngine.updateEntitiesStroke();
     }
     if (window.paper?.view) {
       window.paper.view.update();

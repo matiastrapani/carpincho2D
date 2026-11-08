@@ -67,8 +67,8 @@ export class MoveCommand {
       });
     }
 
-    if (this.cadService.renderBezierHandles) {
-      this.cadService.renderBezierHandles();
+    if (this.cadService?.selectionRenderEngine?.renderBezierHandles) {
+      this.cadService.selectionRenderEngine.renderBezierHandles();
     }
     paper.view.update();
   }
@@ -129,7 +129,7 @@ export class DeleteCommand {
 
     this.cadService.deselectAllEntities();
     this.cadService.deselectAllSegments();
-    if (this.cadService.renderBezierHandles) this.cadService.renderBezierHandles();
+    if (this.cadService?.selectionRenderEngine?.renderBezierHandles) this.cadService.selectionRenderEngine.renderBezierHandles();
     paper.view.update();
   }
 
@@ -186,8 +186,8 @@ export class DeleteCommand {
     });
 
     if (window.cadUtils) {
-      window.cadUtils.updateEntitiesStroke();
-      window.cadUtils.renderBezierHandles();
+      window.cadUtils.selectionRenderEngine.updateEntitiesStroke();
+      window.cadUtils.selectionRenderEngine.renderBezierHandles();
     }
     paper.view.update();
   }
@@ -208,8 +208,8 @@ export class DivideCommand {
         paper.project.activeLayer.addChild(pt);
       }
     });
-    if (this.cadService.renderBezierHandles) {
-      this.cadService.renderBezierHandles();
+    if (this.cadService?.selectionRenderEngine?.renderBezierHandles) {
+      this.cadService.selectionRenderEngine.renderBezierHandles();
     }
     paper.view.update();
   }
@@ -223,8 +223,8 @@ export class DivideCommand {
       pt.remove();
     });
     this.cadService.deselectAllEntities();
-    if (this.cadService.renderBezierHandles) {
-      this.cadService.renderBezierHandles();
+    if (this.cadService?.selectionRenderEngine?.renderBezierHandles) {
+      this.cadService.selectionRenderEngine.renderBezierHandles();
     }
     paper.view.update();
   }
@@ -258,7 +258,7 @@ export class TrimCommand {
       window.cadUtils.hoveredCurve = null;
       window.cadUtils.hoveredHandle = null;
       window.cadUtils.clearHoverHighlight();
-      window.cadUtils.updateEntitiesStroke();
+      window.cadUtils.selectionRenderEngine.updateEntitiesStroke();
     }
   }
 
@@ -279,7 +279,7 @@ export class TrimCommand {
     });
 
     this.cleanupEditState();
-    if (window.cadUtils) window.cadUtils.renderBezierHandles();
+    if (window.cadUtils?.selectionRenderEngine) window.cadUtils.selectionRenderEngine.renderBezierHandles();
     paper.view.update();
   }
 
@@ -306,7 +306,7 @@ export class TrimCommand {
     }
 
     this.cleanupEditState();
-    if (window.cadUtils) window.cadUtils.renderBezierHandles();
+    if (window.cadUtils?.selectionRenderEngine) window.cadUtils.selectionRenderEngine.renderBezierHandles();
     paper.view.update();
   }
 }
@@ -343,9 +343,9 @@ export class ExtendCommand {
       this.path.segments[i].handleOut = s.handleOut.clone();
     });
 
-    if (window.cadUtils) {
-      window.cadUtils.updateEntitiesStroke();
-      window.cadUtils.renderBezierHandles();
+    if (window.cadUtils?.selectionRenderEngine) {
+      window.cadUtils.selectionRenderEngine.updateEntitiesStroke();
+      window.cadUtils.selectionRenderEngine.renderBezierHandles();
     }
     paper.view.update();
   }
@@ -383,9 +383,9 @@ export class TransformEntityCommand {
       }
     }
 
-    if (window.cadUtils) {
-      window.cadUtils.updateEntitiesStroke();
-      window.cadUtils.renderBezierHandles();
+    if (window.cadUtils?.selectionRenderEngine) {
+      window.cadUtils.selectionRenderEngine.updateEntitiesStroke();
+      window.cadUtils.selectionRenderEngine.renderBezierHandles();
     }
     paper.view.update();
   }

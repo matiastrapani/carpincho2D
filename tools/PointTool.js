@@ -84,8 +84,8 @@ export class PointTool extends BaseTool {
 
     this.service.editingEntities = [];
     this.service.deselectAllSegments();
-    if (this.utils.renderBezierHandles) this.utils.renderBezierHandles();
-    if (this.utils.updateEntitiesStroke) this.utils.updateEntitiesStroke();
+    if (this.utils.selectionRenderEngine.renderBezierHandles) this.utils.selectionRenderEngine.renderBezierHandles();
+    if (this.utils.selectionRenderEngine.updateEntitiesStroke) this.utils.selectionRenderEngine.updateEntitiesStroke();
     if (window.paper?.view) window.paper.view.update();
 
     const count = this.utils.divisionSelectedEntities.length;
@@ -141,7 +141,7 @@ export class PointTool extends BaseTool {
     if (mode === 'point') {
       const osnap = this.service.calculateOsnap(
         event.point, 
-        (pt, type) => this.utils.renderSnapMarker(pt, type)
+        (pt, type) => this.utils.hud.renderSnapMarker(pt, type)
       );
       this.createPointAt(osnap.point);
       return;
@@ -187,8 +187,8 @@ export class PointTool extends BaseTool {
 
         this.service.editingEntities = [];
         this.service.deselectAllSegments();
-        if (this.utils.renderBezierHandles) this.utils.renderBezierHandles();
-        if (this.utils.updateEntitiesStroke) this.utils.updateEntitiesStroke();
+        if (this.utils.selectionRenderEngine.renderBezierHandles) this.utils.selectionRenderEngine.renderBezierHandles();
+        if (this.utils.selectionRenderEngine.updateEntitiesStroke) this.utils.selectionRenderEngine.updateEntitiesStroke();
         if (window.paper?.view) window.paper.view.update();
 
         const count = this.utils.divisionSelectedEntities.length;
@@ -335,8 +335,8 @@ export class PointTool extends BaseTool {
 
           this.service.editingEntities = [];
           this.service.deselectAllSegments();
-          if (this.utils.renderBezierHandles) this.utils.renderBezierHandles();
-          if (this.utils.updateEntitiesStroke) this.utils.updateEntitiesStroke();
+          if (this.utils.selectionRenderEngine.renderBezierHandles) this.utils.selectionRenderEngine.renderBezierHandles();
+          if (this.utils.selectionRenderEngine.selectionRenderEngine.updateEntitiesStroke) this.utils.selectionRenderEngine.selectionRenderEngine.updateEntitiesStroke();
 
           const count = this.utils.divisionSelectedEntities.length;
           this.setPrompt(`Objetivos seleccionados: ${count}. Presiona ENTER o Clic Derecho para continuar...`);
@@ -378,8 +378,8 @@ export class PointTool extends BaseTool {
 
       this.service.editingEntities = [];
       this.service.deselectAllSegments();
-      if (this.utils.renderBezierHandles) this.utils.renderBezierHandles();
-      if (this.utils.updateEntitiesStroke) this.utils.updateEntitiesStroke();
+      if (this.utils.selectionRenderEngine.renderBezierHandles) this.utils.selectionRenderEngine.renderBezierHandles();
+      if (this.utils.selectionRenderEngine.updateEntitiesStroke) this.utils.selectionRenderEngine.updateEntitiesStroke();
       if (window.paper?.view) window.paper.view.update();
 
       const cadX = pt.x.toFixed(2);
@@ -552,11 +552,11 @@ export class PointTool extends BaseTool {
     if (this.utils.currentToolMode === 'point') {
       const osnap = this.service.calculateOsnap(
         event.point, 
-        (pt, type) => this.utils.renderSnapMarker(pt, type)
+        (pt, type) => this.utils.hud.renderSnapMarker(pt, type)
       );
-      this.utils.updateHUD(osnap.point);
+      this.utils.hud.updateHUD(osnap.point);
     } else {
-      this.utils.updateHUD(event.point);
+      this.utils.hud.updateHUD(event.point);
     }
   }
 
@@ -582,9 +582,9 @@ export class PointTool extends BaseTool {
     this.service.deselectAllEntities();
     this.service.editingEntities = [];
     this.service.deselectAllSegments();
-    if (this.utils.renderBezierHandles) this.utils.renderBezierHandles();
-    if (this.utils.updateEntitiesStroke) this.utils.updateEntitiesStroke();
-    this.utils.clearHUD();
+    if (this.utils.selectionRenderEngine.renderBezierHandles) this.utils.selectionRenderEngine.renderBezierHandles();
+    if (this.utils.selectionRenderEngine.updateEntitiesStroke) this.utils.selectionRenderEngine.updateEntitiesStroke();
+    this.utils.hud.clear();
   }
 
   cancel() {

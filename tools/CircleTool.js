@@ -26,7 +26,7 @@ export class CircleTool extends BaseTool {
     // 1. Evaluar OSNAP sobre la posición REAL del cursor
     const osnap = this.service.calculateOsnap(
       event.point, 
-      (snapPt, type) => this.utils.renderSnapMarker(snapPt, type)
+      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type)
     );
 
     if (osnap.type) {
@@ -63,8 +63,8 @@ export class CircleTool extends BaseTool {
         const cmd = new AddEntityCommand(this.service, circleEntity);
         this.service.executeCommand(cmd);
 
-        if (this.utils.updateEntitiesStroke) {
-          this.utils.updateEntitiesStroke();
+        if (this.utils?.selectionRenderEngine?.updateEntitiesStroke) {
+          this.utils.selectionRenderEngine.updateEntitiesStroke();
         }
       }
     }
@@ -73,14 +73,14 @@ export class CircleTool extends BaseTool {
   }
 
   onMouseMove(event) {
-    this.utils.clearHUD();
+    this.utils.hud.clear();
     const isShift = event.event ? event.event.shiftKey : false;
     let pt = event.point.clone();
 
     // 1. Evaluar OSNAP directamente en el cursor real del ratón
     const osnap = this.service.calculateOsnap(
       event.point, 
-      (snapPt, type) => this.utils.renderSnapMarker(snapPt, type)
+      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type)
     );
 
     if (osnap.type) {
@@ -130,9 +130,9 @@ export class CircleTool extends BaseTool {
         opacity: previewOpacity
       });
 
-      this.utils.updateFeedbackLabels(this.centerPoint, pt);
+      this.utils.hud.updateFeedbackLabels(this.centerPoint, pt);
     } else {
-      this.utils.updateHUD(pt);
+      this.utils.hud.updateHUD(pt);
     }
   }
 
@@ -150,7 +150,7 @@ export class CircleTool extends BaseTool {
   resetTool() {
     this.clearPreviews();
     this.centerPoint = null;
-    this.utils.clearHUD();
+    this.utils.hud.clear();
     this.setPrompt('CIRCLE. Haz clic para especificar el centro del círculo.');
     if (window.paper?.view) {
       paper.view.update();

@@ -90,8 +90,8 @@ export class DeleteLayerCommand {
     this.panelUI._syncPaperZIndex();
     this.panelUI.refresh();
     
-    if (this.panelUI.utils?.updateEntitiesStroke) {
-      this.panelUI.utils.updateEntitiesStroke();
+    if (this.panelUI.utils?.selectionRenderEngine?.updateEntitiesStroke) {
+      this.panelUI.utils.selectionRenderEngine.updateEntitiesStroke();
     }
   }
 
@@ -113,8 +113,8 @@ export class DeleteLayerCommand {
       this.panelUI._syncPaperZIndex();
       this.panelUI.refresh();
       
-      if (this.panelUI.utils?.updateEntitiesStroke) {
-        this.panelUI.utils.updateEntitiesStroke();
+      if (this.panelUI.utils?.selectionRenderEngine?.updateEntitiesStroke) {
+        this.panelUI.utils.selectionRenderEngine.updateEntitiesStroke();
       }
       if (window.paper?.view) {
         window.paper.view.update();
@@ -146,8 +146,8 @@ export class UpdateLayerPropertyCommand {
   }
 
   _updateCanvas() {
-    if (this.panelUI.utils?.updateEntitiesStroke) {
-      this.panelUI.utils.updateEntitiesStroke();
+    if (this.panelUI.utils?.selectionRenderEngine?.updateEntitiesStroke) {
+      this.panelUI.utils.selectionRenderEngine.updateEntitiesStroke();
     }
     if (window.paper?.view) {
       window.paper.view.update();

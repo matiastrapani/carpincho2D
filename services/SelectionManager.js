@@ -56,8 +56,8 @@ export class SelectionManager {
     }
 
     if (window.cadUtils) {
-      window.cadUtils.updateEntitiesStroke();
-      window.cadUtils.renderBezierHandles();
+      window.cadUtils.selectionRenderEngine.updateEntitiesStroke();
+      window.cadUtils.selectionRenderEngine.renderBezierHandles();
     }
   }
 
@@ -67,8 +67,8 @@ export class SelectionManager {
     this.deselectAllHandles();
 
     if (window.cadUtils) {
-      window.cadUtils.updateEntitiesStroke();
-      window.cadUtils.renderBezierHandles();
+      window.cadUtils.selectionRenderEngine.updateEntitiesStroke();
+      window.cadUtils.selectionRenderEngine.renderBezierHandles();
     }
 
     if (window.cadUI && typeof window.cadUI.updatePropertyPanel === 'function') {
@@ -92,14 +92,14 @@ export class SelectionManager {
       this.selectedHandles.push({ segment, type });
     }
     if (window.cadUtils) {
-      window.cadUtils.renderBezierHandles();
+      window.cadUtils.selectionRenderEngine.renderBezierHandles();
     }
   }
 
   deselectHandle(segment, type) {
     this.selectedHandles = this.selectedHandles.filter(h => !(h.segment === segment && h.type === type));
     if (window.cadUtils) {
-      window.cadUtils.renderBezierHandles();
+      window.cadUtils.selectionRenderEngine.renderBezierHandles();
     }
   }
 
@@ -122,8 +122,8 @@ export class SelectionManager {
     }
 
     if (window.cadUtils) {
-      window.cadUtils.updateEntitiesStroke();
-      window.cadUtils.renderBezierHandles();
+      window.cadUtils.selectionRenderEngine.updateEntitiesStroke();
+      window.cadUtils.selectionRenderEngine.renderBezierHandles();
     }
 
     if (window.cadUI && typeof window.cadUI.updatePropertyPanel === 'function') {
@@ -139,8 +139,8 @@ export class SelectionManager {
     this.deselectAllHandles();
 
     if (window.cadUtils) {
-      window.cadUtils.updateEntitiesStroke();
-      window.cadUtils.renderBezierHandles();
+      window.cadUtils.selectionRenderEngine.updateEntitiesStroke();
+      window.cadUtils.selectionRenderEngine.renderBezierHandles();
     }
   }
 
@@ -167,7 +167,7 @@ export class SelectionManager {
     }
 
     if (window.cadUtils) {
-      window.cadUtils.renderBezierHandles();
+      window.cadUtils.selectionRenderEngine.renderBezierHandles();
     }
   }
 

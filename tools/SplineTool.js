@@ -16,7 +16,7 @@ export class SplineTool extends BaseTool {
 
     const osnap = this.service.calculateOsnap(
       event.point, 
-      (snapPt, type) => this.utils.renderSnapMarker(snapPt, type)
+      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type)
     );
     const pt = osnap.point;
 
@@ -38,7 +38,7 @@ export class SplineTool extends BaseTool {
         this.utils.propertyManager.applyDefaultSettings(this.utils.activePath);
       }
 
-      this.utils.updateEntitiesStroke();
+      this.utils.selectionRenderEngine.updateEntitiesStroke();
       this.setPrompt('Especifique el siguiente punto de la curva o [ENTER / Clic derecho para finalizar]:');
     } else {
       // Validación para evitar puntos duplicados consecutivos
@@ -51,17 +51,17 @@ export class SplineTool extends BaseTool {
 
       this.utils.activePath.add(pt);
       this.utils.activePath.smooth({ type: 'catmull-rom' });
-      this.utils.updateEntitiesStroke();
+      this.utils.selectionRenderEngine.updateEntitiesStroke();
     }
   }
 
   onMouseMove(event) {
     const osnap = this.service.calculateOsnap(
       event.point, 
-      (pt, type) => this.utils.renderSnapMarker(pt, type)
+      (pt, type) => this.utils.hud.renderSnapMarker(pt, type)
     );
     const pt = osnap.point;
-    this.utils.updateHUD(pt);
+    this.utils.hud.updateHUD(pt);
 
     if (this.utils.activePath && this.utils.activePath.segments.length > 0) {
       const lastPt = this.utils.activePath.lastSegment.point;
@@ -88,7 +88,7 @@ export class SplineTool extends BaseTool {
         this.utils.rubberBandLine.opacity = activeOpacity;
       }
 
-      this.utils.updateFeedbackLabels(lastPt, pt);
+      this.utils.hud.updateFeedbackLabels(lastPt, pt);
     }
   }
 
