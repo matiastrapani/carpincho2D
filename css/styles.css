@@ -32,6 +32,7 @@ canvas {
   background-color: #10141d;
 }
 
+
 canvas.tool-pan { cursor: grab; }
 canvas.tool-pan:active { cursor: grabbing; }
 canvas.tool-draw { cursor: crosshair; }
@@ -557,3 +558,7 @@ input[type="range"].cad-slider::-moz-range-thumb:hover {
    ========================================================================== */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-thumb { background: #2f2f38; border-radius: 2px; }
+
+
+
+

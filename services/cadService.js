@@ -8,6 +8,8 @@ import { OsnapEngine } from './engines/OsnapEngine.js';
 import { GeometryEngine } from './engines/GeometryEngine.js';
 import { SelectionManager } from './SelectionManager.js';
 
+import { CAD_THEME } from '../config/cadTheme.js';
+
 export class CADService {
   constructor() {
     this.osnapEngine = new OsnapEngine(this);
@@ -221,7 +223,7 @@ export class CADService {
 
     const zoom = paper.view.zoom;
     const opts = options || {};
-    const nodeTheme = (window.CAD_THEME && window.CAD_THEME.node) ? window.CAD_THEME.node : {};
+    const nodeTheme = (CAD_THEME && CAD_THEME.node) ? CAD_THEME.node : {};
 
     const layerId = String(opts.layerId || this.utils?.layerManager?.activeLayerId || '0');
     const colorByLayer = opts.colorByLayer !== undefined ? opts.colorByLayer : true;

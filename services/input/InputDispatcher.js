@@ -5,6 +5,12 @@
 export class InputDispatcher {
   constructor(cadService) {
     this._cadService = cadService;
+    this.setupListeners();
+  }
+
+  setupListeners() {
+    window.addEventListener('keydown', (e) => this.handleGlobalKeydown(e));
+    window.addEventListener('keyup', (e) => this.handleGlobalKeyup(e));
   }
 
   get service() {

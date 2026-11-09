@@ -1,6 +1,7 @@
 /**
  * services/renderers/SelectionRenderEngine.js - Renderizado visual de tiradores Bézier, grips paramétricos y grosores dinámicos
  */
+import { CAD_THEME } from '../../config/cadTheme.js';
 
 export class SelectionRenderEngine {
   constructor(cadService) {
@@ -49,12 +50,18 @@ export class SelectionRenderEngine {
         }
 
         ent.strokeWidth = strokeWidthPx / zoom;
+        ent.bringToFront();
       }
     });
+    if (paper.view) paper.view.update();
   }
 
   updateEntitiesStroke() {
     if (!paper || !paper.view) return;
+    if (this.service?.utils?.canvasViewportManager) {
+      this.service.utils.canvasViewportManager.previousViewState = null;
+    }
+
     const zoom = paper.view.zoom;
 
     const cadUtils = window.cadUtils;

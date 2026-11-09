@@ -14,7 +14,9 @@ export class SelectionManager {
 
   selectEntity(entity, addToSelection = false) {
     if (!entity) return;
-
+    if (this.utils?.canvasViewportManager) {
+      this.utils.canvasViewportManager.previousViewState = null;
+    }
     const layerId = String(entity.data?.layerId || '0');
     const layerManager = this.service.utils?.layerManager || window.cadUtils?.layerManager;
     const layer = layerManager?.layers?.get(layerId);
@@ -113,6 +115,9 @@ export class SelectionManager {
 
   deselectEntity(entity) {
     const index = this.selectedEntities.indexOf(entity);
+    if (this.utils?.canvasViewportManager) {
+      this.utils.canvasViewportManager.previousViewState = null;
+    }
     if (index !== -1) {
       this.selectedEntities.splice(index, 1);
     }

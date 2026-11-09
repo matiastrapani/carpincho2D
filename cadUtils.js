@@ -2,68 +2,6 @@
  * cadUtils.js - Orquestador central de la aplicación CAD.
  */
 
-// Configuración Central de Estilos Visuales del Entorno CAD
-const CAD_THEME = {
-  // A. Estilos base y geometría de NODOS / PUNTOS
-  node: {
-    normalRadiusPx: 3.5,        
-    selectedRadiusPx: 4.0,      
-    strokeWidthPx: 1.0,         
-    selectedStrokeWidthPx: 2.0, 
-    defaultFillColor: '#10141D', 
-    defaultStrokeColor: '#18fcf1'
-  },
-
-  // B. Estilos de SELECCIÓN por tipo de objeto
-  selection: {
-    line: {
-      strokeColor: '#ffff00',
-      widthMultiplier: 1.5
-    },
-    node: {
-      fillColor: '#10141D',       
-      strokeColor: '#ffff00',     
-      selectedRadiusPx: 4.0,      
-      normalRadiusPx: 3.5,        
-      selectedWidthPx: 2.0,
-      normalWidthPx: 1.0
-    },
-    circle: {
-      strokeColor: '#ffff00',
-      widthMultiplier: 1.5
-    },
-    raster: {
-      selectedOpacity: 0.8,
-      normalOpacity: 1.0
-    }
-  },
-
-  // C. CONTROL DE GRIPS, TIRADORES Y BRAZOS
-  handles: {
-    // --- VÉRTICES / ANCHORS (Grips Cuadrados) ---
-    anchorSizeNormalPx: 7.0,            
-    anchorSizeSelectedPx: 7.5,        // Incremento sutil (+0.5px)
-    anchorStrokeWidthNormalPx: 1.0,   
-    anchorStrokeWidthSelectedPx: 1.5, 
-    anchorStrokeWidthHoverPx: 1.5,    // Solo aplica cuando NO está seleccionado
-    anchorFillNormal: '#10141D',      
-    anchorFillSelected: '#10141D',    
-    anchorStrokeSelected: '#ffff00',  
-
-    // --- TIRADORES BÉZIER (Cuadrados de control) ---
-    bezierHandleSizePx: 6.0,            
-    bezierHandleStrokeWidthPx: 1.0,   
-    bezierHandleStrokeWidthHoverPx: 1.5, // Solo aplica cuando NO está seleccionado
-    bezierHandleFill: '#10141D',      
-    bezierHandleStrokeSelected: '#ffff00',
-
-    // --- BRAZOS DE CONTROL (Arms) ---
-    bezierArmStrokeWidthPx: 1.0,
-    bezierArmStrokeSelected: '#ffff00'
-  }
-};
-
-window.CAD_THEME = CAD_THEME;
 
 
 import { LayerManager } from './services/LayerManager.js';
@@ -86,6 +24,10 @@ import { CanvasViewportManager } from './services/CanvasViewportManager.js';
 import { SelectionRenderEngine } from './services/renderers/SelectionRenderEngine.js';
 import { InputDispatcher } from './services/input/InputDispatcher.js';
 import { CADIOService } from './services/io/ioService.js';
+
+
+import { CAD_THEME } from './config/cadTheme.js';
+
 
 export class CADUtils {
   constructor(canvasId, service) {
@@ -162,6 +104,10 @@ export class CADUtils {
       this.selectionRenderEngine.controlHandlesGroup = val;
     }
   }
+
+  get drawLayer() { return this.viewportManager?.drawLayer || paper.project?.layers['drawLayer']; }
+  get nodesLayer() { return this.viewportManager?.nodesLayer || paper.project?.layers['nodesLayer']; }
+  get hudLayer() { return this.viewportManager?.hudLayer || paper.project?.layers['hudLayer']; }
   
   /**
    * Registro centralizado de herramientas clasificadas por categoría
@@ -195,153 +141,8 @@ export class CADUtils {
     this.commandBar.setPrompt(text);
   }
 
-
   clearSelectedHandle() {
     this.selectedHandle = null;
-  }
-
-  // --- INICIALIZACIÓN DE PAPER.JS Y EVENTOS DEL CANVAS ---
-  initPaper() {
-    paper.setup(this.canvasElement);
-    paper.view.center = new paper.Point(0, 0);
-
-    // 1. Capa para entidades del dibujo (líneas, arcos, polígonos, etc.)
-    this.drawLayer = paper.project.activeLayer;
-    this.drawLayer.name = 'drawLayer';
-
-    this.nodesLayer = new paper.Layer();
-    this.nodesLayer.name = 'nodesLayer';
-
-    // 2. Capa superior dedicada exclusivamente para HUD y marcadores OSNAP
-    this.hudLayer = new paper.Layer();
-    this.hudLayer.name = 'hudLayer';
-
-
-    // Mantener la capa de HUD arriba de todo el proyecto de Paper.js
-    this.drawLayer.sendToBack();
-    this.nodesLayer.insertAbove(this.drawLayer);
-    this.hudLayer.bringToFront();
-
-    // Dejar la capa de dibujo activa por defecto para que los trazos vayan allí
-    this.drawLayer.activate();
-
-    this.viewportManager.drawGrid();
-    this.setupPaperTool();
-    this.setupDragAndDrop();
-
-    window.addEventListener('resize', () => this.viewportManager.handleCanvasResize());
-
-    const viewportEl = document.getElementById('mainViewport');
-    if (viewportEl) {
-      const resizeObserver = new ResizeObserver(() => this.viewportManager.handleCanvasResize());
-      resizeObserver.observe(viewportEl);
-    }
-
-    this.canvasElement.addEventListener('wheel', (e) => this.viewportManager.handleMagicMouseWheel(e), { passive: false });
-
-    this.canvasElement.addEventListener('contextmenu', e => {
-      e.preventDefault();
-
-      // 1. Capturar el modo ANTES de que cualquier herramienta lo cambie
-      const previousTool = this.currentToolMode;
-
-      // 2. Delegar la confirmación por Clic Derecho a la herramienta activa
-      if (this.toolManager.activeTool && typeof this.toolManager.activeTool.onContextMenu === 'function') {
-        const handled = this.toolManager.activeTool.onContextMenu(e);
-        if (handled) return;
-      }
-
-      if (this.currentToolMode === 'trim') {
-        const activeTool = this.toolManager.activeTool;
-        if (activeTool && typeof activeTool.confirmTrimBoundaries === 'function') {
-          activeTool.confirmTrimBoundaries();
-          return;
-        }
-      }
-
-      const drawingTools = ['polyline', 'spline', 'bezier', 'line'];
-      if (drawingTools.includes(this.currentToolMode) && this.activePath) {
-        this.finishCurrentDrawing();
-        return;
-      }
-
-      // 3. SOLO repetir la última herramienta si YA ESTÁBAMOS en 'select' antes de hacer clic
-      if (previousTool === 'select' && this.lastActiveToolMode && this.lastActiveToolMode !== 'select') {
-        this.setTool(this.lastActiveToolMode);
-      } else {
-        this.setTool('select');
-      }
-    });
-
-    window.addEventListener('keydown', (e) => this.handleGlobalKeydown(e));
-    window.addEventListener('keyup', (e) => this.handleGlobalKeyup(e));
-
-    const cmdInput = document.getElementById('cmdInput');
-    if (cmdInput) {
-      cmdInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') this.executeCommandLine();
-      });
-    }
-
-    // Reemplazamos la llamada a (0,0) por una limpieza transparente del HUD
-    this.hud.clear();
-
-    if (this.canvasElement) {
-      this.canvasElement.focus();
-    }
-    this.selectionRenderEngine.updateEntitiesStroke();
-    paper.view.update();
-  }
-
-  setupPaperTool() {
-    const tool = new paper.Tool();
-
-    tool.onMouseDown = (event) => {
-      if (event.event.button === 1 || this.currentToolMode === 'pan') {
-        this.isPanning = true;
-        this.panStartPoint = event.event;
-        return;
-      }
-
-      if (this.toolManager.activeTool) {
-        this.toolManager.onMouseDown(event);
-      }
-    };
-
-    tool.onMouseDrag = (event) => {
-      if (this.isPanning) {
-        const delta = paper.view.center.subtract(
-          paper.view.getEventPoint(event.event).subtract(paper.view.getEventPoint(this.panStartPoint))
-        );
-        paper.view.center = delta;
-        this.panStartPoint = event.event;
-        this.viewportManager.drawGrid();
-        return;
-      }
-
-      if (this.toolManager.activeTool) {
-        this.toolManager.onMouseDrag(event);
-      }
-    };
-
-    tool.onMouseUp = (event) => {
-      if (event.event.button === 1 || event.event.button === 2 || this.currentToolMode === 'pan') {
-        this.isPanning = false;
-      }
-
-      if (this.toolManager.activeTool) {
-        this.toolManager.onMouseUp(event);
-      }
-    };
-
-    tool.onMouseMove = (event) => {
-      this.lastMousePoint = event.point.clone();
-      this.hud.updateHUD(event.point);
-
-      if (this.toolManager.activeTool) {
-        this.toolManager.onMouseMove(event);
-      }
-    };
   }
 
   deleteSelectedHandleOrSegment() {
@@ -719,7 +520,7 @@ export class CADUtils {
     if (!point) return;
 
     const zoom = paper.view.zoom;
-    const cfg = CAD_THEME?.handles || {};
+    const cfg = CAD_THEME.handles;
     const side = (cfg.anchorSizeSelectedPx || 8.5) / zoom;
 
     const marker = new paper.Path.Rectangle({

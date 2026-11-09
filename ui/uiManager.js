@@ -184,8 +184,6 @@ export class CADUIManager {
             this.cadUtils.setTool(selectedTool);
           }
         };
-
-        //item.addEventListener('mousedown', handleSelect);
         item.addEventListener('click', handleSelect);
       });
     });
@@ -211,6 +209,17 @@ export class CADUIManager {
     const btnGrid = document.getElementById('btnGrid');
     if (btnGrid) btnGrid.addEventListener('click', () => this.cadUtils.viewportManager.toggleGrid());
 
+
+    // Restablecer Zoom al 100% y centrar en Origen (0,0)
+    const btnZoomReset = document.getElementById('btnZoomReset');
+    if (btnZoomReset) {
+      btnZoomReset.addEventListener('click', () => {
+        if (this.cadUtils.viewportManager?.zoomReset) {
+          this.cadUtils.viewportManager.zoomReset();
+        }
+      });
+    }
+    
     const btnExtents = document.getElementById('btnExtents');
     if (btnExtents) btnExtents.addEventListener('click', () => this.cadUtils.viewportManager.resetView());
 
@@ -580,8 +589,8 @@ export class CADUIManager {
         if (this.cadUtils && this.cadService) {
           this.cadUtils.finishCurrentDrawing(); // Cancela o cierra cualquier trazo en progreso
           this.cadService.undo();
-          this.cadUtils.selectionRenderEngine.selectionRenderEngine.updateEntitiesStroke();
-          this.cadUtils.selectionRenderEngine.selectionRenderEngine.renderBezierHandles();
+          this.cadUtils.selectionRenderEngine.updateEntitiesStroke();
+          this.cadUtils.selectionRenderEngine.renderBezierHandles();
           paper.view.update();
           this.updateUndoRedoUI();
         }

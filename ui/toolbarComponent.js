@@ -2,7 +2,7 @@
  * modules/toolbarComponent.js - Componente que genera e inyecta la UI dinámicamente
  */
 export class CADToolbarComponent {
-  constructor(containerId = 'app-ui-container') {
+  constructor(containerId = 'fixedConsoleContainer') {
     this.container = document.getElementById(containerId);
   }
 
@@ -11,11 +11,11 @@ export class CADToolbarComponent {
 
     this.container.innerHTML = `    
       <!-- Barra Inferior de Control -->
-      <div class="absolute bottom-0 left-0 right-0 p-2 bg-[#121215] flex flex-col gap-2 z-60 pointer-events-auto">
+      <div class="relative w-full p-2 bg-[#121215] flex flex-col gap-2 z-10 pointer-events-auto">
         <div class="flex flex-wrap items-center justify-between gap-2 w-full h-6 min-h-[24px]">
           
           <!-- OSNAP & Filtros -->
-          <div class="h-6 flex items-center gap-1.5 overflow-x-auto max-w-full shrink-0">
+          <div class="h-6 flex items-center gap-1.5 overflow-x-auto max-w-full shrink-0 z-11">
             <button id="btnSnap" class="cad-button cad-button-square snap-btn active h-6 w-6 tooltip-top" data-tooltip="OSNAP [F3]">
               <i id="btnSnapIcon" class="fa-solid fa-magnet text-[10px]"></i>
             </button>
@@ -65,12 +65,20 @@ export class CADToolbarComponent {
           </div>
 
           <!-- Coordenadas & Zoom -->
-          <div class="h-6 flex items-center gap-2 text-xs shrink-0 font-sans ml-auto">
-            <div class="hidden sm:flex items-center gap-2 px-1 h-6 shrink-0">
+          <div class="h-6 flex items-center gap-1 text-xs shrink-0 font-sans ml-auto">
+            
+            <div class="flat-divider h-4 shrink-0 hidden sm:block"></div>
+            
+            <div class="hidden sm:flex items-center gap-1 px-1 h-6 shrink-0">
               <div class="flex items-center gap-1 h-6">
                 <span class="text-zinc-500 font-bold leading-none">X:</span>
                 <span id="hudX" class="hud-value text-zinc-300 min-w-[55px] text-right font-medium text-[11px] leading-none">0.00</span>
               </div>
+            </div>
+            
+            <div class="flat-divider h-4 shrink-0 hidden sm:block"></div>
+            
+            <div class="hidden sm:flex items-center gap-1 px-1 h-6 shrink-0">
               <div class="flex items-center gap-1 h-6">
                 <span class="text-zinc-500 font-bold leading-none">Y:</span>
                 <span id="hudY" class="hud-value text-zinc-300 min-w-[55px] text-right font-medium text-[11px] leading-none">0.00</span>
@@ -79,10 +87,14 @@ export class CADToolbarComponent {
 
             <div class="flat-divider h-4 shrink-0 hidden sm:block"></div>
 
-            <div class="hidden md:flex items-center gap-1.5 h-6 shrink-0">
-              <span class="text-zinc-500 font-medium text-[10px] leading-none">ZOOM:</span>
-              <span id="hudZoom" class="hud-value text-zinc-300 min-w-[40px] text-right font-medium text-[11px] leading-none">100%</span>
-              
+            <button id="btnZoomReset" class="hidden md:flex cad-button rounded items-center gap-1.5 px-2 h-6 shrink-0 text-zinc-400 hover:text-zinc-100 tooltip-top cursor-pointer" data-tooltip="Restablecer vista a 100% (Origen 0,0)">
+              <span class="text-zinc-500 font-medium text-[10px] leading-none pointer-events-none">ZOOM:</span>
+              <span id="hudZoom" class="hud-value text-zinc-300 min-w-[32px] text-right font-medium text-[11px] leading-none pointer-events-none">100%</span>
+            </button>
+
+            <div class="flat-divider h-4 shrink-0 hidden sm:block"></div>
+
+            <div class="hidden md:flex items-center gap-1 h-6 shrink-0">
               <button id="btnExtents" class="cad-button cad-button-square h-6 w-6 text-zinc-400 hover:text-zinc-100 tooltip-top shrink-0" data-tooltip="Ajustar Vista (Extents)">
                 <i class="fa-solid fa-compress-arrows-alt text-[10px]"></i>
               </button>
@@ -91,7 +103,7 @@ export class CADToolbarComponent {
         </div>
 
         <!-- Barra de Comandos (2 RENGLONES) -->
-        <div class="cad-panel p-2 rounded text-xs text-zinc-300 flex flex-col gap-1.5 w-full font-sans">
+        <div class="cad-panel p-2 rounded text-xs text-zinc-300 flex flex-col gap-1.5 w-full font-sans z-10">
           <!-- RENGLÓN 1: Muestra de Salida / Prompt -->
           <div class="flex items-center gap-1.5 text-zinc-400 font-medium px-1 py-0.5 text-[11px] min-h-[20px] truncate">
             <i class="fa-solid fa-terminal text-[10px] text-zinc-500"></i>

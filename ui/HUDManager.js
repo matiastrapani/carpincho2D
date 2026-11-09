@@ -1,6 +1,9 @@
 /**
  * ui/HUDManager.js - Gestión de Overlays, Coordenadas y Marcadores Visuales (OSNAP/HUD)
  */
+
+import { CAD_THEME } from '../config/cadTheme.js';
+
 export class HUDManager {
   constructor(cadUtils) {
     this.utils = cadUtils;
@@ -22,6 +25,11 @@ export class HUDManager {
   initDOM() {
     this.hudX = document.getElementById('hudX');
     this.hudY = document.getElementById('hudY');
+    // Guardar siempre el elemento real bajo el puntero en la pantalla
+    this.currentElementUnderCursor = null;
+    window.addEventListener('pointermove', (e) => {
+      this.currentElementUnderCursor = document.elementFromPoint(e.clientX, e.clientY);
+    }, { passive: true });
   }
 
   /**
@@ -67,20 +75,27 @@ export class HUDManager {
   updateHUD(point) {
     if (!paper || !paper.view) return;
 
-    const hudX = document.getElementById('hudX');
-    const hudY = document.getElementById('hudY');
-    const hudZoom = document.getElementById('hudZoom');
-
-    // 1. Actualización de Coordenadas (Y cartesiano invertido)
-    if (point) {
-      if (hudX) hudX.innerText = point.x.toFixed(2);
-      if (hudY) hudY.innerText = (-point.y).toFixed(2);
+    // 1. Zoom: se actualiza SIEMPRE
+    const elZoom = this.hudZoom || document.getElementById('hudZoom');
+    if (elZoom) {
+      elZoom.innerText = `${Math.round(paper.view.zoom * 100)}%`;
     }
 
-    // 2. Actualización Porcentual de Zoom
-    if (hudZoom) {
-      const zoomPercent = Math.round(paper.view.zoom * 100);
-      hudZoom.innerText = `${zoomPercent}%`;
+    // Guardar posición cartesiana
+    if (point) this.lastPointerPoint = point;
+    const targetPoint = point || this.lastPointerPoint;
+
+    // 2. Omitir X/Y solo si el puntero está interactuando fuera del Canvas
+    if (point && this.currentElementUnderCursor && this.currentElementUnderCursor.tagName !== 'CANVAS') {
+      return;
+    }
+
+    // 3. Renderizar Coordenadas X / Y
+    if (targetPoint) {
+      const elX = this.hudX || document.getElementById('hudX');
+      const elY = this.hudY || document.getElementById('hudY');
+      if (elX) elX.innerText = targetPoint.x.toFixed(2);
+      if (elY) elY.innerText = (-targetPoint.y).toFixed(2);
     }
   }
 
@@ -113,21 +128,32 @@ export class HUDManager {
     }
 
     const zoom = paper.view.zoom;
-    const size = 12 / zoom;
-    const strokeWidth = 1.5 / zoom;
+    const { 
+      snapStrokeColor, 
+      snapFillColor, 
+      snapBgColor, 
+      snapStrokeWidthPx, 
+      snapMarkerSizePx, 
+      extensionFactor 
+    } = CAD_THEME.hud;
+
+    const size = snapMarkerSizePx / zoom;
+    const strokeWidth = snapStrokeWidthPx / zoom;
+    const strokeColor = snapStrokeColor;
+    const fillColor = snapFillColor;
 
     if (type === 'node') {
       const circle = new paper.Path.Circle({
         center: point,
         radius: size * 0.5,
-        strokeColor: '#34d399',
+        strokeColor: strokeColor,
         strokeWidth: strokeWidth,
-        fillColor: new paper.Color(0.2, 0.8, 0.5, 0.2)
+        fillColor: fillColor
       });
       const innerDot = new paper.Path.Circle({
         center: point,
         radius: size * 0.15,
-        fillColor: '#34d399'
+        fillColor: strokeColor
       });
       this.snapMarkersGroup.addChild(circle);
       this.snapMarkersGroup.addChild(innerDot);
@@ -135,9 +161,9 @@ export class HUDManager {
       const rect = new paper.Path.Rectangle({
         center: point,
         size: [size, size],
-        strokeColor: '#34d399',
+        strokeColor: strokeColor,
         strokeWidth: strokeWidth,
-        fillColor: new paper.Color(0.2, 0.8, 0.5, 0.25)
+        fillColor: fillColor
       });
       this.snapMarkersGroup.addChild(rect);
     } else if (type === 'midpoint') {
@@ -145,29 +171,49 @@ export class HUDManager {
         center: point,
         sides: 3,
         radius: size * 0.6,
-        strokeColor: '#34d399',
+        strokeColor: strokeColor,
         strokeWidth: strokeWidth,
-        fillColor: new paper.Color(0.2, 0.8, 0.5, 0.25)
+        fillColor: fillColor
       });
       this.snapMarkersGroup.addChild(triangle);
     } else if (type === 'intersection') {
+      const half = size * 0.5;
+      const bgHalf = half * extensionFactor;
+
+      // 1. Líneas de FONDO (mismo espesor, 20% más largas, en '#10141d')
+      const bgLine1 = new paper.Path.Line(
+        point.subtract(new paper.Point(bgHalf, bgHalf)),
+        point.add(new paper.Point(bgHalf, bgHalf))
+      );
+      const bgLine2 = new paper.Path.Line(
+        point.subtract(new paper.Point(-bgHalf, bgHalf)),
+        point.add(new paper.Point(-bgHalf, bgHalf))
+      );
+      bgLine1.strokeColor = bgLine2.strokeColor = snapBgColor;
+      bgLine1.strokeWidth = bgLine2.strokeWidth = strokeWidth;
+
+      // 2. Líneas FRENTE (tamaño normal, color principal)
       const line1 = new paper.Path.Line(
-        point.subtract(new paper.Point(size * 0.5, size * 0.5)),
-        point.add(new paper.Point(size * 0.5, size * 0.5))
+        point.subtract(new paper.Point(half, half)),
+        point.add(new paper.Point(half, half))
       );
       const line2 = new paper.Path.Line(
-        point.subtract(new paper.Point(-size * 0.5, size * 0.5)),
-        point.add(new paper.Point(-size * 0.5, size * 0.5))
+        point.subtract(new paper.Point(-half, half)),
+        point.add(new paper.Point(-half, half))
       );
-      line1.strokeColor = line2.strokeColor = '#34d399';
-      line1.strokeWidth = line2.strokeWidth = strokeWidth;
+      line1.strokeColor = line2.strokeColor = strokeColor;
+      line1.strokeWidth = line2.strokeWidth = strokeWidth * 1.4;
+
+      // 3. Agregar al grupo en orden de apilamiento (Fondo primero, Frente al final)
+      this.snapMarkersGroup.addChild(bgLine1);
+      this.snapMarkersGroup.addChild(bgLine2);
       this.snapMarkersGroup.addChild(line1);
       this.snapMarkersGroup.addChild(line2);
     } else if (type === 'grid') {
       const gridCircle = new paper.Path.Circle({
         center: point,
         radius: size * 0.35,
-        fillColor: '#34d399'
+        fillColor: strokeColor
       });
       this.snapMarkersGroup.addChild(gridCircle);
     } else if (type === 'center') {
@@ -175,9 +221,9 @@ export class HUDManager {
       const centerCircle = new paper.Path.Circle({
         center: point,
         radius: size * 0.5,
-        strokeColor: '#34d399',
+        strokeColor: strokeColor,
         strokeWidth: strokeWidth,
-        fillColor: new paper.Color(0.2, 0.8, 0.5, 0.2)
+        fillColor: fillColor
       });
       this.snapMarkersGroup.addChild(centerCircle);
     } else if (type === 'quadrant') {
@@ -186,9 +232,9 @@ export class HUDManager {
         center: point,
         sides: 4,
         radius: size * 0.55,
-        strokeColor: '#34d399',
+        strokeColor: strokeColor,
         strokeWidth: strokeWidth,
-        fillColor: new paper.Color(0.2, 0.8, 0.5, 0.25)
+        fillColor: fillColor
       });
       // Rotamos 45 grados para transformarlo en un diamante
       diamond.rotate(45, point);

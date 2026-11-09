@@ -52,16 +52,6 @@
     </div>
 
 
-
-
-
-
-
-
-
-
-      
-
     <!-- Botones ubicados a la izquierda, inmediatamente después del fondo del logo -->
     <div class="flex items-center px-3">
       <button id="btnHeaderUndo" class="cad-button cad-button-square h-8 w-8" title="Deshacer (Ctrl+Z)">
@@ -87,19 +77,27 @@
     <!-- Contenedor de acople izquierdo principal -->
     <div id="leftDockContainer" class="h-full flex shrink-0"></div>
 
-    <!-- Viewport Principal del Canvas -->
-    <div id="mainViewport" class="relative flex-1 h-full flex flex-col min-w-0">
-      <canvas id="cadCanvas" class="tool-draw" tabindex="0" resize></canvas>
+    <!-- Columna del espacio de trabajo (Canvas + Consola Fija) -->
+    <div id="workspaceContainer" class="flex-1 h-full flex flex-col min-w-0">
+      
+      <!-- Viewport Principal del Canvas -->
+      <div id="mainViewport" class="relative flex-1 min-h-0 w-full overflow-hidden">
+        <canvas id="cadCanvas" class="tool-draw" tabindex="0"></canvas>
 
-      <!-- Contenedor donde se inyecta la UI dinámicamente -->
-      <div id="app-ui-container"></div>
+        <!-- Contenedor donde se inyecta la UI dinámicamente -->
+        <div id="app-ui-container"></div>
+      </div>
+
+      <!-- Contenedor reservado para la Consola Fija -->
+      <div id="fixedConsoleContainer" class="shrink-0 w-full min-h-0 z-40"></div>
+
     </div>
 
     <!-- Contenedor de acople a la izquierda del panel de control -->
     <div id="panelLeftDockContainer" class="h-full flex shrink-0"></div>
 
     <!-- Resizer Lateral del Panel de Control -->
-    <div id="resizer" class="group relative w-[1px] cursor-col-resize shrink-0 h-full z-30">
+    <div id="resizer" class="group relative w-[1px] cursor-col-resize shrink-0 h-full z-50">
       <!-- Hitbox invisible para agarre fácil (8px de tolerancia) -->
       <div class="absolute -left-1 -right-1 top-0 bottom-0"></div>
       
@@ -145,47 +143,6 @@
   </div>
 
   <script src="icons/icons.js"></script>
-  <script type="module">
-    import { CADToolbarComponent } from './ui/toolbarComponent.js';
-    import { CADService } from './services/cadService.js';
-    import { CADUtils } from './cadUtils.js';
-    import { CADIOService } from './services/io/ioService.js';
-    import { CADUIManager } from './ui/uiManager.js';
-    import { LayerPanelUI } from './ui/LayerPanelUI.js';
-    import { PropertyPanelUI } from './ui/PropertyPanelUI.js';
-    
-    window.addEventListener('load', () => {
-      // 1. Inyectar Componente de Interfaz
-      const toolbar = new CADToolbarComponent('app-ui-container');
-      toolbar.render();
-
-      // Forzar renderizado de Iconify sobre los elementos inyectados dinámicamente
-      if (window.Iconify) {
-        window.Iconify.scan(document.getElementById('app-ui-container'));
-      }
-
-      // 2. Inicializar Servicios y UI Manager
-      window.cadService = new CADService();
-      window.cadUtils = new CADUtils('cadCanvas', window.cadService);
-      window.cadIO = new CADIOService();
-
-      // 3. Inicializar Paper.js PRIMERO para tener contexto de lienzo
-      window.cadUtils.initPaper();
-      
-      // 4. Inicializar Administradores de UI (después de Paper.js)
-      window.cadUI = new CADUIManager(window.cadUtils, window.cadService);
-      window.layerPanelUI = new LayerPanelUI(window.cadUtils, 'layerPanelContainer');
-      window.propertyPanelUI = new PropertyPanelUI(window.cadUtils, 'propertyPanelContainer');
-
-      // 5. Cargar entidades y refrescar la lista de capas visuales
-      window.cadUI.init();
-      window.cadService.createDemoEntities();
-      window.layerPanelUI.refresh();
-      window.propertyPanelUI.refresh();
-
-      window.cadUtils.selectionRenderEngine.renderBezierHandles();
-      window.cadUtils.setTool('select');
-    });
-  </script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>
