@@ -7,6 +7,82 @@ export class CADUIManager {
   constructor(cadUtils, cadService) {
     this.cadUtils = cadUtils;
     this.cadService = cadService;
+    
+    // Referencias bindeadas para listeners globales en window / document
+    this._onGlobalKeyDown = this._handleGlobalKeyDown.bind(this);
+    this._onDocumentMouseDown = this._handleDocumentMouseDown.bind(this);
+    
+    // Handlers de arrastre de la Toolbar
+    this._onToolbarMouseMove = this._handleToolbarMouseMove.bind(this);
+    this._onToolbarMouseUp = this._handleToolbarMouseUp.bind(this);
+    this._onToolbarResizeMouseMove = this._handleToolbarResizeMouseMove.bind(this);
+    this._onToolbarResizeMouseUp = this._handleToolbarResizeMouseUp.bind(this);
+
+    // Handlers de redimensionamiento del Sidebar
+    this._onSidebarMouseMove = this._handleSidebarMouseMove.bind(this);
+    this._onSidebarMouseUp = this._handleSidebarMouseUp.bind(this);
+
+    this._onSidebarVerticalMouseMove = this._handleSidebarVerticalMouseMove.bind(this);
+    this._onSidebarVerticalMouseUp = this._handleSidebarVerticalMouseUp.bind(this);
+
+    this._verticalResizeState = {
+      startY: 0,
+      startHeight: 0,
+      topPanel: null,
+      resizer: null,
+      sidebarContent: null
+    };
+
+    // Estado interno de arrastres
+    this._dragState = {
+      isDraggingToolbar: false,
+      dragOffsetX: 0,
+      dragOffsetY: 0,
+      currentDockState: 'floating',
+      SNAP_THRESHOLD: 40,
+      verticalToolbar: null,
+      rightSidebar: null,
+      panelLeftDockContainer: null,
+      leftDockContainer: null,
+      rightDockContainer: null,
+      resizer: null
+    };
+
+    this._toolbarResizeState = {
+      isResizingToolbar: false,
+      startX: 0,
+      startWidth: 0,
+      verticalToolbar: null,
+      toolColumns: 1
+    };
+
+    this._sidebarResizeState = {
+      isResizingSidebar: false,
+      lastExpandedWidth: 288,
+      isCollapsed: false,
+      rightSidebar: null,
+      resizer: null
+    };
+  }
+
+  _handleSidebarVerticalMouseMove(e) {
+    const vs = this._verticalResizeState;
+    if (!vs.topPanel || !vs.resizer || !vs.sidebarContent) return;
+
+    const deltaY = e.clientY - vs.startY;
+    const totalHeight = vs.sidebarContent.getBoundingClientRect().height;
+    const resizerHeight = vs.resizer.getBoundingClientRect().height;
+    const maxTopHeight = totalHeight - resizerHeight - 90;
+
+    const newHeight = Math.max(90, Math.min(maxTopHeight, vs.startHeight + deltaY));
+    vs.topPanel.style.height = `${newHeight}px`;
+  }
+
+  _handleSidebarVerticalMouseUp() {
+    window.removeEventListener('mousemove', this._onSidebarVerticalMouseMove);
+    window.removeEventListener('mouseup', this._onSidebarVerticalMouseUp);
+    document.body.style.cursor = '';
+    document.body.style.userSelect = 'none';
   }
 
   init() {
@@ -30,53 +106,23 @@ export class CADUIManager {
 
     if (!topPanel || !resizer || !sidebarContent) return;
 
-    let startY = 0;
-    let startHeight = 0;
-
-    const onMouseMove = (e) => {
-      const deltaY = e.clientY - startY;
-      const totalHeight = sidebarContent.getBoundingClientRect().height;
-      const resizerHeight = resizer.getBoundingClientRect().height;
-      const maxTopHeight = totalHeight - resizerHeight - 90; // Mínimo 90px para el panel de capas
-
-      const newHeight = Math.max(90, Math.min(maxTopHeight, startHeight + deltaY));
-      topPanel.style.height = `${newHeight}px`;
-    };
-
-    const onMouseUp = () => {
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
+    this._verticalResizeState.topPanel = topPanel;
+    this._verticalResizeState.resizer = resizer;
+    this._verticalResizeState.sidebarContent = sidebarContent;
 
     resizer.addEventListener('mousedown', (e) => {
-      startY = e.clientY;
-      startHeight = topPanel.getBoundingClientRect().height;
+      this._verticalResizeState.startY = e.clientY;
+      this._verticalResizeState.startHeight = topPanel.getBoundingClientRect().height;
       document.body.style.cursor = 'row-resize';
       document.body.style.userSelect = 'none';
 
-      document.addEventListener('mousemove', onMouseMove);
-      document.addEventListener('mouseup', onMouseUp);
+      window.addEventListener('mousemove', this._onSidebarVerticalMouseMove);
+      window.addEventListener('mouseup', this._onSidebarVerticalMouseUp);
     });
   }
 
   bindGlobalKeyboard() {
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        const openMenus = document.querySelectorAll('.flyout-menu.show');
-        
-        // Si hay algún flyout/menú abierto en el DOM
-        if (openMenus.length > 0) {
-          e.stopPropagation(); // Evita que el primer ESC cancele herramientas en el canvas
-          this.closeAllFlyouts();
-
-          // Devolver el foco al canvas para que Paper.js siga escuchando teclas
-          const canvas = document.getElementById('myCanvas') || document.querySelector('canvas');
-          if (canvas) canvas.focus();
-        }
-      }
-    });
+    document.addEventListener('keydown', this._onGlobalKeyDown);
   }
   
   // 1. Botones de herramientas simples
@@ -153,10 +199,9 @@ export class CADUIManager {
 
       btn.addEventListener('mouseleave', () => clearTimeout(pressTimer));
 
-      // SELECCIÓN DE OPCIÓN EN EL FLYOUT (Usamos mousedown para ganar prioridad de evento)
       const items = menu.querySelectorAll('.flyout-item');
       items.forEach(item => {
-        const handleSelect = (e) => {
+        item.addEventListener('click', (e) => {
           e.stopPropagation();
           e.preventDefault();
           clearTimeout(pressTimer);
@@ -179,21 +224,12 @@ export class CADUIManager {
           }
 
           this.closeAllFlyouts();
-
-          if (typeof this.cadUtils.setTool === 'function') {
-            this.cadUtils.setTool(selectedTool);
-          }
-        };
-        item.addEventListener('click', handleSelect);
+        });
       });
     });
 
     // Cerrar desplegables al hacer clic en el lienzo o fuera de la barra
-    document.addEventListener('mousedown', (e) => {
-      if (!e.target.closest('.relative')) {
-        this.closeAllFlyouts();
-      }
-    });
+    document.addEventListener('mousedown', this._onDocumentMouseDown);
   }
 
   closeAllFlyouts() {
@@ -243,138 +279,55 @@ export class CADUIManager {
     const dragHandle = document.getElementById('toolbarDragHandle');
     const toolbarWidthResizer = document.getElementById('toolbarWidthResizer');
 
-    const leftDockContainer = document.getElementById('leftDockContainer');
-    const panelLeftDockContainer = document.getElementById('panelLeftDockContainer');
-    const rightDockContainer = document.getElementById('rightDockContainer');
-    const rightSidebar = document.getElementById('rightSidebar');
-    const resizer = document.getElementById('resizer'); // <--- AHORA SE CAPTURA EL CONTENEDOR RESIZER
-
     if (!verticalToolbar || !dragHandle) return;
 
-    let currentDockState = 'floating';
-    let toolColumns = 1;
-    const SNAP_THRESHOLD = 40;
+    this._dragState.verticalToolbar = verticalToolbar;
+    this._dragState.leftDockContainer = document.getElementById('leftDockContainer');
+    this._dragState.panelLeftDockContainer = document.getElementById('panelLeftDockContainer');
+    this._dragState.rightDockContainer = document.getElementById('rightDockContainer');
+    this._dragState.rightSidebar = document.getElementById('rightSidebar');
+    this._dragState.resizer = document.getElementById('resizer');
 
-    const applyDockState = (dockState) => {
-      currentDockState = dockState;
-      
-      if (dockState === 'docked-panel-left') {
-        panelLeftDockContainer?.appendChild(verticalToolbar);
-        verticalToolbar.className = 'relative cad-panel p-1 flex flex-col items-center gap-1 z-50 toolbar-docked dock-panel-left pointer-events-auto';
-        verticalToolbar.style.top = '';
-        verticalToolbar.style.left = '';
-        resizer?.classList.add('has-docked-border'); // <--- ANCHO FÍSICO DE 3PX
-      } else {
-        resizer?.classList.remove('has-docked-border'); // <--- VUELVE A 1PX SI SE DESACOPLA
-
-        if (dockState === 'docked-left') {
-          leftDockContainer?.appendChild(verticalToolbar);
-          verticalToolbar.className = 'relative cad-panel p-1 flex flex-col items-center gap-1 z-50 toolbar-docked dock-left pointer-events-auto';
-          verticalToolbar.style.top = '';
-          verticalToolbar.style.left = '';
-        } else if (dockState === 'docked-right') {
-          rightDockContainer?.appendChild(verticalToolbar);
-          verticalToolbar.className = 'relative cad-panel p-1 flex flex-col items-center gap-1 z-50 toolbar-docked dock-right pointer-events-auto';
-          verticalToolbar.style.top = '';
-          verticalToolbar.style.left = '';
-        } else {
-          document.body.appendChild(verticalToolbar);
-          verticalToolbar.className = 'absolute cad-panel p-1 flex flex-col items-center gap-1 z-50 toolbar-floating dock-left pointer-events-auto';
-        }
-      }
-    };
-
-    let isDraggingToolbar = false;
-    let dragOffsetX = 0;
-    let dragOffsetY = 0;
+    // Sincronizar el estado inicial real según el contenedor HTML
+    if (verticalToolbar.parentElement === this._dragState.leftDockContainer) {
+      this._dragState.currentDockState = 'docked-left';
+    } else if (verticalToolbar.parentElement === this._dragState.panelLeftDockContainer) {
+      this._dragState.currentDockState = 'docked-panel-left';
+    } else if (verticalToolbar.parentElement === this._dragState.rightDockContainer) {
+      this._dragState.currentDockState = 'docked-right';
+    } else if (verticalToolbar.parentElement !== document.body) {
+      this._dragState.currentDockState = 'docked';
+    }
 
     dragHandle.addEventListener('mousedown', (e) => {
-      isDraggingToolbar = true;
+      this._dragState.isDraggingToolbar = true;
       const rect = verticalToolbar.getBoundingClientRect();
-      dragOffsetX = e.clientX - rect.left;
-      dragOffsetY = e.clientY - rect.top;
+      this._dragState.dragOffsetX = e.clientX - rect.left;
+      this._dragState.dragOffsetY = e.clientY - rect.top;
 
-      if (currentDockState !== 'floating') {
+      if (this._dragState.currentDockState !== 'floating') {
         const startX = rect.left;
         const startY = rect.top;
-        applyDockState('floating');
+        this._applyDockState('floating');
         verticalToolbar.style.left = `${startX}px`;
         verticalToolbar.style.top = `${startY}px`;
       }
       document.body.style.cursor = 'grabbing';
+
+      window.addEventListener('mousemove', this._onToolbarMouseMove);
+      window.addEventListener('mouseup', this._onToolbarMouseUp);
     });
 
-    window.addEventListener('mousemove', (e) => {
-      if (!isDraggingToolbar) return;
-
-      let newX = e.clientX - dragOffsetX;
-      let newY = e.clientY - dragOffsetY;
-      newY = Math.max(8, Math.min(newY, window.innerHeight - verticalToolbar.offsetHeight - 8));
-      const sidebarRect = rightSidebar ? rightSidebar.getBoundingClientRect() : { left: window.innerWidth, right: window.innerWidth };
-
-      if (e.clientX <= SNAP_THRESHOLD) {
-        applyDockState('docked-left');
-        return;
-      }
-      if (Math.abs(e.clientX - sidebarRect.left) <= SNAP_THRESHOLD) {
-        applyDockState('docked-panel-left');
-        return;
-      }
-      if (e.clientX >= window.innerWidth - SNAP_THRESHOLD || e.clientX >= sidebarRect.right - SNAP_THRESHOLD) {
-        applyDockState('docked-right');
-        return;
-      }
-
-      if (currentDockState !== 'floating') applyDockState('floating');
-
-      const toolbarWidth = verticalToolbar.offsetWidth;
-      newX = Math.max(8, Math.min(newX, window.innerWidth - toolbarWidth - 8));
-      verticalToolbar.style.left = `${newX}px`;
-      verticalToolbar.style.top = `${newY}px`;
-    });
-
-    window.addEventListener('mouseup', () => {
-      if (isDraggingToolbar) {
-        isDraggingToolbar = false;
-        document.body.style.cursor = 'default';
-      }
-    });
-
-    // Redimensionamiento de ancho
-    let isResizingToolbar = false;
-    let startWidth = 0;
-    let startX = 0;
-
+    this._toolbarResizeState.verticalToolbar = verticalToolbar;
     toolbarWidthResizer?.addEventListener('mousedown', (e) => {
       e.stopPropagation();
-      isResizingToolbar = true;
-      startX = e.clientX;
-      startWidth = verticalToolbar.offsetWidth;
+      this._toolbarResizeState.isResizingToolbar = true;
+      this._toolbarResizeState.startX = e.clientX;
+      this._toolbarResizeState.startWidth = verticalToolbar.offsetWidth;
       document.body.style.cursor = 'ew-resize';
-    });
 
-    window.addEventListener('mousemove', (e) => {
-      if (!isResizingToolbar) return;
-
-      let deltaX = e.clientX - startX;
-      if (currentDockState === 'docked-right' || currentDockState === 'docked-panel-left') {
-        deltaX = -deltaX;
-      }
-
-      const targetWidth = startWidth + deltaX;
-      if (targetWidth < 70) toolColumns = 1;
-      else if (targetWidth >= 70 && targetWidth < 110) toolColumns = 2;
-      else if (targetWidth >= 110 && targetWidth < 150) toolColumns = 3;
-      else toolColumns = 4;
-
-      verticalToolbar.style.setProperty('--tool-cols', toolColumns);
-    });
-
-    window.addEventListener('mouseup', () => {
-      if (isResizingToolbar) {
-        isResizingToolbar = false;
-        document.body.style.cursor = 'default';
-      }
+      window.addEventListener('mousemove', this._onToolbarResizeMouseMove);
+      window.addEventListener('mouseup', this._onToolbarResizeMouseUp);
     });
   }
 
@@ -390,39 +343,23 @@ export class CADUIManager {
 
     if (!rightSidebar || !btnToggleSidebar) return;
 
-    let lastExpandedWidth = 288;
-    let isCollapsed = false;
-    let isResizingSidebar = false;
+    this._sidebarResizeState.rightSidebar = rightSidebar;
+    this._sidebarResizeState.resizer = resizer;
 
     resizer?.addEventListener('mousedown', () => {
-      if (isCollapsed) return;
-      isResizingSidebar = true;
-      resizer.classList.add('is-dragging'); // <--- ENCIENDE ESTADO DE ARRASTRE
+      if (this._sidebarResizeState.isCollapsed) return;
+      this._sidebarResizeState.isResizingSidebar = true;
+      resizer.classList.add('is-dragging');
       document.body.style.cursor = 'col-resize';
       document.body.style.userSelect = 'none';
-    });
 
-    window.addEventListener('mousemove', (e) => {
-      if (!isResizingSidebar || isCollapsed) return;
-      const newWidth = window.innerWidth - e.clientX;
-      if (newWidth >= 180 && newWidth <= 520) {
-        lastExpandedWidth = newWidth;
-        rightSidebar.style.width = `${newWidth}px`;
-      }
-    });
-
-    window.addEventListener('mouseup', () => {
-      if (isResizingSidebar) {
-        isResizingSidebar = false;
-        resizer?.classList.remove('is-dragging'); // <--- APAGA ESTADO DE ARRASTRE
-        document.body.style.cursor = 'default';
-        document.body.style.userSelect = '';
-      }
+      window.addEventListener('mousemove', this._onSidebarMouseMove);
+      window.addEventListener('mouseup', this._onSidebarMouseUp);
     });
 
     btnToggleSidebar.addEventListener('click', () => {
-      isCollapsed = !isCollapsed;
-      if (isCollapsed) {
+      this._sidebarResizeState.isCollapsed = !this._sidebarResizeState.isCollapsed;
+      if (this._sidebarResizeState.isCollapsed) {
         rightSidebar.style.width = `40px`;
         sidebarTitleGroup?.classList.add('hidden');
         sidebarContent?.classList.add('hidden');
@@ -431,7 +368,7 @@ export class CADUIManager {
         if (sidebarIcon) sidebarIcon.className = 'fa-solid fa-chevron-left text-xs';
         if (resizer) resizer.style.pointerEvents = 'none';
       } else {
-        rightSidebar.style.width = `${lastExpandedWidth}px`;
+        rightSidebar.style.width = `${this._sidebarResizeState.lastExpandedWidth}px`;
         sidebarTitleGroup?.classList.remove('hidden');
         sidebarContent?.classList.remove('hidden');
         sidebarHeader?.classList.remove('justify-center');
@@ -646,4 +583,167 @@ export class CADUIManager {
     if (btnRedo) btnRedo.disabled = !canRedo;
   }
 
+
+  _handleDocumentMouseDown(e) {
+    if (!e.target.closest('.relative')) {
+      this.closeAllFlyouts();
+    }
+  }
+
+  _handleGlobalKeyDown(e) {
+    if (e.key === 'Escape') {
+      const openMenus = document.querySelectorAll('.flyout-menu.show');
+      
+      // Si hay algún flyout/menú abierto en el DOM
+      if (openMenus.length > 0) {
+        e.stopPropagation(); // Evita que el primer ESC cancele herramientas en el canvas
+        this.closeAllFlyouts();
+
+        // Devolver el foco al canvas para que Paper.js siga escuchando teclas
+        const canvas = document.getElementById('myCanvas') || document.querySelector('canvas');
+        if (canvas) canvas.focus();
+      }
+    }
+  }
+
+  _applyDockState(dockState) {
+    const s = this._dragState;
+    s.currentDockState = dockState;
+    
+    if (dockState === 'docked-panel-left') {
+      s.panelLeftDockContainer?.appendChild(s.verticalToolbar);
+      s.verticalToolbar.className = 'relative cad-panel p-1 flex flex-col items-center gap-1 z-50 toolbar-docked dock-panel-left pointer-events-auto';
+      s.verticalToolbar.style.top = '';
+      s.verticalToolbar.style.left = '';
+      s.resizer?.classList.add('has-docked-border');
+    } else {
+      s.resizer?.classList.remove('has-docked-border');
+
+      if (dockState === 'docked-left') {
+        s.leftDockContainer?.appendChild(s.verticalToolbar);
+        s.verticalToolbar.className = 'relative cad-panel p-1 flex flex-col items-center gap-1 z-50 toolbar-docked dock-left pointer-events-auto';
+        s.verticalToolbar.style.top = '';
+        s.verticalToolbar.style.left = '';
+      } else if (dockState === 'docked-right') {
+        s.rightDockContainer?.appendChild(s.verticalToolbar);
+        s.verticalToolbar.className = 'relative cad-panel p-1 flex flex-col items-center gap-1 z-50 toolbar-docked dock-right pointer-events-auto';
+        s.verticalToolbar.style.top = '';
+        s.verticalToolbar.style.left = '';
+      } else {
+        document.body.appendChild(s.verticalToolbar);
+        s.verticalToolbar.className = 'absolute cad-panel p-1 flex flex-col items-center gap-1 z-50 toolbar-floating dock-left pointer-events-auto';
+      }
+    }
+  }
+
+  _handleToolbarMouseMove(e) {
+    const s = this._dragState;
+    if (!s.isDraggingToolbar || !s.verticalToolbar) return;
+
+    let newX = e.clientX - s.dragOffsetX;
+    let newY = e.clientY - s.dragOffsetY;
+    newY = Math.max(8, Math.min(newY, window.innerHeight - s.verticalToolbar.offsetHeight - 8));
+    const sidebarRect = s.rightSidebar ? s.rightSidebar.getBoundingClientRect() : { left: window.innerWidth, right: window.innerWidth };
+
+    if (e.clientX <= s.SNAP_THRESHOLD) {
+      this._applyDockState('docked-left');
+      return;
+    }
+    if (Math.abs(e.clientX - sidebarRect.left) <= s.SNAP_THRESHOLD) {
+      this._applyDockState('docked-panel-left');
+      return;
+    }
+    if (e.clientX >= window.innerWidth - s.SNAP_THRESHOLD || e.clientX >= sidebarRect.right - s.SNAP_THRESHOLD) {
+      this._applyDockState('docked-right');
+      return;
+    }
+
+    if (s.currentDockState !== 'floating') this._applyDockState('floating');
+
+    const toolbarWidth = s.verticalToolbar.offsetWidth;
+    newX = Math.max(8, Math.min(newX, window.innerWidth - toolbarWidth - 8));
+    s.verticalToolbar.style.left = `${newX}px`;
+    s.verticalToolbar.style.top = `${newY}px`;
+  }
+
+  _handleToolbarMouseUp() {
+    if (this._dragState.isDraggingToolbar) {
+      this._dragState.isDraggingToolbar = false;
+      document.body.style.cursor = 'default';
+      window.removeEventListener('mousemove', this._onToolbarMouseMove);
+      window.removeEventListener('mouseup', this._onToolbarMouseUp);
+    }
+  }
+
+  _handleToolbarResizeMouseMove(e) {
+    const rs = this._toolbarResizeState;
+    if (!rs.isResizingToolbar || !rs.verticalToolbar) return;
+
+    let deltaX = e.clientX - rs.startX;
+    if (this._dragState.currentDockState === 'docked-right' || this._dragState.currentDockState === 'docked-panel-left') {
+      deltaX = -deltaX;
+    }
+
+    const targetWidth = rs.startWidth + deltaX;
+    if (targetWidth < 70) rs.toolColumns = 1;
+    else if (targetWidth >= 70 && targetWidth < 110) rs.toolColumns = 2;
+    else if (targetWidth >= 110 && targetWidth < 150) rs.toolColumns = 3;
+    else rs.toolColumns = 4;
+
+    rs.verticalToolbar.style.setProperty('--tool-cols', rs.toolColumns);
+  }
+
+  _handleToolbarResizeMouseUp() {
+    if (this._toolbarResizeState.isResizingToolbar) {
+      this._toolbarResizeState.isResizingToolbar = false;
+      document.body.style.cursor = 'default';
+      window.removeEventListener('mousemove', this._onToolbarResizeMouseMove);
+      window.removeEventListener('mouseup', this._onToolbarResizeMouseUp);
+    }
+  }
+
+  _handleSidebarMouseMove(e) {
+    const ss = this._sidebarResizeState;
+    if (!ss.isResizingSidebar || ss.isCollapsed || !ss.rightSidebar) return;
+
+    const newWidth = window.innerWidth - e.clientX;
+    if (newWidth >= 180 && newWidth <= 520) {
+      ss.lastExpandedWidth = newWidth;
+      ss.rightSidebar.style.width = `${newWidth}px`;
+    }
+  }
+
+  _handleSidebarMouseUp() {
+    const ss = this._sidebarResizeState;
+    if (ss.isResizingSidebar) {
+      ss.isResizingSidebar = false;
+      ss.resizer?.classList.remove('is-dragging');
+      document.body.style.cursor = 'default';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', this._onSidebarMouseMove);
+      window.removeEventListener('mouseup', this._onSidebarMouseUp);
+    }
+  }
+
+
+  // --- MÉTODOS DE DESTRUCCIÓN Y CLEANUP ---
+  destroy() {
+    this.cleanup();
+  }
+
+  cleanup() {
+    document.removeEventListener('keydown', this._onGlobalKeyDown);
+    document.removeEventListener('mousedown', this._onDocumentMouseDown);
+
+    window.removeEventListener('mousemove', this._onToolbarMouseMove);
+    window.removeEventListener('mouseup', this._onToolbarMouseUp);
+    window.removeEventListener('mousemove', this._onToolbarResizeMouseMove);
+    window.removeEventListener('mouseup', this._onToolbarResizeMouseUp);
+
+    window.removeEventListener('mousemove', this._onSidebarMouseMove);
+    window.removeEventListener('mouseup', this._onSidebarMouseUp);
+
+    window.removeEventListener('mousemove', this._onSidebarVerticalMouseMove);
+    window.removeEventListener('mouseup', this._onSidebarVerticalMouseUp);
+  }
 }

@@ -7,11 +7,13 @@ propiedades por herramienta
 consola y opciones por herramientas
 
 FIXME
-favicon/isologo
+el zoom extents solo para las entidades no ocultas
 osnap en svg importado
+trims fallidos
 herramienta de seleccion y edicion de objetos
 cambiar icono de bezier
 pasar todo a iconos personalizados usar solo iconify
-algunas herramientas fallan al salir con click derecho en windows
 al borrar capa con contenidos, preguntar tambien si borrar
+properties remanente al borrar
 aumentar solo 1px el espesor de la seleccion
+el export svg exporta los colores de la seleccion, y los puntos escalados por zoom

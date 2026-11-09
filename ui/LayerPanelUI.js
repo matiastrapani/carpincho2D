@@ -2,6 +2,7 @@
  * LayerPanelUI.js - Panel de control e interacción de capas sobrio, adaptativo y reordenable.
  */
 // ui/LayerPanelUI.js
+
 import { 
   CreateLayerCommand, 
   SetActiveLayerCommand, 
@@ -19,6 +20,9 @@ export class LayerPanelUI {
     this.container = document.getElementById(containerId);
     this.activePopover = null;
     this.draggedLayerId = null;
+
+    // Handlers guardados para poder desvincularlos si fuera necesario
+    this._onAddLayerClick = this._handleAddLayerClick.bind(this);
 
     this.init();
   }
@@ -144,6 +148,11 @@ export class LayerPanelUI {
   }
 
   renderShell() {
+    // Si ya existía un botón anterior, removemos su listener antes de sobreescribir el HTML
+    const oldBtn = this.container?.querySelector('#btnAddLayerBtn');
+    if (oldBtn) {
+      oldBtn.removeEventListener('click', this._onAddLayerClick);
+    }
     this.container.innerHTML = `
       <div class="flex flex-col h-full w-full select-none text-zinc-300 font-sans overflow-hidden">
         <!-- Encabezado Sobrio -->
@@ -170,30 +179,16 @@ export class LayerPanelUI {
         <div id="layerListContainer" class="flex-1 overflow-y-auto custom-scrollbar min-h-0 bg-transparent"></div>
       </div>
     `;
-
-    document.getElementById('btnAddLayerBtn')?.addEventListener('click', () => {
-      const defaultName = this._generateUniqueName(`Capa ${this.manager.layers.size}`, null);
-      const layerData = {
-        name: defaultName,
-        color: this._getRandomColor(),
-        strokeWidth: 0
-      };
-
-      if (this.utils?.service?.executeCommand) {
-        const cmd = new CreateLayerCommand(this.manager, layerData, this);
-        this.utils.service.executeCommand(cmd);
-      } else {
-        const newLayer = this.manager.createLayer(layerData);
-        if (newLayer) {
-          // ❌ Se eliminó: this.manager.setActiveLayer(newLayer.id);
-          this.refresh();
-        }
-      }
-    });
+    const btnAdd = this.container.querySelector('#btnAddLayerBtn');
+    if (btnAdd) {
+      btnAdd.addEventListener('click', this._onAddLayerClick);
+    }
   }
 
   refresh() {
     const list = document.getElementById('layerListContainer');
+
+    // Cerrar popovers flotantes si la lista se regenera
     if (!list) return;
 
     list.innerHTML = '';
@@ -559,6 +554,8 @@ export class LayerPanelUI {
 
     layerArray.splice(targetIdx, 0, draggedItem);
 
+    this._closeColorPicker();
+
     if (this.utils?.service?.executeCommand) {
       const cmd = new ReorderLayersCommand(this.manager, oldOrderEntries, layerArray, this);
       this.utils.service.executeCommand(cmd);
@@ -619,13 +616,9 @@ export class LayerPanelUI {
   _openColorPickerPopover(layer, triggerEl) {
     this._closeColorPicker();
 
-    let initialColor = layer.color ? layer.color.substring(0, 7).toUpperCase() : '#00E5FF';
-    let initialOpacity = layer.opacity !== undefined ? layer.opacity : 1.0;
-
-    const snapshot = {
-      color: layer.color,
-      opacity: layer.opacity
-    };
+    // 1. Guardar la foto exacta del estado inicial al abrir el popover
+    const initialColor = layer.color ? layer.color.substring(0, 7).toUpperCase() : '#00E5FF';
+    const initialOpacity = layer.opacity !== undefined ? layer.opacity : 1.0;
 
     let hasChanges = false;
 
@@ -633,9 +626,10 @@ export class LayerPanelUI {
       color: initialColor,
       opacity: initialOpacity,
       anchorEl: triggerEl,
-      presets: this._getPresetColors(), // Muestras unificadas de 20 colores
+      presets: this._getPresetColors(),
 
-      // Actualización en vivo (durante el arrastre)
+      // 2. Durante el arrastre: SOLO actualiza la memoria y el render visual.
+      // NO se registra ningún comando de Undo/Redo aquí.
       onChange: (hexColor, alphaValue) => {
         layer.color = hexColor;
         layer.opacity = alphaValue;
@@ -645,19 +639,24 @@ export class LayerPanelUI {
         }
 
         hasChanges = true;
-        if (this.utils?.selectionRenderEngine?.updateEntitiesStroke) this.utils.selectionRenderEngine.updateEntitiesStroke();
+
+        if (this.utils?.selectionRenderEngine?.updateEntitiesStroke) {
+          this.utils.selectionRenderEngine.updateEntitiesStroke();
+        }
         if (window.paper?.view) window.paper.view.update();
 
-        // Refresco en vivo del Panel de Propiedades mientras se arrastra
+        // Refresco visual en el panel de propiedades mientras se arrastra
         if (window.propertyPanelUI) {
           window.propertyPanelUI.refresh();
         }
       },
 
-      // Registro en Undo/Redo al finalizar el arrastre
+      // 3. Al soltar el clic (onChangeEnd): Se compara el valor final contra el inicial.
+      // Si hubo un cambio real, se registra UN SOLO comando en el historial.
       onChangeEnd: (hexColor, alphaValue, flags = {}) => {
         let hasChangesCommand = false;
 
+        // Registrar comando de Color si cambió respecto al inicio
         if (flags.colorChanged && initialColor !== hexColor) {
           if (this.utils?.service?.executeCommand) {
             const cmd = new UpdateLayerPropertyCommand(this.manager, layer.id, 'color', initialColor, hexColor, this);
@@ -665,10 +664,10 @@ export class LayerPanelUI {
           } else {
             this.manager.updateLayerProperty(layer.id, 'color', hexColor);
           }
-          initialColor = hexColor;
           hasChangesCommand = true;
         }
 
+        // Registrar comando de Opacidad si cambió respecto al inicio
         if (flags.opacityChanged && Math.abs(initialOpacity - alphaValue) > 0.001) {
           if (this.utils?.service?.executeCommand) {
             const cmd = new UpdateLayerPropertyCommand(this.manager, layer.id, 'opacity', initialOpacity, alphaValue, this);
@@ -676,10 +675,10 @@ export class LayerPanelUI {
           } else {
             this.manager.updateLayerProperty(layer.id, 'opacity', alphaValue);
           }
-          initialOpacity = alphaValue;
           hasChangesCommand = true;
         }
 
+        // Si se ejecutó algún comando, actualizamos la lista
         if (hasChangesCommand) {
           this.refresh();
         }
@@ -687,15 +686,17 @@ export class LayerPanelUI {
 
       onCancel: () => {
         if (!hasChanges) return;
-        layer.color = snapshot.color;
-        layer.opacity = snapshot.opacity;
+        layer.color = initialColor;
+        layer.opacity = initialOpacity;
 
         if (triggerEl) {
-          triggerEl.style.backgroundColor = snapshot.color;
+          triggerEl.style.backgroundColor = initialColor;
         }
 
         this.refresh();
-        if (this.utils?.selectionRenderEngine?.updateEntitiesStroke) this.utils.selectionRenderEngine.updateEntitiesStroke();
+        if (this.utils?.selectionRenderEngine?.updateEntitiesStroke) {
+          this.utils.selectionRenderEngine.updateEntitiesStroke();
+        }
         if (window.paper?.view) window.paper.view.update();
         if (window.propertyPanelUI) window.propertyPanelUI.refresh();
       },
@@ -713,4 +714,38 @@ export class LayerPanelUI {
     }
   }
 
+  _handleAddLayerClick() {
+    const defaultName = this._generateUniqueName(`Capa ${this.manager.layers.size}`, null);
+    const layerData = {
+      name: defaultName,
+      color: this._getRandomColor(),
+      strokeWidth: 0
+    };
+
+    if (this.utils?.service?.executeCommand) {
+      const cmd = new CreateLayerCommand(this.manager, layerData, this);
+      this.utils.service.executeCommand(cmd);
+    } else {
+      const newLayer = this.manager.createLayer(layerData);
+      if (newLayer) {
+        this.refresh();
+      }
+    }
+  }
+
+  cleanup() {
+    this._closeColorPicker();
+
+    const btnAdd = this.container?.querySelector('#btnAddLayerBtn');
+    if (btnAdd) {
+      btnAdd.removeEventListener('click', this._onAddLayerClick);
+    }
+  }
+
+  destroy() {
+    this.cleanup();
+    if (this.container) {
+      this.container.innerHTML = '';
+    }
+  }
 }

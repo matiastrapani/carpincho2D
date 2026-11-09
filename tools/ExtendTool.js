@@ -19,12 +19,15 @@ export class ExtendTool extends BaseTool {
   }
 
   activate() {
-    super.activate();
+    this.active = true;
     window.addEventListener('keydown', this.boundKeyDown);
   }
 
   deactivate() {
-    super.deactivate();
+    if (this.extendData) {
+      this.cancel();
+    }
+    this.active = false;
     window.removeEventListener('keydown', this.boundKeyDown);
   }
 
@@ -335,4 +338,14 @@ export class ExtendTool extends BaseTool {
     this.utils.selectionRenderEngine.renderBezierHandles();
     this.setPrompt('EXTEND: Operación cancelada.');
   }
+
+  cleanup() {
+    this.deactivate();
+    this.lastMouseEvent = null;
+  }
+
+  destroy() {
+    this.cleanup();
+  }
+
 }

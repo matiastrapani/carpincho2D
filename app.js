@@ -5,7 +5,10 @@ import { CADUIManager } from './ui/uiManager.js';
 import { LayerPanelUI } from './ui/LayerPanelUI.js';
 import { PropertyPanelUI } from './ui/PropertyPanelUI.js';
 
-window.addEventListener('load', () => {
+const onLoadHandler = () => {
+  // Desenganchar inmediatamente el listener de arranque
+  window.removeEventListener('load', onLoadHandler);
+
   // 1. Inyectar Componente de Interfaz
   const toolbar = new CADToolbarComponent('fixedConsoleContainer');
   toolbar.render();
@@ -47,4 +50,6 @@ window.addEventListener('load', () => {
 
   window.cadUtils.selectionRenderEngine.renderBezierHandles();
   window.cadUtils.setTool('select');
-});
+};
+
+window.addEventListener('load', onLoadHandler);

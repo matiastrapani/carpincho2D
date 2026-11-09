@@ -354,7 +354,8 @@ export class ColorPickerPopover {
     );
 
     // --- Cierre con Clic Exterior y tecla ESC ---
-    setTimeout(() => {
+    if (this._outsideClickTimer) clearTimeout(this._outsideClickTimer);
+    this._outsideClickTimer = setTimeout(() => {
       this._outsideClickListener = (e) => {
         const anchor = this._getFreshAnchorEl();
         if (this.popoverEl && !this.popoverEl.contains(e.target) && !anchor?.contains(e.target)) {
@@ -371,7 +372,6 @@ export class ColorPickerPopover {
       }
     };
     document.addEventListener('keydown', this._escKeyDownListener, true);
-
   }
 
   _attachDrag(container, onMove, onEnd) {
@@ -532,80 +532,6 @@ export class ColorPickerPopover {
     }
   }
 
-  _attachFormatInputEvents(container) {
-    container.querySelectorAll('input').forEach(inputEl => {
-      inputEl.addEventListener('keydown', (e) => e.stopPropagation());
-      inputEl.addEventListener('keyup', (e) => e.stopPropagation());
-    });
-
-    if (this.format === 'HEX') {
-      const hexIn = container.querySelector('#cpHexInput');
-      hexIn?.addEventListener('input', (e) => {
-        const val = e.target.value.trim();
-        if (/^[0-9A-Fa-f]{6}$/.test(val)) {
-          this.colorChanged = true;
-          const hsb = this._hexToHsb('#' + val);
-          this.h = hsb.h; this.s = hsb.s; this.b = hsb.b;
-          this._drawSatValCanvas();
-          this._updateUI(true);
-        }
-      });
-      hexIn?.addEventListener('change', () => this._notifyChangeEnd());
-    } else if (this.format === 'RGB') {
-      const rIn = container.querySelector('#cpRInput');
-      const gIn = container.querySelector('#cpGInput');
-      const bIn = container.querySelector('#cpBInput');
-      const updateRGB = () => {
-        const r = Math.max(0, Math.min(255, parseInt(rIn?.value || 0, 10)));
-        const g = Math.max(0, Math.min(255, parseInt(gIn?.value || 0, 10)));
-        const b = Math.max(0, Math.min(255, parseInt(bIn?.value || 0, 10)));
-        this.colorChanged = true;
-        const hsb = this._rgbToHsb(r, g, b);
-        this.h = hsb.h; this.s = hsb.s; this.b = hsb.b;
-        this._drawSatValCanvas();
-        this._updateUI(true);
-      };
-      [rIn, gIn, bIn].forEach(inEl => {
-        inEl?.addEventListener('input', updateRGB);
-        inEl?.addEventListener('change', () => this._notifyChangeEnd());
-      });
-    } else if (this.format === 'HSL' || this.format === 'HLS') {
-      const hIn = container.querySelector('#cpHInput');
-      const sIn = container.querySelector('#cpSInput');
-      const lIn = container.querySelector('#cpLInput');
-      const updateHSL = () => {
-        const h = Math.max(0, Math.min(360, parseInt(hIn?.value || 0, 10)));
-        const s = Math.max(0, Math.min(100, parseInt(sIn?.value || 0, 10)));
-        const l = Math.max(0, Math.min(100, parseInt(lIn?.value || 0, 10)));
-        this.colorChanged = true;
-        const hsb = this._hslToHsb(h, s, l);
-        this.h = hsb.h; this.s = hsb.s; this.b = hsb.b;
-        this._drawSatValCanvas();
-        this._updateUI(true);
-      };
-      [hIn, sIn, lIn].forEach(inEl => {
-        inEl?.addEventListener('input', updateHSL);
-        inEl?.addEventListener('change', () => this._notifyChangeEnd());
-      });
-    } else if (this.format === 'HSV' || this.format === 'HSB') {
-      const hIn = container.querySelector('#cpHInput');
-      const sIn = container.querySelector('#cpSInput');
-      const vIn = container.querySelector('#cpVInput');
-      const updateHSV = () => {
-        this.colorChanged = true;
-        this.h = Math.max(0, Math.min(360, parseInt(hIn?.value || 0, 10)));
-        this.s = Math.max(0, Math.min(100, parseInt(sIn?.value || 0, 10)));
-        this.b = Math.max(0, Math.min(100, parseInt(vIn?.value || 0, 10)));
-        this._drawSatValCanvas();
-        this._updateUI(true);
-      };
-      [hIn, sIn, vIn].forEach(inEl => {
-        inEl?.addEventListener('input', updateHSV);
-        inEl?.addEventListener('change', () => this._notifyChangeEnd());
-      });
-    }
-  }
-
   _parseInputValue(rawStr) {
     const val = rawStr.trim();
     if (!val) return;
@@ -658,6 +584,10 @@ export class ColorPickerPopover {
   }
 
   close() {
+    if (this._outsideClickTimer) {
+      clearTimeout(this._outsideClickTimer);
+      this._outsideClickTimer = null;
+    }
     if (this._outsideClickListener) {
       document.removeEventListener('pointerdown', this._outsideClickListener);
       this._outsideClickListener = null;
@@ -671,6 +601,7 @@ export class ColorPickerPopover {
       this.popoverEl.remove();
       this.popoverEl = null;
     }
+
     if (typeof this.onClose === 'function') {
       this.onClose();
     }

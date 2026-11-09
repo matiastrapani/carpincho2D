@@ -8,6 +8,13 @@ export class CADIOService {
   constructor(cadService, cadUtils) {
     this.service = cadService;
     this.utils = cadUtils;
+
+    // Referencias guardadas para poder desvincular los eventos en cleanup()
+    this._attachedCanvas = null;
+    this._preventDefaultHandler = (e) => { e.preventDefault(); e.stopPropagation(); };
+    this._dragOverHandler = this._handleDragOver.bind(this);
+    this._dragLeaveHandler = this._handleDragLeave.bind(this);
+    this._dropHandler = this._handleDrop.bind(this);
   }
 
   // --- IMPORTACIÓN DE ARCHIVOS ---
@@ -144,53 +151,29 @@ export class CADIOService {
   }
 
   setupDragAndDrop(canvasElement) {
-    const canvas = canvasElement || this.utils?.canvasElement;
+    const canvas = canvasElement || this.utils?.canvasElement || document.getElementById('cadCanvas');
     if (!canvas) return;
 
+    // Si ya existía un canvas enganchado previo, limpiamos sus listeners primero
+    if (this._attachedCanvas) {
+      this.cleanup();
+    }
+
+    this._attachedCanvas = canvas;
+
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-      canvas.addEventListener(eventName, (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-      }, false);
+      canvas.addEventListener(eventName, this._preventDefaultHandler, false);
     });
 
     ['dragenter', 'dragover'].forEach(eventName => {
-      canvas.addEventListener(eventName, () => {
-        canvas.classList.add('drag-over');
-      }, false);
+      canvas.addEventListener(eventName, this._dragOverHandler, false);
     });
 
     ['dragleave', 'drop'].forEach(eventName => {
-      canvas.addEventListener(eventName, () => {
-        canvas.classList.remove('drag-over');
-      }, false);
+      canvas.addEventListener(eventName, this._dragLeaveHandler, false);
     });
 
-    canvas.addEventListener('drop', (e) => {
-      const dt = e.dataTransfer;
-      const files = dt.files;
-
-      if (files && files.length > 0) {
-        const file = files[0];
-        const viewPoint = paper.view.getEventPoint(e);
-
-        if (file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg')) {
-          const reader = new FileReader();
-          reader.onload = (event) => {
-            const svgString = event.target.result;
-            this.importSVGToCanvas(svgString, viewPoint);
-          };
-          reader.readAsText(file);
-        } else if (file.type.startsWith('image/')) {
-          const reader = new FileReader();
-          reader.onload = (event) => {
-            const imageSrc = event.target.result;
-            this.importImageToCanvas(imageSrc, viewPoint);
-          };
-          reader.readAsDataURL(file);
-        }
-      }
-    });
+    canvas.addEventListener('drop', this._dropHandler, false);
   }
 
   // --- EXPORTACIÓN DE ARCHIVOS ---
@@ -289,8 +272,60 @@ export class CADIOService {
     URL.revokeObjectURL(url);
   }
 
-  // Alias de compatibilidad
-  exportToSVG(fileName) {
-    this.exportSVG(fileName);
+  _handleDragOver() {
+    if (this._attachedCanvas) this._attachedCanvas.classList.add('drag-over');
+  }
+
+  _handleDragLeave() {
+    if (this._attachedCanvas) this._attachedCanvas.classList.remove('drag-over');
+  }
+
+  _handleDrop(e) {
+    if (this._attachedCanvas) this._attachedCanvas.classList.remove('drag-over');
+
+    const dt = e.dataTransfer;
+    const files = dt.files;
+
+    if (files && files.length > 0) {
+      const file = files[0];
+      const viewPoint = paper.view.getEventPoint(e);
+
+      if (file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg')) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const svgString = event.target.result;
+          this.importSVGToCanvas(svgString, viewPoint);
+        };
+        reader.readAsText(file);
+      } else if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const imageSrc = event.target.result;
+          this.importImageToCanvas(imageSrc, viewPoint);
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+  }
+
+
+  // --- LIMPIEZA Y DESTRUCCIÓN DE LISTENERS ---
+  cleanup() {
+    if (!this._attachedCanvas) return;
+
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+      this._attachedCanvas.removeEventListener(eventName, this._preventDefaultHandler, false);
+    });
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+      this._attachedCanvas.removeEventListener(eventName, this._dragOverHandler, false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+      this._attachedCanvas.removeEventListener(eventName, this._dragLeaveHandler, false);
+    });
+
+    this._attachedCanvas.removeEventListener('drop', this._dropHandler, false);
+    this._attachedCanvas = null;
   }
 }

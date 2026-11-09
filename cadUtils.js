@@ -2,8 +2,6 @@
  * cadUtils.js - Orquestador central de la aplicación CAD.
  */
 
-
-
 import { LayerManager } from './services/LayerManager.js';
 import { PropertyManager } from './services/PropertyManager.js';
 import { SelectTool } from './tools/select/SelectTool.js';
@@ -555,6 +553,47 @@ export class CADUtils {
     });
 
     return `${basePrefix} ${maxNum + 1}`;
+  }
+
+  cleanup() {
+    if (this.cadUI && typeof this.cadUI.cleanup === 'function') {
+      this.cadUI.cleanup();
+    }
+
+    if (this.commandBarManager && typeof this.commandBarManager.cleanup === 'function') {
+      this.commandBarManager.cleanup();
+    }
+
+    if (this.layerPanelUI && typeof this.layerPanelUI.cleanup === 'function') {
+      this.layerPanelUI.cleanup();
+    }
+
+    if (this.propertyPanelUI && typeof this.propertyPanelUI.cleanup === 'function') {
+      this.propertyPanelUI.cleanup();
+    }
+
+    if (this.toolManager?.activeTool && typeof this.toolManager.activeTool.cleanup === 'function') {
+      this.toolManager.activeTool.cleanup();
+    }
+
+    if (this.inputDispatcher && typeof this.inputDispatcher.cleanup === 'function') {
+      this.inputDispatcher.cleanup();
+    }
+
+    if (this.viewportManager && typeof this.viewportManager.cleanup === 'function') {
+      this.viewportManager.cleanup();
+    }
+    
+    if (this.hud && typeof this.hud.cleanup === 'function') {
+      this.hud.cleanup();
+    }
+
+    if (this.ioService && typeof this.ioService.cleanup === 'function') {
+      this.ioService.cleanup();
+    }
+    
+    this.activePath = null;
+    this.rubberBandLine = null;
   }
 
 }

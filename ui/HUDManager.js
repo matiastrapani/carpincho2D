@@ -19,6 +19,9 @@ export class HUDManager {
     this.lastSnapPoint = null;
     this.lastSnapType = null;
 
+    // Referencia guardada para desvincular el listener global
+    this._pointerMoveHandler = this._handlePointerMove.bind(this);
+
     this.initDOM();
   }
 
@@ -27,9 +30,13 @@ export class HUDManager {
     this.hudY = document.getElementById('hudY');
     // Guardar siempre el elemento real bajo el puntero en la pantalla
     this.currentElementUnderCursor = null;
-    window.addEventListener('pointermove', (e) => {
-      this.currentElementUnderCursor = document.elementFromPoint(e.clientX, e.clientY);
-    }, { passive: true });
+
+    // Usamos la referencia bindeada
+    window.addEventListener('pointermove', this._pointerMoveHandler, { passive: true });
+  }
+
+  _handlePointerMove(e) {
+    this.currentElementUnderCursor = document.elementFromPoint(e.clientX, e.clientY);
   }
 
   /**
@@ -75,10 +82,11 @@ export class HUDManager {
   updateHUD(point) {
     if (!paper || !paper.view) return;
 
+    this._refreshDOMReferences();
+
     // 1. Zoom: se actualiza SIEMPRE
-    const elZoom = this.hudZoom || document.getElementById('hudZoom');
-    if (elZoom) {
-      elZoom.innerText = `${Math.round(paper.view.zoom * 100)}%`;
+    if (this.hudZoom) {
+      this.hudZoom.innerText = `${Math.round(paper.view.zoom * 100)}%`;
     }
 
     // Guardar posición cartesiana
@@ -92,13 +100,11 @@ export class HUDManager {
 
     // 3. Renderizar Coordenadas X / Y
     if (targetPoint) {
-      const elX = this.hudX || document.getElementById('hudX');
-      const elY = this.hudY || document.getElementById('hudY');
-      if (elX) elX.innerText = targetPoint.x.toFixed(2);
-      if (elY) elY.innerText = (-targetPoint.y).toFixed(2);
+      if (this.hudX) this.hudX.innerText = targetPoint.x.toFixed(2);
+      if (this.hudY) this.hudY.innerText = (-targetPoint.y).toFixed(2);
     }
   }
-
+  
   /**
    * Renderiza el indicador de OSNAP
    */
@@ -253,6 +259,12 @@ export class HUDManager {
     }
   }
 
+  _refreshDOMReferences() {
+    if (!this.hudX || !this.hudX.isConnected) this.hudX = document.getElementById('hudX');
+    if (!this.hudY || !this.hudY.isConnected) this.hudY = document.getElementById('hudY');
+    if (!this.hudZoom || !this.hudZoom.isConnected) this.hudZoom = document.getElementById('hudZoom');
+  }
+
   /**
    * Renderiza las etiquetas flotantes de Distancia y Ángulo durante el trazado
    */
@@ -298,5 +310,26 @@ export class HUDManager {
       this.feedbackGroup.visible = false;
     }
   }
+
+  cleanup() {
+    // Coincidencia exacta con las opciones de addEventListener
+    window.removeEventListener('pointermove', this._pointerMoveHandler, { passive: true });
+
+    this.clear();
+    if (this.feedbackGroup) {
+      this.feedbackGroup.remove();
+      this.feedbackGroup = null;
+    }
+    if (this.snapMarkersGroup) {
+      this.snapMarkersGroup.remove();
+      this.snapMarkersGroup = null;
+    }
+
+    this.hudX = null;
+    this.hudY = null;
+    this.hudZoom = null;
+    this.currentElementUnderCursor = null;
+  }
+
 }
 

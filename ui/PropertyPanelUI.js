@@ -14,8 +14,29 @@ export class PropertyPanelUI {
     this.container = document.getElementById(containerId);
     this.selectedEntities = [];
 
+    // Guardar referencias bound para poder desvincular los listeners globales
+    this._onDropdownClose = this._handleDropdownClose.bind(this);
+    this._onDropdownSync = this._handleDropdownSync.bind(this);
+    this._onDropdownKeyDown = this._handleDropdownKeyDown.bind(this);
+    this._dropdownCloseAttached = false;
+
     this.init();
+  }    
+
+  _handleDropdownClose() {
+    document.querySelectorAll('.cad-custom-dropdown').forEach(d => d.classList.add('hidden'));
   }
+
+  _handleDropdownSync() {
+    document.querySelectorAll('.cad-custom-dropdown:not(.hidden)').forEach(d => {
+      if (d._updatePos) d._updatePos();
+    });
+  }
+
+  _handleDropdownKeyDown(e) {
+    if (e.key === 'Escape') this._handleDropdownClose();
+  }
+
 
   init() {
     if (!this.container) return;
@@ -1603,6 +1624,13 @@ export class PropertyPanelUI {
   }
 
   _convertSelectsToCustom(container) {
+    // Limpiar solo los dropdowns cuyo elemento disparador ya fue eliminado del DOM por un refresh
+    document.querySelectorAll('.cad-custom-dropdown').forEach(d => {
+      if (d._triggerEl && !d._triggerEl.isConnected) {
+        d.remove();
+      }
+    });
+
     container.querySelectorAll('select').forEach((select) => {
       if (select.dataset.customized) return;
       select.dataset.customized = 'true';
@@ -1620,6 +1648,7 @@ export class PropertyPanelUI {
 
       const dropdown = document.createElement('div');
       dropdown.className = 'cad-custom-dropdown hidden bg-[#17171c] rounded-b shadow-2xl max-h-48 overflow-y-auto py-1 border border-[#27272a] border-t-0';
+      dropdown._triggerEl = trigger; // Guardar referencia al botón para saber si sigue conectado
 
       const syncTrigger = () => {
         const opt = select.options[select.selectedIndex];
@@ -1677,23 +1706,35 @@ export class PropertyPanelUI {
       syncTrigger();
     });
 
-    if (!window._cadDropdownCloseAttached) {
-      window._cadDropdownCloseAttached = true;
-      
-      const syncPositions = () => {
-        document.querySelectorAll('.cad-custom-dropdown:not(.hidden)').forEach(d => {
-          if (d._updatePos) d._updatePos();
-        });
-      };
+    if (!this._dropdownCloseAttached) {
+      this._dropdownCloseAttached = true;
+      document.addEventListener('click', this._onDropdownClose);
+      window.addEventListener('scroll', this._onDropdownSync, true);
+      window.addEventListener('resize', this._onDropdownSync);
+      document.addEventListener('keydown', this._onDropdownKeyDown);
+    }
+  }
 
-      const closeAll = () => document.querySelectorAll('.cad-custom-dropdown').forEach(d => d.classList.add('hidden'));
+  destroy() {
+    this.cleanup();
+    if (this.container) {
+      this.container.innerHTML = '';
+    }
+  }
 
-      document.addEventListener('click', closeAll);
-      window.addEventListener('scroll', syncPositions, true);
-      window.addEventListener('resize', syncPositions);
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') closeAll();
-      });
+  cleanup() {
+    this._closeColorPicker();
+
+    // Eliminar dropdowns flotantes pegados al body
+    document.querySelectorAll('.cad-custom-dropdown').forEach(d => d.remove());
+
+    // Desenganchar listeners globales limpiamente
+    if (this._dropdownCloseAttached) {
+      document.removeEventListener('click', this._onDropdownClose);
+      window.removeEventListener('scroll', this._onDropdownSync, true);
+      window.removeEventListener('resize', this._onDropdownSync);
+      document.removeEventListener('keydown', this._onDropdownKeyDown);
+      this._dropdownCloseAttached = false;
     }
   }
 }

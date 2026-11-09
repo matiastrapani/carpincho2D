@@ -39,10 +39,23 @@ export class BaseTool {
     return true;
   }
 
+
+  /**
+   * Limpieza universal de ciclo de vida.
+   * Se ejecuta al desinstalar/destruir la herramienta o cambiar a otra.
+   */
+  cleanup() {
+    this.cancel();
+  }
+  
   /**
    * Se ejecuta al desinstalar/limpiar la herramienta (cada subclase limpia su previsualización)
    */
-  cancel() {}
+  cancel() {
+    if (this.utils?.finishCurrentDrawing) {
+      this.utils.finishCurrentDrawing();
+    }
+  }
 
   /**
    * Quita el foco del input, se lo devuelve al canvas y vuelve al selector
@@ -54,7 +67,6 @@ export class BaseTool {
     const canvas = document.getElementById('cadCanvas');
     if (canvas) canvas.focus();
 
-    this.cancel();
     if (this.utils?.setTool) {
       this.utils.setTool('select');
     }

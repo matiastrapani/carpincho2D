@@ -40,9 +40,13 @@ export class ToolManager {
       ? [...this.service.selectedEntities] 
       : null;
 
-    // 3. Cancelamos la herramienta anterior (SelectTool limpia su estado normalmente)
-    if (this.activeTool && typeof this.activeTool.cancel === 'function') {
-      this.activeTool.cancel();
+    // 3. Limpieza de la herramienta saliente (invocación automática de cleanup)
+    if (this.activeTool) {
+      if (typeof this.activeTool.cleanup === 'function') {
+        this.activeTool.cleanup();
+      } else if (typeof this.activeTool.cancel === 'function') {
+        this.activeTool.cancel();
+      }
     }
 
     // 4. Restauramos la selección resguardada en el servicio si íbamos hacia TRIM

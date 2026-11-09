@@ -5,3 +5,17 @@ Thumbs.db
 # Configuraciones locales de VS Code (opcional)
 .vscode/
 
+{
+  "env": {
+    "browser": true,
+    "es2022": true
+  },
+  "parserOptions": {
+    "sourceType": "module"
+  },
+  "rules": {
+    "no-dupe-class-members": "error",
+    "no-undef": "warn",
+    "no-unused-vars": "warn"
+  }
+}

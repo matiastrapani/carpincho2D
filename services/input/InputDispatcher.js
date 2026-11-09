@@ -5,12 +5,23 @@
 export class InputDispatcher {
   constructor(cadService) {
     this._cadService = cadService;
+
+    // Guardar referencias vinculadas para desenganche limpio
+    this._onKeyDown = this.handleGlobalKeydown.bind(this);
+    this._onKeyUp = this.handleGlobalKeyup.bind(this);
+
     this.setupListeners();
   }
 
   setupListeners() {
-    window.addEventListener('keydown', (e) => this.handleGlobalKeydown(e));
-    window.addEventListener('keyup', (e) => this.handleGlobalKeyup(e));
+    window.addEventListener('keydown', this._onKeyDown);
+    window.addEventListener('keyup', this._onKeyUp);
+  }
+
+  cleanup() {
+    window.removeEventListener('keydown', this._onKeyDown);
+    window.removeEventListener('keyup', this._onKeyUp);
+    this._cadService = null;
   }
 
   get service() {

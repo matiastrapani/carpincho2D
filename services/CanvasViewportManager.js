@@ -14,13 +14,18 @@ export class CanvasViewportManager {
 
     // Estado para la función Toggle de Zoom Extents
     this.previousViewState = null;
+
+    // Referencias guardadas para cleanup
+    this._resizeObserver = null;
+    this._wheelHandler = this.handleMagicMouseWheel.bind(this);
+    this._contextMenuHandler = this._handleContextMenu.bind(this);
+    this._cmdInputKeydownHandler = this._handleCmdInputKeydown.bind(this);
   }
 
   // --- INICIALIZACIÓN DE PAPER.JS Y EVENTOS DEL CANVAS ---
   initPaper() {
     const canvas = document.getElementById('cadCanvas');
 
-    // Inyecta el color de fondo definido en el tema
     if (canvas && CAD_THEME.canvas?.backgroundColor) {
       canvas.style.backgroundColor = CAD_THEME.canvas.backgroundColor;
     }
@@ -29,16 +34,14 @@ export class CanvasViewportManager {
     paper.view.center = new paper.Point(0, 0);
     paper.view.zoom = 1;
 
-    if (paper.project) paper.project.clear(); // Limpia capas y objetos anteriores
+    if (paper.project) paper.project.clear();
 
-    // 1. Capa para entidades del dibujo
     this.drawLayer = paper.project.activeLayer;
     this.drawLayer.name = 'drawLayer';
 
     this.nodesLayer = new paper.Layer();
     this.nodesLayer.name = 'nodesLayer';
 
-    // 2. Capa superior para HUD
     this.hudLayer = new paper.Layer();
     this.hudLayer.name = 'hudLayer';
 
@@ -48,56 +51,24 @@ export class CanvasViewportManager {
 
     this.drawLayer.activate();
 
-    //this.drawGrid();
     this.setupPaperTool();
     if (window.cadIO?.setupDragAndDrop) window.cadIO.setupDragAndDrop();
 
     const viewportEl = document.getElementById('mainViewport');
     if (viewportEl) {
-      const resizeObserver = new ResizeObserver(() => this.handleCanvasResize());
-      resizeObserver.observe(viewportEl);
+      this._resizeObserver = new ResizeObserver(() => this.handleCanvasResize());
+      this._resizeObserver.observe(viewportEl);
     }
     
     window.requestAnimationFrame(() => this.handleCanvasResize());
 
-    canvas.addEventListener('wheel', (e) => this.handleMagicMouseWheel(e), { passive: false });
-
-    canvas.addEventListener('contextmenu', e => {
-      e.preventDefault();
-
-      const previousTool = this.utils.currentToolMode;
-
-      if (this.utils.toolManager.activeTool && typeof this.utils.toolManager.activeTool.onContextMenu === 'function') {
-        const handled = this.utils.toolManager.activeTool.onContextMenu(e);
-        if (handled) return;
-      }
-
-      if (this.utils.currentToolMode === 'trim') {
-        const activeTool = this.utils.toolManager.activeTool;
-        if (activeTool && typeof activeTool.confirmTrimBoundaries === 'function') {
-          activeTool.confirmTrimBoundaries();
-          return;
-        }
-      }
-
-      const drawingTools = ['polyline', 'spline', 'bezier', 'line'];
-      if (drawingTools.includes(this.utils.currentToolMode) && this.utils.activePath) {
-        this.utils.finishCurrentDrawing();
-        return;
-      }
-
-      if (previousTool === 'select' && this.utils.lastActiveToolMode && this.utils.lastActiveToolMode !== 'select') {
-        this.utils.setTool(this.utils.lastActiveToolMode);
-      } else {
-        this.utils.setTool('select');
-      }
-    });
+    // Eventos guardados para poder limpiarlos después
+    canvas.addEventListener('wheel', this._wheelHandler, { passive: false });
+    canvas.addEventListener('contextmenu', this._contextMenuHandler);
 
     const cmdInput = document.getElementById('cmdInput');
     if (cmdInput) {
-      cmdInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') this.utils.executeCommandLine();
-      });
+      cmdInput.addEventListener('keydown', this._cmdInputKeydownHandler);
     }
 
     this.utils.hud.clear();
@@ -582,5 +553,74 @@ export class CanvasViewportManager {
     this.zoomAnimationRequestId = requestAnimationFrame(animateZoom);
   }
 
+
+  _handleContextMenu(e) {
+    e.preventDefault();
+
+    const previousTool = this.utils.currentToolMode;
+
+    if (this.utils.toolManager.activeTool && typeof this.utils.toolManager.activeTool.onContextMenu === 'function') {
+      const handled = this.utils.toolManager.activeTool.onContextMenu(e);
+      if (handled) return;
+    }
+
+    if (this.utils.currentToolMode === 'trim') {
+      const activeTool = this.utils.toolManager.activeTool;
+      if (activeTool && typeof activeTool.confirmTrimBoundaries === 'function') {
+        activeTool.confirmTrimBoundaries();
+        return;
+      }
+    }
+
+    const drawingTools = ['polyline', 'spline', 'bezier', 'line'];
+    if (drawingTools.includes(this.utils.currentToolMode) && this.utils.activePath) {
+      this.utils.finishCurrentDrawing();
+      return;
+    }
+
+    if (previousTool === 'select' && this.utils.lastActiveToolMode && this.utils.lastActiveToolMode !== 'select') {
+      this.utils.setTool(this.utils.lastActiveToolMode);
+    } else {
+      this.utils.setTool('select');
+    }
+  }
+
+  // Manejador extraído para el Enter en la consola
+  _handleCmdInputKeydown(e) {
+    if (e.key === 'Enter') this.utils.executeCommandLine();
+  }
+
+  cleanup() {
+    // 1. Cancelar animación de zoom activa si existe
+    if (this.zoomAnimationRequestId) {
+      cancelAnimationFrame(this.zoomAnimationRequestId);
+      this.zoomAnimationRequestId = null;
+    }
+
+    // 2. Desconectar ResizeObserver
+    if (this._resizeObserver) {
+      this._resizeObserver.disconnect();
+      this._resizeObserver = null;
+    }
+
+    // 3. Remover listeners del Canvas
+    const canvas = document.getElementById('cadCanvas');
+    if (canvas) {
+      canvas.removeEventListener('wheel', this._wheelHandler);
+      canvas.removeEventListener('contextmenu', this._contextMenuHandler);
+    }
+
+    // 4. Remover listener de la barra de comandos
+    const cmdInput = document.getElementById('cmdInput');
+    if (cmdInput) {
+      cmdInput.removeEventListener('keydown', this._cmdInputKeydownHandler);
+    }
+
+    // 5. Limpiar grupo de la grilla en Paper.js
+    if (this.gridGroup) {
+      this.gridGroup.remove();
+      this.gridGroup = null;
+    }
+  }
 
 }
