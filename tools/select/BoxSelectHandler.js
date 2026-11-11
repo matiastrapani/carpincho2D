@@ -116,7 +116,14 @@ export class BoxSelectHandler {
 
       for (let i = 0; i < count; i++) {
         const entity = demoEntities[i];
-        if (!entity || !entity.bounds) continue;
+        if (!entity || !entity.bounds || entity.visible === false) continue;
+
+        const layerId = String(entity.data?.layerId || '0');
+        const layerManager = this.utils?.layerManager || window.cadUtils?.layerManager;
+        const layer = layerManager?.layers?.get(layerId);
+
+        // Si la capa está bloqueada u oculta, ignorar antes de calcular geometría
+        if (layer && (layer.locked || layer.visible === false)) continue;
 
         let shouldSelect = false;
 

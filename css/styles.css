@@ -560,5 +560,23 @@ input[type="range"].cad-slider::-moz-range-thumb:hover {
 ::-webkit-scrollbar-thumb { background: #2f2f38; border-radius: 2px; }
 
 
+/* ==========================================================================
+   CONSOLA CAD (FIJA Y FLOTANTE)
+   ========================================================================== */
+#fixedConsoleResizer:hover #fixedConsoleResizerVisual,
+#fixedConsoleResizer.is-dragging #fixedConsoleResizerVisual {
+  background-color: #008800 !important;
+  height: 3px !important;
+}
 
+#cmdConsoleLog::-webkit-scrollbar {
+  width: 5px;
+}
+#cmdConsoleLog::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 3px;
+}
+#cmdConsoleLog::-webkit-scrollbar-thumb:hover {
+  background: #008800;
+}
 

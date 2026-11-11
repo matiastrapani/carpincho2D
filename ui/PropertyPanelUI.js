@@ -12,7 +12,6 @@ export class PropertyPanelUI {
     this.utils = cadUtils;
     this.service = cadUtils?.service || window.cadService;
     this.container = document.getElementById(containerId);
-    this.selectedEntities = [];
 
     // Guardar referencias bound para poder desvincular los listeners globales
     this._onDropdownClose = this._handleDropdownClose.bind(this);
@@ -56,9 +55,17 @@ export class PropertyPanelUI {
     }
   }
 
-  setSelectedEntities(entities = []) {
-    this.selectedEntities = entities;
-    this.refresh();
+  get selectedEntities() {
+    const service = this.service || this.utils?.service || window.cadService;
+    const raw = service?.selectedEntities || [];
+    const layerManager = this.utils?.layerManager;
+
+    return raw.filter(ent => {
+      if (!ent || !ent.parent || ent.visible === false) return false;
+      if (!layerManager) return true;
+      const layer = layerManager.layers?.get(String(ent.data?.layerId || '0'));
+      return !layer || (layer.visible !== false && !layer.locked);
+    });
   }
 
   renderShell() {

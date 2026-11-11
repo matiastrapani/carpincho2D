@@ -127,8 +127,7 @@ export class DeleteCommand {
       });
     }
 
-    this.cadService.deselectAllEntities();
-    this.cadService.deselectAllSegments();
+    this.cadService.deselectAllEditingEntities();
     if (this.cadService?.selectionRenderEngine?.renderBezierHandles) this.cadService.selectionRenderEngine.renderBezierHandles();
     paper.view.update();
   }

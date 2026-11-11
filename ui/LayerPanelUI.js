@@ -427,50 +427,27 @@ export class LayerPanelUI {
       e.stopPropagation();
       if (!canDelete) return;
 
-      // Determinar la capa de destino para los contenidos
-      let targetLayer = null;
-      if (isActive) {
-        // Si borramos la activa, buscar la primera capa disponible diferente a esta
-        for (const [id, l] of this.manager.layers.entries()) {
-          if (String(id) !== String(layer.id)) {
-            targetLayer = l;
-            break;
-          }
-        }
-      } else {
-        // Si borramos una no activa, el destino es la capa activa actual
-        targetLayer = activeLayer || this.manager.layers.get(activeId);
-      }
+      const availableLayers = Array.from(this.manager.layers.values())
+        .filter((l) => String(l.id) !== String(layer.id));
 
-      // Verificar si la capa tiene elementos en el lienzo
+      // Capa sugerida por defecto: la activa (si no es la que se borra) o la primera disponible
+      const defaultTarget = (!isActive && activeLayer) ? activeLayer : availableLayers[0];
+
       const hasContent = this.utils?.service?.demoEntities?.some(
         (ent) => ent.data && String(ent.data.layerId) === String(layer.id)
       );
 
-      if (hasContent && targetLayer) {
-        const confirmMsg = `La capa "${layer.name}" contiene elementos. ¿Eliminarla y mover sus elementos a la capa "${targetLayer.name}"?`;
-        if (!confirm(confirmMsg)) {
-          return;
+      const executeDelete = (targetLayerId) => {
+        if (this.utils?.service?.executeCommand) {
+          const cmd = new DeleteLayerCommand(this.manager, layer.id, targetLayerId, this.utils.service, this);
+          this.utils.service.executeCommand(cmd);
         }
-      }
+      };
 
-      // Ejecutar comando de eliminación con historial
-      if (this.utils?.service?.executeCommand) {
-        const cmd = new DeleteLayerCommand(this.manager, layer.id, targetLayer?.id, this.utils.service, this);
-        this.utils.service.executeCommand(cmd);
+      if (hasContent) {
+        this._promptDeleteLayerWithContent(layer, availableLayers, defaultTarget?.id, executeDelete);
       } else {
-        if (hasContent && targetLayer) {
-          this.utils?.service?.demoEntities?.forEach((ent) => {
-            if (ent.data && String(ent.data.layerId) === String(layer.id)) {
-              ent.data.layerId = targetLayer.id;
-            }
-          });
-        }
-        if (isActive && targetLayer) {
-          this.manager.setActiveLayer(targetLayer.id);
-        }
-        this.manager.deleteLayer(layer.id);
-        this.refresh();
+        executeDelete(defaultTarget?.id || null);
       }
     });
 
@@ -731,6 +708,95 @@ export class LayerPanelUI {
         this.refresh();
       }
     }
+  }
+
+  _promptDeleteLayerWithContent(layer, availableLayers, defaultTargetId, onConfirm) {
+    // Evitar duplicados si ya hay un modal abierto
+    document.getElementById('deleteLayerModalOverlay')?.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'deleteLayerModalOverlay';
+    overlay.className = 'fixed inset-0 z-[99999] bg-black/60 flex items-center justify-center select-none';
+
+    const optionsHtml = availableLayers
+      .map((l) => `<option value="${l.id}" ${String(l.id) === String(defaultTargetId) ? 'selected' : ''}>${l.name}</option>`)
+      .join('');
+
+    overlay.innerHTML = `
+      <div class="bg-[#17171c] border border-[#27272a] rounded-md shadow-2xl w-[320px] p-4 text-zinc-300 font-sans text-xs">
+        <div class="flex items-center justify-between mb-2">
+          <span class="font-bold text-zinc-200 uppercase tracking-wider text-[11px]">Eliminar capa "${layer.name}"</span>
+          <button id="dlgDelClose" class="text-zinc-500 hover:text-zinc-200 cursor-pointer"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <p class="text-zinc-400 text-[11px] mb-3 leading-relaxed">
+          Esta capa contiene elementos en el dibujo. ¿Qué deseás hacer con ellos?
+        </p>
+
+        <div class="space-y-2 mb-4">
+          <label class="flex items-center gap-2 cursor-pointer text-[11px] text-zinc-200">
+            <input type="radio" name="delLayerAction" value="move" checked class="accent-zinc-300 cursor-pointer">
+            <span>Mover contenido a:</span>
+          </label>
+          <div class="pl-5">
+            <select id="dlgTargetLayerSelect" class="w-full bg-[#121215] border border-[#27272a] text-zinc-200 text-[11px] px-2 py-1.5 rounded outline-none cursor-pointer">
+              ${optionsHtml}
+            </select>
+          </div>
+
+          <label class="flex items-center gap-2 cursor-pointer text-[11px] text-red-400 pt-1">
+            <input type="radio" name="delLayerAction" value="delete" class="accent-red-500 cursor-pointer">
+            <span>Eliminar también el contenido</span>
+          </label>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2 border-t border-[#27272a]">
+          <button id="dlgDelCancel" class="px-3 py-1 rounded bg-[#27272a] hover:bg-[#323238] text-zinc-300 text-[11px] cursor-pointer transition-colors">
+            Cancelar
+          </button>
+          <button id="dlgDelAccept" class="px-3 py-1 rounded bg-zinc-200 hover:bg-white text-zinc-900 font-semibold text-[11px] cursor-pointer transition-colors">
+            Aceptar
+          </button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const selectEl = overlay.querySelector('#dlgTargetLayerSelect');
+    const radios = overlay.querySelectorAll('input[name="delLayerAction"]');
+
+    const closeModal = () => {
+      document.removeEventListener('keydown', onKeyDown, true);
+      overlay.remove();
+    };
+
+    const onKeyDown = (ev) => {
+      ev.stopPropagation();
+      if (ev.key === 'Escape') closeModal();
+      if (ev.key === 'Enter') overlay.querySelector('#dlgDelAccept')?.click();
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+
+    radios.forEach((r) => {
+      r.addEventListener('change', () => {
+        const isMove = r.value === 'move' && r.checked;
+        selectEl.disabled = !isMove;
+        selectEl.classList.toggle('opacity-40', !isMove);
+      });
+    });
+
+    overlay.addEventListener('click', (ev) => {
+      if (ev.target === overlay) closeModal();
+    });
+    overlay.querySelector('#dlgDelClose')?.addEventListener('click', closeModal);
+    overlay.querySelector('#dlgDelCancel')?.addEventListener('click', closeModal);
+
+    overlay.querySelector('#dlgDelAccept')?.addEventListener('click', () => {
+      const action = overlay.querySelector('input[name="delLayerAction"]:checked')?.value;
+      const targetId = action === 'move' ? selectEl.value : null;
+      closeModal();
+      onConfirm(targetId);
+    });
   }
 
   cleanup() {

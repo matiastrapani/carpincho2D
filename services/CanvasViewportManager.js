@@ -12,6 +12,9 @@ export class CanvasViewportManager {
     this.gridGroup = null;
     this.zoomAnimationRequestId = null;
 
+    // Caché interno para evitar la destrucción/reconstrucción de nodos en cada frame
+    this._gridCache = null;
+
     // Estado para la función Toggle de Zoom Extents
     this.previousViewState = null;
 
@@ -132,12 +135,15 @@ export class CanvasViewportManager {
     };
   }
 
-  drawGrid() {
-    if (this.gridGroup) this.gridGroup.remove();
-    if (!this.isGridVisible) return;
-
-    this.gridGroup = new paper.Group();
-    this.gridGroup.sendToBack();
+  drawGrid(forceRedraw = false) {
+    if (!this.isGridVisible) {
+      if (this.gridGroup) {
+        this.gridGroup.remove();
+        this.gridGroup = null;
+      }
+      this._gridCache = null;
+      return;
+    }
 
     const bounds = paper.view.bounds;
     const zoom = paper.view.zoom;
@@ -148,19 +154,49 @@ export class CanvasViewportManager {
     let mainStep = zoom > 3 ? 20 : (zoom < 0.3 ? 500 : 100);
     let subStep = zoom > 3 ? 4 : (zoom < 0.3 ? 100 : 20);
 
-    // Margen extra de 2 celdas alrededor de todo el viewport
-    const pad = subStep * 2;
-    const minX = bounds.left - pad;
-    const maxX = bounds.right + pad;
-    const minY = bounds.top - pad;
-    const maxY = bounds.bottom + pad;
+    // 1. REUTILIZACIÓN RÁPIDA: Si el paso no cambió y el viewport sigue dentro del área en caché
+    if (!forceRedraw && this.gridGroup && this._gridCache) {
+      const c = this._gridCache;
+      if (c.mainStep === mainStep && c.subStep === subStep) {
+        if (bounds.left >= c.minX && bounds.right <= c.maxX &&
+            bounds.top >= c.minY && bounds.bottom <= c.maxY) {
+          
+          // Solo actualizamos grosores en lugar de recrear objetos en el DOM de Paper.js
+          const currentZoom = zoom;
+          this.gridGroup.children.forEach(item => {
+            if (item.data) {
+              if (item.data.type === 'axis') item.strokeWidth = axisWidthPx / currentZoom;
+              else if (item.data.type === 'major') item.strokeWidth = majorWidthPx / currentZoom;
+              else if (item.data.type === 'minor') item.strokeWidth = minorWidthPx / currentZoom;
+            }
+          });
+          return;
+        }
+      }
+    }
+
+    // 2. RECONSTRUCCIÓN CON BUFFER EXTRA: Solo ocurre al cruzar el umbral de escala o al salirse del margen
+    if (this.gridGroup) this.gridGroup.remove();
+    this.gridGroup = new paper.Group();
+    this.gridGroup.sendToBack();
+
+    // Margen expandido del 150% alrededor de la vista para evitar reconstrucción al hacer Pan leve
+    const padX = Math.max(bounds.width * 1.5, subStep * 4);
+    const padY = Math.max(bounds.height * 1.5, subStep * 4);
+
+    const minX = bounds.left - padX;
+    const maxX = bounds.right + padX;
+    const minY = bounds.top - padY;
+    const maxY = bounds.bottom + padY;
 
     const startX = Math.floor(minX / subStep) * subStep;
     const endX = Math.ceil(maxX / subStep) * subStep;
     const startY = Math.floor(minY / subStep) * subStep;
     const endY = Math.ceil(maxY / subStep) * subStep;
 
-    // Líneas Verticales (Eje X) — se dibujan desde minY hasta maxY extendidos
+    this._gridCache = { mainStep, subStep, minX, maxX, minY, maxY };
+
+    // Líneas Verticales
     for (let x = startX; x <= endX; x += subStep) {
       const roundedX = Math.round(x);
       const isMain = Math.abs(roundedX) % mainStep === 0;
@@ -168,10 +204,11 @@ export class CanvasViewportManager {
       const line = new paper.Path.Line(new paper.Point(x, minY), new paper.Point(x, maxY));
       line.strokeColor = isMain ? majorColor : minorColor;
       line.strokeWidth = (isMain ? majorWidthPx : minorWidthPx) / zoom;
+      line.data = { type: isMain ? 'major' : 'minor' };
       this.gridGroup.addChild(line);
     }
 
-    // Líneas Horizontales (Eje Y) — se dibujan desde minX hasta maxX extendidos
+    // Líneas Horizontales
     for (let y = startY; y <= endY; y += subStep) {
       const roundedY = Math.round(y);
       const isMain = Math.abs(roundedY) % mainStep === 0;
@@ -179,18 +216,21 @@ export class CanvasViewportManager {
       const line = new paper.Path.Line(new paper.Point(minX, y), new paper.Point(maxX, y));
       line.strokeColor = isMain ? majorColor : minorColor;
       line.strokeWidth = (isMain ? majorWidthPx : minorWidthPx) / zoom;
+      line.data = { type: isMain ? 'major' : 'minor' };
       this.gridGroup.addChild(line);
     }
 
-    // Ejes Principales X e Y (Origen 0,0) extendidos
+    // Ejes Principales
     const axisX = new paper.Path.Line(new paper.Point(minX, 0), new paper.Point(maxX, 0));
     axisX.strokeColor = axisXColor;
     axisX.strokeWidth = axisWidthPx / zoom;
+    axisX.data = { type: 'axis' };
     this.gridGroup.addChild(axisX);
 
     const axisY = new paper.Path.Line(new paper.Point(0, minY), new paper.Point(0, maxY));
     axisY.strokeColor = axisYColor;
     axisY.strokeWidth = axisWidthPx / zoom;
+    axisY.data = { type: 'axis' };
     this.gridGroup.addChild(axisY);
   }
 
@@ -206,15 +246,12 @@ export class CanvasViewportManager {
     const newHeight = container.clientHeight;
     if (newWidth === 0 || newHeight === 0) return;
 
-    // Ajustar el estilo CSS para forzar ocupación total del contenedor
     canvas.style.width = '100%';
     canvas.style.height = '100%';
 
-    // Actualizar la dimensión de la vista lógica en Paper.js sin tocar canvas.width/height
     paper.view.viewSize = new paper.Size(newWidth, newHeight);
 
-    // Redibujar la grilla sobre la vista expandida
-    this.drawGrid();
+    this.drawGrid(true);
 
     if (typeof this.utils.selectionRenderEngine?.updatePointEntitiesScale === 'function') {
       this.utils.selectionRenderEngine.updatePointEntitiesScale();
@@ -257,6 +294,7 @@ export class CanvasViewportManager {
     }
 
     this.drawGrid();
+
     if (typeof this.utils.selectionRenderEngine.updatePointEntitiesScale === 'function') {
       this.utils.selectionRenderEngine.updatePointEntitiesScale();
     }
@@ -287,7 +325,7 @@ export class CanvasViewportManager {
     this.isGridVisible = !this.isGridVisible;
     const btnGrid = document.getElementById('btnGrid');
     if (btnGrid) btnGrid.classList.toggle('active', this.isGridVisible);
-    this.drawGrid();
+    this.drawGrid(true);
   }
 
   resetView(animated = true) {
@@ -298,6 +336,11 @@ export class CanvasViewportManager {
 
     const isValidEntity = (ent) => {
       if (!ent || !ent.bounds) return false;
+      
+      // Filtrar entidades ocultas o pertenecientes a capas ocultas
+      const isVisible = typeof ent.isVisible === 'function' ? ent.isVisible() : ent.visible !== false;
+      if (!isVisible) return false;
+
       const b = ent.strokeBounds || ent.bounds;
       return Math.abs(b.width) > 0 || Math.abs(b.height) > 0 || (ent.segments && ent.segments.length > 0);
     };
@@ -316,18 +359,18 @@ export class CanvasViewportManager {
       this.previousViewState = null;
 
       if (!animated) {
-      const viewSize = paper.view.viewSize;
-      const viewCenterPx = new paper.Point(viewSize.width / 2, viewSize.height / 2);
+        const viewSize = paper.view.viewSize;
+        const viewCenterPx = new paper.Point(viewSize.width / 2, viewSize.height / 2);
 
-      const finalMatrix = new paper.Matrix()
-        .translate(viewCenterPx)
-        .scale(restoreZoom)
-        .translate(new paper.Point(-restoreCenter.x, -restoreCenter.y));
+        const finalMatrix = new paper.Matrix()
+          .translate(viewCenterPx)
+          .scale(restoreZoom)
+          .translate(new paper.Point(-restoreCenter.x, -restoreCenter.y));
 
-      paper.view.matrix = finalMatrix;
-      this.drawGrid();
-      return;
-    }
+        paper.view.matrix = finalMatrix;
+        this.drawGrid(true);
+        return;
+      }
 
       this.animateViewportTo(restoreCenter, restoreZoom);
       return;
@@ -364,18 +407,15 @@ export class CanvasViewportManager {
         const width = Math.max(Math.abs(maxX - minX), 1);
         const height = Math.max(Math.abs(maxY - minY), 1);
 
-        // 1. Obtener dimensiones visuales en pantalla
         const viewSize = paper.view.viewSize;
         const padding = 80;
         const availWidth = Math.max(viewSize.width - padding * 2, 100);
         const availHeight = Math.max(viewSize.height - padding * 2, 100);
 
-        // 2. Calcular zoom exacto sin alteración de matriz
         const zoomX = availWidth / width;
         const zoomY = availHeight / height;
         const targetZoom = Math.max(0.05, Math.min(Math.min(zoomX, zoomY), 50));
 
-        // 3. Centro en coordenadas absolutas numéricas
         const targetCenter = {
           x: minX + width / 2,
           y: minY + height / 2
@@ -391,7 +431,7 @@ export class CanvasViewportManager {
             .translate(new paper.Point(-targetCenter.x, -targetCenter.y));
 
           paper.view.matrix = finalMatrix;
-          this.drawGrid();
+          this.drawGrid(true);
           return;
         }
 
@@ -400,9 +440,6 @@ export class CanvasViewportManager {
     }
   }
 
-  /**
-   * Helper privado para la animación fluida de sincronización
-   */
   animateViewportTo(targetCenter, targetZoom) {
     if (this.zoomAnimationRequestId) {
       cancelAnimationFrame(this.zoomAnimationRequestId);
@@ -433,24 +470,14 @@ export class CanvasViewportManager {
       const currentTx = startMatrix.tx + (targetMatrix.tx - startMatrix.tx) * easeOut;
       const currentTy = startMatrix.ty + (targetMatrix.ty - startMatrix.ty) * easeOut;
 
-      // 1. Aplicación atómica de matriz
       paper.view.matrix.set(currentA, currentB, currentC, currentD, currentTx, currentTy);
 
-      // 2. Ajuste progresivo de trazos en entidades del usuario
       if (typeof this.utils.selectionRenderEngine?.updateEntitiesStroke === 'function') {
         this.utils.selectionRenderEngine.updateEntitiesStroke();
       }
 
-      // 3. Ajuste de trazo de la grilla sin reconstruirla
-      if (this.gridGroup && this.gridGroup.children) {
-        const currentZoom = paper.view.zoom;
-        const gridStrokeWidth = 1 / currentZoom;
-        this.gridGroup.children.forEach(child => {
-          child.strokeWidth = gridStrokeWidth;
-        });
-      }
+      this.drawGrid();
 
-      // 4. Actualizaciones visuales y HUD
       if (typeof this.utils.selectionRenderEngine?.updatePointEntitiesScale === 'function') {
         this.utils.selectionRenderEngine.updatePointEntitiesScale();
       }
@@ -465,8 +492,7 @@ export class CanvasViewportManager {
         this.zoomAnimationRequestId = requestAnimationFrame(animateStep);
       } else {
         this.zoomAnimationRequestId = null;
-        // 5. Reconstrucción de grilla y sincronización final estricta
-        this.drawGrid();
+        this.drawGrid(true);
         if (typeof this.utils.selectionRenderEngine?.updateEntitiesStroke === 'function') {
           this.utils.selectionRenderEngine.updateEntitiesStroke();
         }
@@ -479,10 +505,6 @@ export class CanvasViewportManager {
     this.zoomAnimationRequestId = requestAnimationFrame(animateStep);
   }
 
-  /**
-   * Restablece el zoom al 100% (scale 1.0) y centra la vista en el origen (0,0)
-   * utilizando la misma animación fluida que resetView.
-   */
   zoomReset(animated = true) {
     this.previousViewState = null;
     if (this.zoomAnimationRequestId) {
@@ -496,7 +518,7 @@ export class CanvasViewportManager {
     if (!animated) {
       paper.view.center = targetCenter;
       paper.view.zoom = targetZoom;
-      this.drawGrid();
+      this.drawGrid(true);
       if (typeof this.utils.selectionRenderEngine?.updatePointEntitiesScale === 'function') {
         this.utils.selectionRenderEngine.updatePointEntitiesScale();
       }
@@ -528,7 +550,6 @@ export class CanvasViewportManager {
 
       paper.view.zoom = startZoom + (targetZoom - startZoom) * easeOut;
 
-      // Actualizar grilla, puntos y trazos en tiempo real durante la animación
       this.drawGrid();
       if (typeof this.utils.selectionRenderEngine?.updatePointEntitiesScale === 'function') {
         this.utils.selectionRenderEngine.updatePointEntitiesScale();
@@ -547,12 +568,12 @@ export class CanvasViewportManager {
         this.zoomAnimationRequestId = requestAnimationFrame(animateZoom);
       } else {
         this.zoomAnimationRequestId = null;
+        this.drawGrid(true);
       }
     };
 
     this.zoomAnimationRequestId = requestAnimationFrame(animateZoom);
   }
-
 
   _handleContextMenu(e) {
     e.preventDefault();
@@ -585,42 +606,37 @@ export class CanvasViewportManager {
     }
   }
 
-  // Manejador extraído para el Enter en la consola
   _handleCmdInputKeydown(e) {
     if (e.key === 'Enter') this.utils.executeCommandLine();
   }
 
   cleanup() {
-    // 1. Cancelar animación de zoom activa si existe
     if (this.zoomAnimationRequestId) {
       cancelAnimationFrame(this.zoomAnimationRequestId);
       this.zoomAnimationRequestId = null;
     }
 
-    // 2. Desconectar ResizeObserver
     if (this._resizeObserver) {
       this._resizeObserver.disconnect();
       this._resizeObserver = null;
     }
 
-    // 3. Remover listeners del Canvas
     const canvas = document.getElementById('cadCanvas');
     if (canvas) {
       canvas.removeEventListener('wheel', this._wheelHandler);
       canvas.removeEventListener('contextmenu', this._contextMenuHandler);
     }
 
-    // 4. Remover listener de la barra de comandos
     const cmdInput = document.getElementById('cmdInput');
     if (cmdInput) {
       cmdInput.removeEventListener('keydown', this._cmdInputKeydownHandler);
     }
 
-    // 5. Limpiar grupo de la grilla en Paper.js
     if (this.gridGroup) {
       this.gridGroup.remove();
       this.gridGroup = null;
     }
-  }
 
+    this._gridCache = null;
+  }
 }

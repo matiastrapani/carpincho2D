@@ -17,18 +17,12 @@ export class CADService {
     this.selectionManager = new SelectionManager(this);
 
     this.demoEntities = [];
-    this.selectedEntities = [];
-    this.selectedSegments = [];
-    this.editingEntities = [];
-    this.selectedSegments = [];
-    this.selectedHandles = [];
     this.hoveredEntity = null;
     this.lastInsertedPoint = null;
 
     this.history = new CommandHistory();
     this.isSnapMasterEnabled = true;
 
-    this.isSnapMasterEnabled = true;
     this.snapFilters = {
       endpoint: true,
       midpoint: true,

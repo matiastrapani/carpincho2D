@@ -6,10 +6,36 @@ import { DeleteCommand } from './commands/cadCommands.js';
 export class SelectionManager {
   constructor(cadService) {
     this.service = cadService;
-    this.selectedEntities = [];
+    this._selectedEntities = [];
     this.selectedSegments = [];
     this.editingEntities = [];
     this.selectedHandles = [];
+    this._listeners = new Set();
+  }
+
+  subscribe(fn) {
+    this._listeners.add(fn);
+    return () => this._listeners.delete(fn);
+  }
+
+  get selectedEntities() {
+    return this._selectedEntities;
+  }
+
+  set selectedEntities(val) {
+    this._selectedEntities = Array.isArray(val) ? val : [];
+    this._notify();
+  }
+
+  _notify() {
+    this._listeners.forEach(fn => fn(this._selectedEntities));
+    if (window.propertyPanelUI && typeof window.propertyPanelUI.refresh === 'function') {
+      window.propertyPanelUI.refresh();
+    }
+    if (window.cadUI && typeof window.cadUI.updatePropertyPanel === 'function') {
+      const last = this._selectedEntities[this._selectedEntities.length - 1] || null;
+      window.cadUI.updatePropertyPanel(last);
+    }
   }
 
   selectEntity(entity, addToSelection = false) {
@@ -20,7 +46,7 @@ export class SelectionManager {
     const layerId = String(entity.data?.layerId || '0');
     const layerManager = this.service.utils?.layerManager || window.cadUtils?.layerManager;
     const layer = layerManager?.layers?.get(layerId);
-    if (layer && layer.locked) return;
+    if (layer && (layer.locked || layer.visible === false)) return;
 
     if (!addToSelection) {
       this.deselectAllEntities();
@@ -61,6 +87,7 @@ export class SelectionManager {
       window.cadUtils.selectionRenderEngine.updateEntitiesStroke();
       window.cadUtils.selectionRenderEngine.renderBezierHandles();
     }
+    this._notify();
   }
 
   deselectAllEntities() {
@@ -73,9 +100,6 @@ export class SelectionManager {
       window.cadUtils.selectionRenderEngine.renderBezierHandles();
     }
 
-    if (window.cadUI && typeof window.cadUI.updatePropertyPanel === 'function') {
-      window.cadUI.updatePropertyPanel(null);
-    }
   }
 
   selectHandle(segment, type, addToSelection = false) {
@@ -84,7 +108,7 @@ export class SelectionManager {
     const layerId = String(segment.path.data?.layerId || '0');
     const layerManager = this.service.utils?.layerManager || window.cadUtils?.layerManager;
     const layer = layerManager?.layers?.get(layerId);
-    if (layer && layer.locked) return;
+    if (layer && (layer.locked || layer.visible === false)) return;
 
     if (!addToSelection) {
       this.deselectAllHandles();
@@ -131,16 +155,13 @@ export class SelectionManager {
       window.cadUtils.selectionRenderEngine.renderBezierHandles();
     }
 
-    if (window.cadUI && typeof window.cadUI.updatePropertyPanel === 'function') {
-      const remaining = this.selectedEntities[this.selectedEntities.length - 1] || null;
-      window.cadUI.updatePropertyPanel(remaining);
-    }
+    this._notify();
   }
 
   deselectAllEditingEntities() {
+    this.editingEntities = [];
     this.selectedEntities = [];
     this.selectedSegments = [];
-    this.editingEntities = [];
     this.deselectAllHandles();
 
     if (window.cadUtils) {
@@ -155,7 +176,7 @@ export class SelectionManager {
     const layerId = String(segment.path.data?.layerId || '0');
     const layerManager = this.service.utils?.layerManager || window.cadUtils?.layerManager;
     const layer = layerManager?.layers?.get(layerId);
-    if (layer && layer.locked) return;
+    if (layer && (layer.locked || layer.visible === false)) return;
     
     if (!addToSelection) {
       this.selectedSegments = [];
@@ -238,4 +259,5 @@ export class SelectionManager {
       if (renderBezierFn) renderBezierFn();
     }
   }
+
 }

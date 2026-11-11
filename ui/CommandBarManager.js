@@ -60,8 +60,6 @@ export class CommandBarManager {
     if (e.key === 'F2') {
       e.preventDefault();
       this.toggleConsoleModal();
-    } else if (e.key === 'Escape' && this.isConsoleOpen) {
-      this.hideConsoleModal();
     }
   }
 

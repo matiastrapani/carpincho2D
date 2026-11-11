@@ -342,7 +342,10 @@ export class CADUtils {
 
     // 3. Registro en la Consola / Historial
     if (this.commandBar && typeof this.commandBar.logUserCommand === 'function') {
-      this.commandBar.logUserCommand(toolName.toUpperCase());
+      // Solo loguea el cambio de herramienta si NO es un setTool('select') repetitivo en estado select
+      if (toolName !== 'select' || this.currentToolMode !== 'select') {
+        this.commandBar.logUserCommand(toolName.toUpperCase());
+      }
     }
 
     // 4. Cambiar herramienta en ToolManager (esto ejecuta cancel() de la tool previa)

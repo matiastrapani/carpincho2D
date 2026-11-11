@@ -1,5 +1,5 @@
 /**
- * modules/toolbarComponent.js - Componente que genera e inyecta la UI dinámicamente
+ * ui/toolbarComponent.js - Componente de UI (OSNAP, HUD, Toolbar Vertical y Slots)
  */
 export class CADToolbarComponent {
   constructor(containerId = 'fixedConsoleContainer') {
@@ -11,7 +11,7 @@ export class CADToolbarComponent {
 
     this.container.innerHTML = `    
       <!-- Barra Inferior de Control -->
-      <div class="relative w-full p-2 bg-[#121215] flex flex-col gap-2 z-10 pointer-events-auto">
+      <div class="relative w-full p-2 bg-[#121215] flex flex-col gap-1 pt-1 z-10 pointer-events-auto">
         <div class="flex flex-wrap items-center justify-between gap-2 w-full h-6 min-h-[24px]">
           
           <!-- OSNAP & Filtros -->
@@ -66,7 +66,6 @@ export class CADToolbarComponent {
 
           <!-- Coordenadas & Zoom -->
           <div class="h-6 flex items-center gap-1 text-xs shrink-0 font-sans ml-auto">
-            
             <div class="flat-divider h-4 shrink-0 hidden sm:block"></div>
             
             <div class="hidden sm:flex items-center gap-1 px-1 h-6 shrink-0">
@@ -102,52 +101,8 @@ export class CADToolbarComponent {
           </div>
         </div>
 
-        <!-- Barra de Comandos (2 RENGLONES) -->
-        <div class="cad-panel p-2 rounded text-xs text-zinc-300 flex flex-col gap-1.5 w-full font-sans z-10">
-          <!-- RENGLÓN 1: Muestra de Salida / Prompt -->
-          <div class="flex items-center gap-1.5 text-zinc-400 font-medium px-1 py-0.5 text-[11px] min-h-[20px] truncate">
-            <i class="fa-solid fa-terminal text-[10px] text-zinc-500"></i>
-            <span id="commandPrompt" class="text-zinc-300 font-sans leading-none">Command:</span>
-          </div>
-
-          <!-- RENGLÓN 2: Input para Ingresar Comandos + Botón Modal de Historial -->
-          <div class="flex items-center gap-2 w-full">
-            <input id="cmdInput" type="text" autocomplete="off" placeholder="Escribe comando o valor..." class="command-input flex-1 px-2.5 py-1 rounded text-xs w-full h-7" />
-            
-            <button id="btnToggleConsole" class="cad-button cad-button-square h-7 w-7 rounded bg-[#27272a] hover:bg-[#3f3f46] text-zinc-300 tooltip-top shrink-0" data-tooltip="Historial de Consola [F2]">
-              <i class="fa-solid fa-list-ul text-xs"></i>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Modal Emergente Flotante de Consola CAD (Centrado / Arrastrable) -->
-      <div id="cmdConsoleModal" class="hidden fixed inset-0 z-[100] pointer-events-none flex items-center justify-center">
-        <div id="cmdConsoleWindow" class="cad-panel w-[580px] h-[380px] rounded-lg shadow-2xl flex flex-col pointer-events-auto border border-[#2a2a32] overflow-hidden absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-          
-          <!-- Header del Modal (Arrastrable) -->
-          <div id="cmdConsoleHeader" class="bg-[#17171c] px-3.5 py-2 flex items-center justify-between cursor-grab active:cursor-grabbing border-b border-[#2a2a32] shrink-0 select-none">
-            <div class="flex items-center gap-2">
-              <i class="fa-solid fa-terminal text-xs text-emerald-500"></i>
-              <span class="text-xs font-semibold text-zinc-200 tracking-wide uppercase">Historial de Consola CAD</span>
-              <span class="text-[10px] text-zinc-500 font-mono bg-[#121215] px-1.5 py-0.5 rounded border border-[#2a2a32]">F2</span>
-            </div>
-            <button id="btnCloseConsoleModal" class="text-zinc-400 hover:text-white text-xs w-6 h-6 flex items-center justify-center rounded hover:bg-[#27272a] transition-colors">
-              <i class="fa-solid fa-xmark"></i>
-            </button>
-          </div>
-
-          <!-- Log de Entradas y Salidas de Consola -->
-          <div id="cmdConsoleLog" class="flex-1 p-3.5 overflow-y-auto bg-[#10141d] font-mono text-[11px] flex flex-col gap-1.5 text-zinc-300 select-text">
-            <div class="text-zinc-500 italic text-[10px] pb-1 border-b border-zinc-800/60">--- Sesión CAD Iniciada ---</div>
-          </div>
-
-          <!-- Footer Informativo -->
-          <div class="bg-[#17171c] px-3.5 py-1.5 border-t border-[#2a2a32] flex items-center justify-between text-[10px] text-zinc-500 shrink-0">
-            <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Consola Lista</span>
-            <span>Usa F2 o ESC para cerrar</span>
-          </div>
-        </div>
+        <!-- Slot reservado para la Consola Fija -->
+        <div id="fixedConsoleSlot" class="w-full"></div>
       </div>
 
       <!-- Barra de Herramientas Flotante/Acoplada -->

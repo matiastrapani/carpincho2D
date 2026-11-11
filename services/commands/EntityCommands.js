@@ -24,10 +24,7 @@ export class AddLineCommand {
       this.cadService.demoEntities.splice(idx, 1);
     }
     
-    const selIdx = this.cadService.selectedEntities.indexOf(this.lineEntity);
-    if (selIdx !== -1) {
-      this.cadService.selectedEntities.splice(selIdx, 1);
-    }
+    this.cadService.deselectEntity(this.lineEntity);
 
     this.lineEntity.remove();
   }
@@ -59,12 +56,7 @@ export class AddPointCommand {
       this.service.demoEntities.splice(idx, 1);
     }
 
-    if (this.service.selectedEntities) {
-      const selIdx = this.service.selectedEntities.indexOf(this.pointEntity);
-      if (selIdx !== -1) {
-        this.service.selectedEntities.splice(selIdx, 1);
-      }
-    }
+    this.service.deselectEntity(this.pointEntity);
 
     this.pointEntity.remove();
     paper.view.update();

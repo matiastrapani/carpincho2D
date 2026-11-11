@@ -1,4 +1,8 @@
 import { CADToolbarComponent } from './ui/toolbarComponent.js';
+import { ConsoleManager } from './ui/console/ConsoleManager.js';
+import { FixedConsoleUI } from './ui/console/FixedConsoleUI.js';
+import { FloatingConsoleUI } from './ui/console/FloatingConsoleUI.js';
+
 import { CADService } from './services/cadService.js';
 import { CADUtils } from './cadUtils.js';
 import { CADUIManager } from './ui/uiManager.js';
@@ -6,37 +10,39 @@ import { LayerPanelUI } from './ui/LayerPanelUI.js';
 import { PropertyPanelUI } from './ui/PropertyPanelUI.js';
 
 const onLoadHandler = () => {
-  // Desenganchar inmediatamente el listener de arranque
   window.removeEventListener('load', onLoadHandler);
 
-  // 1. Inyectar Componente de Interfaz
+  // 1. Inyectar la UI visual (Toolbar base + Consolas)
   const toolbar = new CADToolbarComponent('fixedConsoleContainer');
   toolbar.render();
+  window.consoleManager = new ConsoleManager('fixedConsoleSlot');
+  window.fixedConsoleUI = window.consoleManager.fixedUI;
+  window.floatingConsoleUI = window.consoleManager.floatingUI;
+
+  // Iniciar sincronización bidireccional entre consolas
+  const fixedInputEl = document.getElementById('cmdInput');
+  window.floatingConsoleUI.bindInputSync(fixedInputEl);
 
   if (window.Iconify) {
     window.Iconify.scan(document.getElementById('fixedConsoleContainer'));
   }
 
-  // 2. Inicializar Servicios principales
+  // 2. Inicializar Servicios CAD
   window.cadService = new CADService();
   window.cadUtils = new CADUtils('cadCanvas', window.cadService);
   window.cadIO = window.cadUtils.ioService;
-
-  // 3. Inicializar Viewport Manager y Paper.js
   window.canvasViewportManager = window.cadUtils.viewportManager;
-  
-  // 4. Inicializar Administradores de UI
+
+  // 3. Inicializar Administradores de UI (Engancha automáticamente todos los listeners nativos)
   window.cadUI = new CADUIManager(window.cadUtils, window.cadService);
   window.layerPanelUI = new LayerPanelUI(window.cadUtils, 'layerPanelContainer');
   window.propertyPanelUI = new PropertyPanelUI(window.cadUtils, 'propertyPanelContainer');
 
-  // 5. Cargar entidades iniciales y refrescar visuales
+  // 4. Cargar entidades iniciales y refrescar visuales
   window.cadUI.init();
   window.canvasViewportManager.initPaper();
   window.cadService.createDemoEntities();
 
-
-  // Refrescar tamaño y centro exacto tras la carga de recursos de la página
   if (document.fonts && document.fonts.ready) {
     document.fonts.ready.then(() => {
       window.canvasViewportManager.handleCanvasResize();

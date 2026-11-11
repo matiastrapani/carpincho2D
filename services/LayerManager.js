@@ -27,7 +27,7 @@ export class LayerManager {
     });
   }
 
-  createLayer({ id, name, color = '#18fcf1', strokeWidth = 0, visible = true, locked = false }) {
+  createLayer({ id, name, color = '#18fcf1', strokeWidth = 0, visible = true, locked = false } = {}) {
     const layerId = id || `layer_${Date.now()}`;
     
     if (this.layers.has(layerId)) {
@@ -83,7 +83,32 @@ export class LayerManager {
   setActiveLayer(layerId) {
     const key = String(layerId);
     if (!this.layers.has(key)) return false;
+    
     this.activeLayerId = key;
+    const layer = this.layers.get(key);
+    
+    if (layer) {
+      layer.visible = true;
+      layer.locked = false;
+
+      // Hacer visibles los elementos gráficos vinculados a esta capa
+      if (this.service && Array.isArray(this.service.demoEntities)) {
+        this.service.demoEntities.forEach(ent => {
+          if (ent.data && String(ent.data.layerId) === key) {
+            ent.visible = true;
+          }
+        });
+      }
+
+      if (layer.paperGroup) {
+        layer.paperGroup.visible = true;
+      }
+    }
+
+    if (window.paper?.view) {
+      window.paper.view.update();
+    }
+
     return true;
   }
 
@@ -136,8 +161,14 @@ export class LayerManager {
 
     layer[property] = value;
 
-    if (property === 'locked' && value === true && this.service) {
+    // Purgar selección y edición si la capa se bloquea O se oculta
+    if (this.service && ((property === 'locked' && value === true) || (property === 'visible' && value === false))) {
       this._purgeLockedLayerState(layerId);
+      
+      // Sincronizar el panel de propiedades para que vuelva a "Sin selección"
+      if (window.propertyPanelUI) {
+        window.propertyPanelUI.setSelectedEntities(this.service.selectedEntities);
+      }
     }
 
     if (this.utils) {

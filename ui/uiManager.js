@@ -17,6 +17,7 @@ export class CADUIManager {
     this._onToolbarMouseUp = this._handleToolbarMouseUp.bind(this);
     this._onToolbarResizeMouseMove = this._handleToolbarResizeMouseMove.bind(this);
     this._onToolbarResizeMouseUp = this._handleToolbarResizeMouseUp.bind(this);
+    this._onToolbarContextMenu = (e) => e.preventDefault();
 
     // Handlers de redimensionamiento del Sidebar
     this._onSidebarMouseMove = this._handleSidebarMouseMove.bind(this);
@@ -138,10 +139,18 @@ export class CADUIManager {
     simpleTools.forEach(({ id, tool }) => {
       const el = document.getElementById(id);
       if (el) {
+        // Clic izquierdo activa la herramienta y cierra flyouts
         el.addEventListener('click', () => {
+          this.closeAllFlyouts();
           if (typeof this.cadUtils.setTool === 'function') {
             this.cadUtils.setTool(tool);
           }
+        });
+
+        // Clic derecho en botón simple: evita menú del SO y cierra cualquier flyout abierto
+        el.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
           this.closeAllFlyouts();
         });
       }
@@ -169,6 +178,14 @@ export class CADUIManager {
       let pressTimer = null;
       let isLongPress = false;
 
+      // Desplegar menú con Clic Derecho
+      btn.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.closeAllFlyouts();
+        menu.classList.add('show');
+      });
+
       // Presionar el botón principal
       btn.addEventListener('mousedown', (e) => {
         if (e.button !== 0) return;
@@ -186,14 +203,14 @@ export class CADUIManager {
         if (e.button !== 0) return;
         clearTimeout(pressTimer);
 
-        // Si fue clic rápido y el menú no está visible, activa la herramienta por defecto
+        // Si fue un clic rápido (sin mantener presionado):
         if (!isLongPress) {
-          if (!menu.classList.contains('show')) {
-            const defaultTool = btn.getAttribute('data-default-tool');
-            if (defaultTool && typeof this.cadUtils.setTool === 'function') {
-              this.cadUtils.setTool(defaultTool);
-            }
+          const defaultTool = btn.getAttribute('data-default-tool');
+          if (defaultTool && typeof this.cadUtils.setTool === 'function') {
+            this.cadUtils.setTool(defaultTool);
           }
+          // Cerrar el desplegable tras seleccionar la herramienta
+          this.closeAllFlyouts();
         }
       });
 
@@ -229,7 +246,8 @@ export class CADUIManager {
     });
 
     // Cerrar desplegables al hacer clic en el lienzo o fuera de la barra
-    document.addEventListener('mousedown', this._onDocumentMouseDown);
+    document.addEventListener('mousedown', this._onDocumentMouseDown, true);
+    document.addEventListener('contextmenu', this._onDocumentMouseDown, true);
   }
 
   closeAllFlyouts() {
@@ -280,6 +298,8 @@ export class CADUIManager {
     const toolbarWidthResizer = document.getElementById('toolbarWidthResizer');
 
     if (!verticalToolbar || !dragHandle) return;
+    
+    verticalToolbar.addEventListener('contextmenu', this._onToolbarContextMenu);
 
     this._dragState.verticalToolbar = verticalToolbar;
     this._dragState.leftDockContainer = document.getElementById('leftDockContainer');
@@ -585,7 +605,8 @@ export class CADUIManager {
 
 
   _handleDocumentMouseDown(e) {
-    if (!e.target.closest('.relative')) {
+    // Si el clic ocurre FUERA de cualquier contenedor de flyout/desplegable
+    if (!e.target.closest('.has-flyout') && !e.target.closest('.flyout-menu')) {
       this.closeAllFlyouts();
     }
   }
@@ -732,6 +753,10 @@ export class CADUIManager {
   }
 
   cleanup() {
+    if (this._dragState.verticalToolbar && this._onToolbarContextMenu) {
+      this._dragState.verticalToolbar.removeEventListener('contextmenu', this._onToolbarContextMenu);
+    }
+
     document.removeEventListener('keydown', this._onGlobalKeyDown);
     document.removeEventListener('mousedown', this._onDocumentMouseDown);
 
