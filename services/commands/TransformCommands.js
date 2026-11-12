@@ -114,15 +114,15 @@ export class DeleteCommand {
         });
 
         if (item.path.segments.length < 2) {
-          const idxInDemo = this.cadService.demoEntities.indexOf(item.path);
-          if (idxInDemo !== -1) this.cadService.demoEntities.splice(idxInDemo, 1);
+          const idxInDemo = this.cadService.entities.indexOf(item.path);
+          if (idxInDemo !== -1) this.cadService.entities.splice(idxInDemo, 1);
           item.path.remove();
         }
       });
     } else if (this.deleteData.type === 'entities') {
       this.deleteData.entities.forEach(ent => {
-        const idx = this.cadService.demoEntities.indexOf(ent);
-        if (idx !== -1) this.cadService.demoEntities.splice(idx, 1);
+        const idx = this.cadService.entities.indexOf(ent);
+        if (idx !== -1) this.cadService.entities.splice(idx, 1);
         ent.remove();
       });
     }
@@ -150,8 +150,8 @@ export class DeleteCommand {
         if (!item.path.parent || item.path.layer !== targetLayer) {
           targetLayer.addChild(item.path);
         }
-        if (!this.cadService.demoEntities.includes(item.path)) {
-          this.cadService.demoEntities.push(item.path);
+        if (!this.cadService.entities.includes(item.path)) {
+          this.cadService.entities.push(item.path);
         }
 
         item.path.segments = item.originalSegmentsState.map(s => new paper.Segment({
@@ -168,8 +168,8 @@ export class DeleteCommand {
         if (!ent.parent || ent.layer !== targetLayer) {
           targetLayer.addChild(ent);
         }
-        if (!this.cadService.demoEntities.includes(ent)) {
-          this.cadService.demoEntities.push(ent);
+        if (!this.cadService.entities.includes(ent)) {
+          this.cadService.entities.push(ent);
         }
       });
     }
@@ -178,7 +178,7 @@ export class DeleteCommand {
       nodesLayer.insertAbove(drawLayer);
     }
 
-    this.cadService.demoEntities.forEach(ent => {
+    this.cadService.entities.forEach(ent => {
       if (ent && ent.data?.isPointEntity) {
         ent.bringToFront();
       }
@@ -200,8 +200,8 @@ export class DivideCommand {
 
   execute() {
     this.pointsCreated.forEach(pt => {
-      if (!this.cadService.demoEntities.includes(pt)) {
-        this.cadService.demoEntities.push(pt);
+      if (!this.cadService.entities.includes(pt)) {
+        this.cadService.entities.push(pt);
       }
       if (!pt.parent) {
         paper.project.activeLayer.addChild(pt);
@@ -215,9 +215,9 @@ export class DivideCommand {
 
   undo() {
     this.pointsCreated.forEach(pt => {
-      const idx = this.cadService.demoEntities.indexOf(pt);
+      const idx = this.cadService.entities.indexOf(pt);
       if (idx !== -1) {
-        this.cadService.demoEntities.splice(idx, 1);
+        this.cadService.entities.splice(idx, 1);
       }
       pt.remove();
     });
@@ -262,9 +262,9 @@ export class TrimCommand {
   }
 
   execute() {
-    const idx = this.cadService.demoEntities.indexOf(this.originalPath);
+    const idx = this.cadService.entities.indexOf(this.originalPath);
     if (idx !== -1) {
-      this.cadService.demoEntities.splice(idx, 1);
+      this.cadService.entities.splice(idx, 1);
     }
     this.originalPath.remove();
 
@@ -272,8 +272,8 @@ export class TrimCommand {
       if (!p.parent || p.layer !== this.targetLayer) {
         this.targetLayer.addChild(p);
       }
-      if (!this.cadService.demoEntities.includes(p)) {
-        this.cadService.demoEntities.push(p);
+      if (!this.cadService.entities.includes(p)) {
+        this.cadService.entities.push(p);
       }
     });
 
@@ -284,9 +284,9 @@ export class TrimCommand {
 
   undo() {
     this.remainingPaths.forEach(p => {
-      const idx = this.cadService.demoEntities.indexOf(p);
+      const idx = this.cadService.entities.indexOf(p);
       if (idx !== -1) {
-        this.cadService.demoEntities.splice(idx, 1);
+        this.cadService.entities.splice(idx, 1);
       }
       p.remove();
     });
@@ -296,11 +296,11 @@ export class TrimCommand {
     }
     this.originalPath.visible = true;
 
-    if (!this.cadService.demoEntities.includes(this.originalPath)) {
-      if (this.originalIndex !== -1 && this.originalIndex <= this.cadService.demoEntities.length) {
-        this.cadService.demoEntities.splice(this.originalIndex, 0, this.originalPath);
+    if (!this.cadService.entities.includes(this.originalPath)) {
+      if (this.originalIndex !== -1 && this.originalIndex <= this.cadService.entities.length) {
+        this.cadService.entities.splice(this.originalIndex, 0, this.originalPath);
       } else {
-        this.cadService.demoEntities.push(this.originalPath);
+        this.cadService.entities.push(this.originalPath);
       }
     }
 

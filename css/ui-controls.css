@@ -1,0 +1,353 @@
+/* ==========================================================================
+   5. BARRA DE HERRAMIENTAS & FLYOUTS
+   ========================================================================== */
+.tool-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--tool-cols, 1), 32px);
+  gap: 4px;
+  align-content: start;
+}
+
+.tool-divider {
+  grid-column: 1 / -1;
+  height: 1px;
+  background-color: var(--cad-border);
+  margin: 2px 0;
+  width: 100%;
+}
+
+.toolbar-resizer {
+  position: absolute;
+  right: -3px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  cursor: ew-resize;
+  background: transparent;
+  z-index: 55;
+}
+
+.dock-right .toolbar-resizer,
+.dock-panel-left .toolbar-resizer {
+  right: auto;
+  left: -3px;
+}
+
+.toolbar-resizer:hover,
+.toolbar-resizer:active {
+  background: var(--cad-accent);
+}
+
+.toolbar-floating {
+  border-radius: 6px;
+  border: none !important;
+  background: var(--cad-bg-panel) !important;
+}
+
+.toolbar-docked {
+  top: 0 !important;
+  bottom: 0 !important;
+  height: 100% !important;
+  border-radius: 0 !important;
+  background: var(--cad-bg-panel) !important;
+  border: none !important;
+}
+
+/* Menú Flyout */
+.flyout-menu {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: calc(100% + 6px);
+  background: var(--cad-bg-panel);
+  border: none !important;
+  border-radius: 6px;
+  z-index: 80;
+  min-width: 200px;
+  overflow: hidden;
+}
+
+.dock-right .flyout-menu,
+.dock-panel-left .flyout-menu {
+  left: auto;
+  right: calc(100% + 6px);
+}
+
+.flyout-menu.show {
+  display: flex;
+  flex-direction: column;
+}
+
+.flyout-item {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  color: #a1a1aa;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  transition: background-color 0.12s ease;
+  cursor: pointer;
+}
+
+.flyout-item:hover {
+  background: var(--cad-border);
+  color: #ffffff;
+}
+
+/* ==========================================================================
+   6. CONTENEDORES DE ACOPLE (DOCKING) & RESIZERS
+   ========================================================================== */
+#rightSidebar {
+  border-right: none !important;
+  border-left: none !important;
+}
+
+#leftDockContainer {
+  margin-right: 0 !important;
+  border: none !important;
+}
+
+#leftDockContainer:not(:empty) {
+  margin-right: 0 !important;
+}
+
+#rightDockContainer {
+  margin-left: 0 !important;
+  border: none !important;
+}
+
+#rightDockContainer:not(:empty) {
+  margin-left: 3px !important;
+  background-color: var(--cad-bg-root);
+}
+
+#resizer {
+  width: 1px;
+  transition: width 0.15s ease;
+}
+
+#resizer.has-docked-border {
+  width: 3px !important;
+}
+
+#resizerVisualLine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 1px;
+  background-color: transparent;
+  transition: background-color 0.15s ease, width 0.15s ease;
+}
+
+#resizer:hover #resizerVisualLine,
+#resizer.is-dragging #resizerVisualLine {
+  width: 3px !important;
+  background-color: var(--cad-accent) !important;
+}
+
+#resizer.has-docked-border #resizerVisualLine {
+  width: 100% !important;
+  left: 0 !important;
+  transform: none !important;
+  background-color: var(--cad-bg-root) !important;
+}
+
+#resizer.has-docked-border:hover #resizerVisualLine,
+#resizer.has-docked-border.is-dragging #resizerVisualLine {
+  background-color: var(--cad-accent) !important;
+}
+
+/* ==========================================================================
+   7. CONTROLES Y CHIPS DE SNAPPING (OSNAP, GRID & ORTHO)
+   ========================================================================== */
+.snap-btn,
+.snap-chip {
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  cursor: pointer;
+  background-color: var(--cad-bg-chip) !important;
+  color: #9ca3af !important;
+  border: none !important;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+.snap-btn i,
+.snap-chip span {
+  color: inherit !important;
+}
+
+.snap-chip .bg-zinc-300,
+.snap-chip .bg-zinc-500 {
+  background-color: currentColor !important;
+}
+
+.snap-chip .border-zinc-300 {
+  border-color: currentColor !important;
+}
+
+.snap-chip .border-b-zinc-300 {
+  border-bottom-color: currentColor !important;
+}
+
+.snap-btn:not(.disabled):hover,
+.snap-chip:not(.disabled):hover {
+  background-color: #24242d !important;
+  color: var(--cad-text-bright) !important;
+}
+
+.cad-button.snap-btn.active,
+.snap-btn.active,
+.snap-chip.active {
+  background-color: var(--cad-bg-active-chip) !important;
+  color: #f4f4f5 !important;
+}
+
+.cad-button.snap-btn.active:not(.disabled):hover,
+.snap-btn.active:not(.disabled):hover,
+.snap-chip.active:not(.disabled):hover {
+  background-color: #3c3c48 !important;
+  color: #ffffff !important;
+}
+
+.snap-chip.disabled,
+.snap-chips-disabled .snap-chip {
+  background-color: var(--cad-bg-root) !important;
+  color: #3f3f46 !important;
+  opacity: 1 !important;
+  cursor: not-allowed !important;
+}
+
+.snap-chip.disabled.active,
+.snap-chips-disabled .snap-chip.active {
+  background-color: var(--cad-bg-chip) !important;
+  color: var(--cad-text-disabled) !important;
+}
+
+.snap-chip.disabled:hover,
+.snap-chips-disabled .snap-chip:hover {
+  background-color: var(--cad-bg-root) !important;
+  color: #3f3f46 !important;
+}
+
+.snap-chip.disabled.active:hover,
+.snap-chips-disabled .snap-chip.active:hover {
+  background-color: var(--cad-bg-chip) !important;
+  color: var(--cad-text-disabled) !important;
+}
+
+/* ==========================================================================
+   8. PANEL DE PROPIEDADES & FORMULARIOS
+   ========================================================================== */
+#propertyFieldsContainer .w-14,
+#propertyFieldsContainer .w-16 {
+  width: 55px !important;
+  flex-shrink: 0 !important;
+}
+
+#propertyFieldsContainer select,
+#propertyFieldsContainer select:focus,
+#propertyFieldsContainer select:hover,
+#propertyFieldsContainer select:active {
+  border: 0 !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background-color: var(--cad-bg-input) !important;
+  color: var(--cad-text-bright) !important;
+  color-scheme: dark !important;
+}
+
+#propertyFieldsContainer select option {
+  background-color: var(--cad-bg-input) !important;
+  color: #a1a1aa !important;
+}
+
+#propertyFieldsContainer select option:checked {
+  background-color: var(--cad-bg-hover) !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+}
+
+#propertyFieldsContainer .border-b {
+  border-bottom: none !important;
+}
+
+#propertyFieldsContainer input[type="color"] {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  border: none !important;
+  outline: none !important;
+  padding: 0 !important;
+  background: transparent !important;
+  width: 22px !important;
+  height: 22px !important;
+}
+
+#propertyFieldsContainer input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0 !important;
+}
+
+#propertyFieldsContainer input[type="color"]::-webkit-color-swatch,
+#propertyFieldsContainer input[type="color"]::-moz-color-swatch {
+  border: none !important;
+  border-radius: 3px !important;
+}
+
+/* ==========================================================================
+   9. SCROLLBARS NATIVOS
+   ========================================================================== */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-thumb { background: var(--cad-border); border-radius: 2px; }
+
+/* ==========================================================================
+   10. CONSOLA CAD (FIJA Y FLOTANTE)
+   ========================================================================== */
+#cmdInput,
+#cmdInputFloating,
+#fixedConsoleSlot input[type="text"],
+.command-input {
+  background-color: var(--cad-bg-input) !important;
+  color: #f4f4f5 !important;
+  border: none !important;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
+}
+
+#cmdInput:focus,
+#cmdInputFloating:focus,
+#fixedConsoleSlot input[type="text"]:focus,
+.command-input:focus {
+  background-color: var(--cad-bg-input) !important;
+  color: #ffffff !important;
+}
+
+#fixedConsoleLogArea,
+#cmdConsoleLog {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
+}
+
+#fixedConsoleResizer:hover #fixedConsoleResizerVisual,
+#fixedConsoleResizer.is-dragging #fixedConsoleResizerVisual {
+  background-color: var(--cad-accent) !important;
+  height: 3px !important;
+}
+
+#cmdConsoleLog::-webkit-scrollbar,
+#fixedConsoleLogArea::-webkit-scrollbar {
+  width: 5px;
+}
+
+#cmdConsoleLog::-webkit-scrollbar-thumb,
+#fixedConsoleLogArea::-webkit-scrollbar-thumb {
+  background: var(--cad-bg-hover);
+  border-radius: 3px;
+}
+
+#cmdConsoleLog::-webkit-scrollbar-thumb:hover,
+#fixedConsoleLogArea::-webkit-scrollbar-thumb:hover {
+  background: var(--cad-accent);
+}

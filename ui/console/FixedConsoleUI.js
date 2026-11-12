@@ -46,7 +46,7 @@ export class FixedConsoleUI {
           <input id="cmdInput" type="text" autocomplete="off" placeholder="Escribe comando o valor..." class="command-input flex-1 px-2.5 py-1 rounded text-xs h-7 min-h-[28px]" />
           
           <div class="flex items-center gap-1 shrink-0">
-            <button id="btnToggleConsole" class="cad-button cad-button-square h-6 w-6 rounded bg-[#27272a] hover:bg-[#3f3f46] text-zinc-300 tooltip-top" data-tooltip="Historial de Consola [F2]">
+            <button id="btnToggleConsole" class="cad-button cad-button-square h-6 w-6 rounded bg-[#27272a] hover:bg-[#3f3f46] text-zinc-300 tooltip-top" data-tooltip="Registro de comandos [F2]">
               <i class="fa-solid fa-list-ul text-[10px]"></i>
             </button>
             <button id="btnCollapseFixedConsole" class="cad-button cad-button-square h-6 w-6 rounded bg-[#27272a] hover:bg-[#3f3f46] text-zinc-300 tooltip-top" data-tooltip="Colapsar / Desplegar Consola">

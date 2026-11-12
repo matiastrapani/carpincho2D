@@ -92,8 +92,8 @@ export class LayerManager {
       layer.locked = false;
 
       // Hacer visibles los elementos gráficos vinculados a esta capa
-      if (this.service && Array.isArray(this.service.demoEntities)) {
-        this.service.demoEntities.forEach(ent => {
+      if (this.service && Array.isArray(this.service.entities)) {
+        this.service.entities.forEach(ent => {
           if (ent.data && String(ent.data.layerId) === key) {
             ent.visible = true;
           }
@@ -123,7 +123,7 @@ export class LayerManager {
     layer.visible = !layer.visible;
     
     // Ocultar/Mostrar entidades vinculadas en Paper.js
-    this.service.demoEntities.forEach(ent => {
+    this.service.entities.forEach(ent => {
       if (ent.data && ent.data.layerId === layerId) {
         ent.visible = layer.visible;
       }

@@ -47,7 +47,7 @@ export class GeometryEngine {
 
     const origStrokeColor = targetPath.strokeColor || '#00e5ff';
     const origStrokeWidth = targetPath.strokeWidth || 2;
-    const origIdx = this.service.demoEntities.indexOf(targetPath);
+    const origIdx = this.service.entities.indexOf(targetPath);
 
     let currentPath = targetPath.clone();
     

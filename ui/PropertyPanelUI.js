@@ -21,7 +21,7 @@ export class PropertyPanelUI {
     this.utils = cadUtils;
     this.service = cadUtils.service;
     this.layerPanelUI = layerPanelUI;
-    this.paper = paperInstance || cadUtils.paper || (typeof paper !== 'undefined' ? paper : null);
+    this.paper = paperInstance || cadUtils.paper;
     this.container = document.getElementById(containerId);
 
     this.colorHandler = new PropertyColorHandler({
@@ -230,21 +230,6 @@ export class PropertyPanelUI {
 
     const cmd = new UpdateDefaultSettingsCommand(this.service, defaults, oldStateObj, newStateObj, this.utils);
     this.service.executeCommand(cmd);
-  }
-
-  _dispatchDefaultCommand(oldStateObj, newStateObj) {
-    const cadService = this.service || this.utils?.service || window.cadService;
-    const defaults = this.utils?.propertyManager?.defaultSettings;
-    if (!defaults) return;
-
-    if (UpdateDefaultSettingsCommand && cadService) {
-      const cmd = new UpdateDefaultSettingsCommand(cadService, defaults, oldStateObj, newStateObj, this.utils);
-      cadService.executeCommand(cmd);
-    } else {
-      Object.assign(defaults, newStateObj);
-      this._requestCanvasUpdate();
-      this.refresh();
-    }
   }
 
   _getLayer(layerId) {

@@ -167,7 +167,7 @@ export class PointTool extends BaseTool {
     if ((mode === 'divide_count' || mode === 'divide_dist') && this.utils.divisionStep === 'select') {
       const hitEntity = paper.project.hitTest(event.point, {
         stroke: true, fill: true, tolerance: 8 / paper.view.zoom,
-        match: (res) => this.service.demoEntities.includes(res.item) && !res.item.data?.isPointEntity
+        match: (res) => this.service.entities.includes(res.item) && !res.item.data?.isPointEntity
       });
 
       if (hitEntity && hitEntity.item) {
@@ -298,7 +298,7 @@ export class PointTool extends BaseTool {
             return false;
           };
 
-          const candidates = this.service.demoEntities.filter(
+          const candidates = this.service.entities.filter(
             ent => ent && !ent.data?.isPointEntity && ent.bounds
           );
 

@@ -1,7 +1,7 @@
 # ARCHITECTURE.md — Reglas Inviolables del Proyecto CAD
 
 ## 1. Única Fuente de Verdad (Estado Centralizado)
-- **Entidades del dibujo:** `CADService.demoEntities` es la única lista oficial de objetos en el lienzo.
+- **Entidades del dibujo:** `CADService.entities` es la única lista oficial de objetos en el lienzo.
 - **Selección y edición:** `SelectionManager` es el único dueño de `selectedEntities`, `selectedSegments`, `editingEntities` y `selectedHandles`.
 - **Capas:** `LayerManager` es el único dueño de la estructura y visibilidad/bloqueo de capas.
 - **Prohibido en UI:** Ningún panel (`PropertyPanelUI`, `LayerPanelUI`, etc.) puede guardar copias propias de arrays de entidades o selección. Deben leer en vivo mediante getters y suscribirse a cambios (`subscribe` / `refresh`).

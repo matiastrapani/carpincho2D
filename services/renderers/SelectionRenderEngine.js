@@ -21,7 +21,7 @@ export class SelectionRenderEngine {
     const nodeTheme = (typeof CAD_THEME !== 'undefined' && CAD_THEME?.node) ? CAD_THEME.node : {};
     const nodeSelectionTheme = (typeof CAD_THEME !== 'undefined' && CAD_THEME?.selection?.node) ? CAD_THEME.selection.node : {};
 
-    const entities = this.service?.demoEntities || [];
+    const entities = this.service?.entities || [];
     entities.forEach(ent => {
       if (ent && ent.data && ent.data.isPointEntity && ent.bounds) {
         const isSelected = this.service.selectedEntities?.includes(ent);
@@ -69,7 +69,7 @@ export class SelectionRenderEngine {
     const propertyManager = cadUtils?.propertyManager;
     const activePath = cadUtils?.activePath;
 
-    const entitiesToUpdate = [...(this.service?.demoEntities || [])];
+    const entitiesToUpdate = [...(this.service?.entities || [])];
     if (activePath) {
       entitiesToUpdate.push(activePath);
     }
@@ -210,7 +210,7 @@ export class SelectionRenderEngine {
     // Purga de edición para elementos huérfanos o eliminados
     if (service.editingEntities && service.editingEntities.length > 0) {
       service.editingEntities = service.editingEntities.filter(
-        ent => ent && ent.parent && service.demoEntities?.includes(ent)
+        ent => ent && ent.parent && service.entities?.includes(ent)
       );
 
       if (service.editingEntities.length === 0) {

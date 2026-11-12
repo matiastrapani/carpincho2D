@@ -345,7 +345,7 @@ export class CanvasViewportManager {
       return Math.abs(b.width) > 0 || Math.abs(b.height) > 0 || (ent.segments && ent.segments.length > 0);
     };
 
-    const validEntities = (this.utils.service?.demoEntities || []).filter(isValidEntity);
+    const validEntities = (this.utils.service?.entities || []).filter(isValidEntity);
     const selectedEntities = (this.utils.service?.selectedEntities || []).filter(isValidEntity);
     const currentTargets = selectedEntities.length > 0 ? selectedEntities : validEntities;
 

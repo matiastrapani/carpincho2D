@@ -13,15 +13,15 @@ export class AddLineCommand {
       paper.project.activeLayer.addChild(this.lineEntity);
     }
     
-    if (!this.cadService.demoEntities.includes(this.lineEntity)) {
-      this.cadService.demoEntities.push(this.lineEntity);
+    if (!this.cadService.entities.includes(this.lineEntity)) {
+      this.cadService.entities.push(this.lineEntity);
     }
   }
 
   undo() {
-    const idx = this.cadService.demoEntities.indexOf(this.lineEntity);
+    const idx = this.cadService.entities.indexOf(this.lineEntity);
     if (idx !== -1) {
-      this.cadService.demoEntities.splice(idx, 1);
+      this.cadService.entities.splice(idx, 1);
     }
     
     this.cadService.deselectEntity(this.lineEntity);
@@ -42,8 +42,8 @@ export class AddPointCommand {
     if (!this.pointEntity.parent) {
       paper.project.activeLayer.addChild(this.pointEntity);
     }
-    if (!this.service.demoEntities.includes(this.pointEntity)) {
-      this.service.demoEntities.push(this.pointEntity);
+    if (!this.service.entities.includes(this.pointEntity)) {
+      this.service.entities.push(this.pointEntity);
     }
     paper.view.update();
   }
@@ -51,9 +51,9 @@ export class AddPointCommand {
   undo() {
     if (!this.pointEntity) return;
 
-    const idx = this.service.demoEntities.indexOf(this.pointEntity);
+    const idx = this.service.entities.indexOf(this.pointEntity);
     if (idx !== -1) {
-      this.service.demoEntities.splice(idx, 1);
+      this.service.entities.splice(idx, 1);
     }
 
     this.service.deselectEntity(this.pointEntity);
@@ -75,11 +75,11 @@ export class AddEntityCommand {
 
   execute() {
     const drawLayer = window.cadUtils?.drawLayer || paper.project.activeLayer;
-    const existingSet = new Set(this.cadService.demoEntities);
+    const existingSet = new Set(this.cadService.entities);
 
     this.entities.forEach(ent => {
       if (!existingSet.has(ent)) {
-        this.cadService.demoEntities.push(ent);
+        this.cadService.entities.push(ent);
       }
 
       if (!ent.parent || ent.layer !== drawLayer) {
@@ -104,8 +104,8 @@ export class AddEntityCommand {
   undo() {
     const setToRemove = new Set(this.entities);
 
-    if (Array.isArray(this.cadService.demoEntities)) {
-      this.cadService.demoEntities = this.cadService.demoEntities.filter(ent => !setToRemove.has(ent));
+    if (Array.isArray(this.cadService.entities)) {
+      this.cadService.entities = this.cadService.entities.filter(ent => !setToRemove.has(ent));
     }
 
     if (Array.isArray(this.cadService.selectedEntities)) {
@@ -143,7 +143,7 @@ export class ImportSVGCommand {
     }
 
     this.entities.forEach(ent => {
-      if (!this.service.demoEntities.includes(ent)) this.service.demoEntities.push(ent);
+      if (!this.service.entities.includes(ent)) this.service.entities.push(ent);
       const layerId = String(ent.data?.layerId || '0');
       const layer = layerManager?.layers?.get(layerId);
 
@@ -168,8 +168,8 @@ export class ImportSVGCommand {
     this.entities.forEach(ent => {
       if (typeof this.service.deselectEntity === 'function') this.service.deselectEntity(ent);
       ent.remove();
-      const idx = this.service.demoEntities.indexOf(ent);
-      if (idx !== -1) this.service.demoEntities.splice(idx, 1);
+      const idx = this.service.entities.indexOf(ent);
+      if (idx !== -1) this.service.entities.splice(idx, 1);
     });
 
     if (layerManager && this.createdLayers.length > 0) {

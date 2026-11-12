@@ -85,9 +85,9 @@ export class InputDispatcher {
       }
 
       const service = this.service;
-      if (service?.demoEntities) {
+      if (service?.entities) {
         const layerManager = cadUtils?.layerManager;
-        const selectableEntities = service.demoEntities.filter((ent) => {
+        const selectableEntities = service.entities.filter((ent) => {
           if (!ent || !ent.visible) return false;
           const layerId = String(ent.data?.layerId || '0');
           const layer = layerManager?.layers?.get(layerId);

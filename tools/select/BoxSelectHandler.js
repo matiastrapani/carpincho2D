@@ -111,11 +111,11 @@ export class BoxSelectHandler {
     // B. CUADRO EN MODO SELECCIÓN DE OBJETOS
     if (this.service.editingEntities.length === 0) {
       const entitiesToSelect = [];
-      const demoEntities = this.service.demoEntities || [];
-      const count = demoEntities.length;
+      const entities = this.service.entities || [];
+      const count = entities.length;
 
       for (let i = 0; i < count; i++) {
-        const entity = demoEntities[i];
+        const entity = entities[i];
         if (!entity || !entity.bounds || entity.visible === false) continue;
 
         const layerId = String(entity.data?.layerId || '0');

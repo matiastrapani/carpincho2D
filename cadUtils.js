@@ -31,6 +31,7 @@ export class CADUtils {
     // 1. Referencias al DOM y Servicio Core
     this.canvasElement = document.getElementById(canvasId);
     this.service = service;
+    this.service.utils = this;
 
     // 2. Módulo de Capas y Propiedades (BYLAYER)
     this.layerManager = new LayerManager(this.service, this);
@@ -616,7 +617,7 @@ export class CADUtils {
    * Genera el siguiente nombre disponible para una entidad analizando las existentes en el lienzo.
    */
   generateNextEntityName(basePrefix = 'Línea') {
-    const entities = this.service?.demoEntities || [];
+    const entities = this.service?.entities || [];
     let maxNum = 0;
     const regex = new RegExp(`^${basePrefix}\\s+(\\d+)$`, 'i');
 

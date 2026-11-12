@@ -84,5 +84,45 @@ export const CAD_THEME = {
       '#001988', '#4c72fb', '#f35c54', '#ffcc00',
       '#3bcf1d', '#e148ae', '#93a115', '#7877d5'
     ]
+  },
+
+  // Tokens de interfaz sincronizados con variables CSS (--cad-*)
+  ui: {
+    bgRoot: '#121215',
+    bgInput: '#17171c',
+    bgChip: '#19191f',
+    bgPanel: '#1e1e24',
+    bgHover: '#27272a',
+    bgActiveChip: '#32323c',
+    borderSubtle: '#2f2f38',
+    textBase: '#94a3b8',
+    textMuted: '#71717a',
+    textDisabled: '#54545f',
+    textBright: '#e4e4e7',
+    accent: '#008800'
   }
 };
+
+export function applyThemeToDocument(theme = CAD_THEME, root = document.documentElement) {
+  if (!root?.style) return;
+  const { canvas, ui } = theme;
+  const vars = {
+    '--cad-bg-canvas': canvas.backgroundColor,
+    '--cad-bg-root': ui.bgRoot,
+    '--cad-bg-input': ui.bgInput,
+    '--cad-bg-chip': ui.bgChip,
+    '--cad-bg-panel': ui.bgPanel,
+    '--cad-bg-hover': ui.bgHover,
+    '--cad-bg-active-chip': ui.bgActiveChip,
+    '--cad-border': ui.borderSubtle,
+    '--cad-text-base': ui.textBase,
+    '--cad-text-muted': ui.textMuted,
+    '--cad-text-disabled': ui.textDisabled,
+    '--cad-text-bright': ui.textBright,
+    '--cad-accent': ui.accent
+  };
+
+  Object.entries(vars).forEach(([key, val]) => {
+    root.style.setProperty(key, val);
+  });
+}

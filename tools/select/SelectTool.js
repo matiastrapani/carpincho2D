@@ -73,7 +73,7 @@ export class SelectTool extends BaseTool {
     const getRootEntity = (item) => {
       let current = item;
       while (current) {
-        if (this.service.demoEntities.includes(current)) return current;
+        if (this.service.entities.includes(current)) return current;
         current = current.parent;
       }
       return item;
@@ -83,7 +83,7 @@ export class SelectTool extends BaseTool {
       stroke: true, fill: true, pixels: true, tolerance: 8 / paper.view.zoom,
       match: (res) => {
         const root = getRootEntity(res.item);
-        if (!this.service.demoEntities.includes(root)) return false;
+        if (!this.service.entities.includes(root)) return false;
 
         const layerId = String(root.data?.layerId || '0');
         const layer = this.utils.layerManager?.layers?.get(layerId);
@@ -341,8 +341,8 @@ export class SelectTool extends BaseTool {
       stroke: true, fill: true, tolerance: 6 / zoom,
       match: (res) => {
         let curr = res.item;
-        while (curr && !this.service.demoEntities.includes(curr)) curr = curr.parent;
-        if (!curr || !this.service.demoEntities.includes(curr)) return false;
+        while (curr && !this.service.entities.includes(curr)) curr = curr.parent;
+        if (!curr || !this.service.entities.includes(curr)) return false;
 
         const layerId = String(curr.data?.layerId || '0');
         const layer = this.utils.layerManager?.layers?.get(layerId);

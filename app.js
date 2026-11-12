@@ -1,16 +1,17 @@
 import { CADToolbarComponent } from './ui/toolbarComponent.js';
 import { ConsoleManager } from './ui/console/ConsoleManager.js';
-import { FixedConsoleUI } from './ui/console/FixedConsoleUI.js';
-import { FloatingConsoleUI } from './ui/console/FloatingConsoleUI.js';
 
 import { CADService } from './services/cadService.js';
 import { CADUtils } from './cadUtils.js';
 import { CADUIManager } from './ui/uiManager.js';
 import { LayerPanelUI } from './ui/LayerPanelUI.js';
 import { PropertyPanelUI } from './ui/PropertyPanelUI.js';
+import { CAD_THEME, applyThemeToDocument } from './config/cadTheme.js';
+import { populateentities } from './services/demoScene.js';
 
 const onLoadHandler = () => {
   window.removeEventListener('load', onLoadHandler);
+  applyThemeToDocument(CAD_THEME);
 
   // 1. Inyectar la UI visual (Toolbar base + Consolas)
   const toolbar = new CADToolbarComponent('fixedConsoleContainer');
@@ -33,12 +34,16 @@ const onLoadHandler = () => {
   // 3. Inicializar Administradores de UI
   window.cadUI = new CADUIManager(window.cadUtils, window.cadService);
   window.layerPanelUI = new LayerPanelUI(window.cadUtils, 'layerPanelContainer');
-  window.propertyPanelUI = new PropertyPanelUI(window.cadUtils, 'propertyPanelContainer');
+  window.propertyPanelUI = new PropertyPanelUI(window.cadUtils, 'propertyPanelContainer', {
+    layerPanelUI: window.layerPanelUI,
+    paperInstance: window.paper
+  });
 
   // 4. Cargar entidades iniciales y refrescar visuales
   window.cadUI.init();
   window.canvasViewportManager.initPaper();
-  window.cadService.createDemoEntities();
+  populateentities(window.cadService);
+
 
   if (document.fonts && document.fonts.ready) {
     document.fonts.ready.then(() => {

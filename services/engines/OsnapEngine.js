@@ -49,28 +49,28 @@ export class OsnapEngine {
         new paper.Size(snapRadius * 2, snapRadius * 2)
       );
 
-      const circleTargets = this.service.demoEntities.filter(ent => {
+      const circleTargets = this.service.entities.filter(ent => {
         if (!isValidSnapEntity(ent) || !ent.data?.isCircleEntity) return false;
         if (draggedPath && ent === draggedPath) return false;
         if (ignoreEntities.includes(ent)) return false;
         return ent.bounds && ent.bounds.intersects(snapBox);
       });
 
-      const snapTargets = this.service.demoEntities.filter(ent => {
+      const snapTargets = this.service.entities.filter(ent => {
         if (!isValidSnapEntity(ent) || !(ent instanceof paper.Path) || ent.data?.isPointEntity || ent.data?.isCircleEntity) return false;
         if (draggedPath && ent === draggedPath) return false;
         if (ignoreEntities.includes(ent)) return false;
         return ent.bounds && ent.bounds.intersects(snapBox);
       });
 
-      const pointTargets = this.service.demoEntities.filter(ent => {
+      const pointTargets = this.service.entities.filter(ent => {
         if (!isValidSnapEntity(ent) || !ent.data?.isPointEntity) return false;
         if (draggedPath && ent === draggedPath) return false;
         if (ignoreEntities.includes(ent)) return false;
         return ent.bounds && ent.bounds.intersects(snapBox);
       });
 
-      const rasterTargets = this.service.demoEntities.filter(ent => {
+      const rasterTargets = this.service.entities.filter(ent => {
         if (!isValidSnapEntity(ent) || !(ent instanceof paper.Raster || ent.className === 'Raster')) return false;
         if (ignoreEntities.includes(ent)) return false;
         return ent.bounds && ent.bounds.intersects(snapBox);

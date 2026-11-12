@@ -433,7 +433,7 @@ export class LayerPanelUI {
       // Capa sugerida por defecto: la activa (si no es la que se borra) o la primera disponible
       const defaultTarget = (!isActive && activeLayer) ? activeLayer : availableLayers[0];
 
-      const hasContent = this.utils?.service?.demoEntities?.some(
+      const hasContent = this.utils?.service?.entities?.some(
         (ent) => ent.data && String(ent.data.layerId) === String(layer.id)
       );
 
@@ -550,14 +550,14 @@ export class LayerPanelUI {
     const layerOrderMap = new Map();
     layerList.forEach((l, idx) => layerOrderMap.set(String(l.id), idx));
 
-    if (this.utils?.service?.demoEntities) {
-      this.utils.service.demoEntities.sort((a, b) => {
+    if (this.utils?.service?.entities) {
+      this.utils.service.entities.sort((a, b) => {
         const orderA = layerOrderMap.get(String(a.data?.layerId)) ?? 999;
         const orderB = layerOrderMap.get(String(b.data?.layerId)) ?? 999;
         return orderB - orderA;
       });
 
-      this.utils.service.demoEntities.forEach((ent) => {
+      this.utils.service.entities.forEach((ent) => {
         if (typeof ent.bringToFront === 'function') {
           ent.bringToFront();
         }

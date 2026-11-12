@@ -64,8 +64,8 @@ export class SetActiveLayerCommand {
       layer.visible = this.wasVisible;
       layer.locked = this.wasLocked;
       
-      if (!this.wasVisible && this.manager.service?.demoEntities) {
-        this.manager.service.demoEntities.forEach(ent => {
+      if (!this.wasVisible && this.manager.service?.entities) {
+        this.manager.service.entities.forEach(ent => {
           if (ent.data && String(ent.data.layerId) === String(this.newLayerId)) {
             ent.visible = false;
           }
@@ -98,10 +98,10 @@ export class DeleteLayerCommand {
   execute() {
     this.affectedEntities = [];
 
-    if (this.cadService && Array.isArray(this.cadService.demoEntities)) {
+    if (this.cadService && Array.isArray(this.cadService.entities)) {
       // Iterar en reversa por si eliminamos elementos del array
-      for (let i = this.cadService.demoEntities.length - 1; i >= 0; i--) {
-        const ent = this.cadService.demoEntities[i];
+      for (let i = this.cadService.entities.length - 1; i >= 0; i--) {
+        const ent = this.cadService.entities[i];
         if (ent.data && String(ent.data.layerId) === this.layerId) {
           this.affectedEntities.push(ent);
 
@@ -121,7 +121,7 @@ export class DeleteLayerCommand {
               this.cadService.deselectEntity(ent);
             }
             ent.remove();
-            this.cadService.demoEntities.splice(i, 1);
+            this.cadService.entities.splice(i, 1);
           }
         }
       }
@@ -165,7 +165,7 @@ export class DeleteLayerCommand {
           }
         }
       } else {
-        // Estaban eliminadas: reinsertarlas en Paper.js y demoEntities
+        // Estaban eliminadas: reinsertarlas en Paper.js y entities
         if (restoredLayer?.paperGroup) {
           restoredLayer.paperGroup.addChild(ent);
         } else if (this.panelUI?.utils?.drawLayer) {
@@ -176,8 +176,8 @@ export class DeleteLayerCommand {
         if (restoredLayer) {
           ent.visible = restoredLayer.visible !== false;
         }
-        if (this.cadService && !this.cadService.demoEntities.includes(ent)) {
-          this.cadService.demoEntities.push(ent);
+        if (this.cadService && !this.cadService.entities.includes(ent)) {
+          this.cadService.entities.push(ent);
         }
       }
     });
@@ -270,8 +270,8 @@ export class ReorderLayersCommand {
       layer.visible = this.wasVisible;
       layer.locked = this.wasLocked;
       
-      if (!this.wasVisible && this.manager.service?.demoEntities) {
-        this.manager.service.demoEntities.forEach(ent => {
+      if (!this.wasVisible && this.manager.service?.entities) {
+        this.manager.service.entities.forEach(ent => {
           if (ent.data && String(ent.data.layerId) === String(this.newLayerId)) {
             ent.visible = false;
           }

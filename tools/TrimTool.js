@@ -73,7 +73,7 @@ export class TrimTool extends BaseTool {
 
     const hitEntity = paper.project.hitTest(event.point, {
       stroke: true, fill: true, tolerance: 10 / paper.view.zoom,
-      match: (res) => this.service.demoEntities.includes(res.item) && !res.item.data?.isPointEntity
+      match: (res) => this.service.entities.includes(res.item) && !res.item.data?.isPointEntity
     });
 
     if (!this.service.isTrimCuttingPhase) {
