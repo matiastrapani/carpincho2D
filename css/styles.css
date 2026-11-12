@@ -212,6 +212,29 @@ canvas.tool-trim { cursor: cell; }
   transform: translateY(-50%) translateX(6px);
 }
 
+[data-tooltip].tooltip-bottom::before,
+.tooltip-bottom[data-tooltip]::before,
+.dock-right [data-tooltip].tooltip-bottom::before,
+.dock-panel-left [data-tooltip].tooltip-bottom::before,
+#propertyFieldsContainer [data-tooltip].tooltip-bottom::before {
+  top: 100%;
+  bottom: auto;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%) translateY(6px);
+  z-index: 1000;
+}
+
+.dock-right [data-tooltip].tooltip-top-left::before,
+.dock-panel-left [data-tooltip].tooltip-top-left::before,
+#propertyFieldsContainer [data-tooltip].tooltip-top-left::before {
+  top: auto;
+  bottom: 100%;
+  left: 0;
+  right: auto;
+  transform: translateY(-6px);
+}
+
 [data-tooltip]:hover::before {
   opacity: 1;
   visibility: visible;

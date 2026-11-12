@@ -1,7 +1,8 @@
 /**
  * services/PropertyManager.js - Gestor de propiedades y resolución BYLAYER.
  */
-import { UpdateEntityPropertyCommand } from './commands/cadCommands.js';
+
+import { CAD_THEME } from '../config/cadTheme.js';
 
 export class PropertyManager {
   constructor(cadService, cadUtils) {
@@ -9,8 +10,9 @@ export class PropertyManager {
     this.utils = cadUtils;
 
     this.defaultSettings = {
-      color: 'BYLAYER',      // 'BYLAYER' o Hex string ('#00e5ff')
-      strokeWidth: 'BYLAYER' // 'BYLAYER' o número (1, 1.5, 2, 3)
+      color: 'BYLAYER',       // 'BYLAYER' o Hex string ('#00e5ff')
+      strokeWidth: 'BYLAYER', // 'BYLAYER' o número (0, 1, 1.5, 2, 3)
+      opacity: 'BYLAYER'      // 'BYLAYER' o número (0..1)
     };
   }
 
@@ -75,7 +77,7 @@ export class PropertyManager {
     // Si es BYLAYER, consulta el color dinámico actual de la capa
     const layerId = entity?.data?.layerId || this.utils.layerManager?.activeLayerId || '0';
     const layer = this.utils.layerManager?.layers?.get(String(layerId));
-    return layer ? layer.color : '#00e5ff';
+    return layer ? layer.color : CAD_THEME.properties.customFallbackColor;
   }
 
   getResolvedStrokeWidth(entity = null) {
@@ -93,5 +95,87 @@ export class PropertyManager {
 
     // Debe retornar layerWidth directo si existe (incluyendo 0), no (layerWidth || 1)
     return layerWidth !== undefined ? layerWidth : 0;
+  }
+  
+/**
+   * Actualiza temporalmente una o varias propiedades por defecto durante el scrubbing
+   * o vista previa en vivo, y sincroniza el trazado activo en curso.
+   */
+  previewDefaultSetting(keyOrState, value) {
+    if (!this.defaultSettings) return;
+
+    if (typeof keyOrState === 'object' && keyOrState !== null) {
+      Object.assign(this.defaultSettings, keyOrState);
+    } else {
+      this.defaultSettings[keyOrState] = value;
     }
+
+    if (this.utils.activePath) {
+      this.applyDefaultSettings(this.utils.activePath);
+    }
+    this._requestRender();
+  }
+
+  /**
+   * Aplica temporalmente cambios en vivo (scrubbing / color picker) o restaura
+   * un snapshot sobre una o varias entidades y actualiza el motor de renderizado.
+   */
+  previewEntitiesProperty(entities, partialStateOrSnapshots) {
+    const list = Array.isArray(entities) ? entities : [entities];
+    const isPerEntitySnapshot = Array.isArray(partialStateOrSnapshots);
+
+    list.forEach((entity, idx) => {
+      if (!entity) return;
+      if (!entity.data) entity.data = {};
+
+      const state = isPerEntitySnapshot ? partialStateOrSnapshots[idx] : partialStateOrSnapshots;
+      if (!state) return;
+
+      if ('colorByLayer' in state) {
+        entity.data.colorByLayer = state.colorByLayer;
+        entity.data.origStrokeColor = state.origStrokeColor;
+        if (state.strokeColor !== undefined) {
+          entity.strokeColor = state.strokeColor;
+        }
+      }
+
+      if ('opacityByLayer' in state) {
+        entity.data.opacityByLayer = state.opacityByLayer;
+        entity.data.origOpacity = state.origOpacity;
+        entity.data.baseOpacity = state.baseOpacity;
+        if (state.opacity !== undefined) {
+          entity.opacity = state.opacity;
+        }
+      } else if (state.opacity !== undefined) {
+        entity.data.opacityByLayer = false;
+        entity.data.origOpacity = state.opacity;
+        entity.data.baseOpacity = state.opacity;
+        entity.opacity = state.opacity;
+      }
+
+      if ('widthByLayer' in state) {
+        entity.data.widthByLayer = state.widthByLayer;
+        entity.data.baseStrokeWidth = state.baseStrokeWidth;
+        if (state.strokeWidth !== undefined) {
+          entity.strokeWidth = state.strokeWidth;
+        }
+      } else if (state.strokeWidth !== undefined) {
+        entity.data.widthByLayer = false;
+        entity.data.baseStrokeWidth = state.strokeWidth;
+        entity.strokeWidth = state.strokeWidth;
+      }
+    });
+
+    this._requestRender();
+  }
+
+  _requestRender() {
+    if (this.utils?.selectionRenderEngine?.updateEntitiesStroke) {
+      this.utils.selectionRenderEngine.updateEntitiesStroke();
+    }
+    const paperInstance = this.utils?.paper || (typeof paper !== 'undefined' ? paper : null);
+    if (paperInstance?.view) {
+      paperInstance.view.update();
+    }
+  }
 }

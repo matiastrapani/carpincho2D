@@ -1,36 +1,46 @@
 /**
  * ui/components/ColorPickerPopover.js
- * Componente modular de selector de color con soporte completo de edición RGB/HSL/HSB y estilo unificado.
+ * Orquestador del popover selector de color con soporte RGB/HSL/HSB, muestras y scrubbing.
  */
 
+import { CAD_THEME } from '../../config/cadTheme.js';
+import { ColorMath } from './ColorMath.js';
+import { ColorCanvasWidgets } from './ColorCanvasWidgets.js';
+import { PropertyControls } from './PropertyControls.js';
+
 export class ColorPickerPopover {
-  static DEFAULT_PRESETS = [
-      '#008800', '#4c72fb', '#f35c54', '#ffcc00', 
-      '#3bcf1d', '#e148ae', '#93a115', '#7877d5', 
-  ];
+  static DEFAULT_PRESETS = [...CAD_THEME.properties.colorPresets];
 
   static getPresets() {
-      return ColorPickerPopover.DEFAULT_PRESETS;
+    return ColorPickerPopover.DEFAULT_PRESETS;
   }
 
   static setPresets(newPresets) {
-      ColorPickerPopover.DEFAULT_PRESETS = newPresets;
+    ColorPickerPopover.DEFAULT_PRESETS = newPresets;
   }
 
-  constructor({ color = '#00e5ff', opacity = 1.0, onChange, onChangeEnd, onCancel, onClose, anchorEl, presets = null }) {
+  constructor({
+    color = CAD_THEME.properties.customFallbackColor,
+    opacity = 1.0,
+    onChange,
+    onChangeEnd,
+    onCancel,
+    onClose,
+    anchorEl,
+    presets = null
+  }) {
     this.onChange = onChange;
     this.onChangeEnd = onChangeEnd;
     this.onCancel = onCancel;
     this.onClose = onClose;
     this.anchorEl = anchorEl;
-
-    // Si se pasa una lista personalizada se usa; de lo contrario, se usa la centralizada
     this.presets = (presets && presets.length > 0) ? presets : ColorPickerPopover.DEFAULT_PRESETS;
 
     this.format = 'HEX';
     this.popoverEl = null;
+    this.widgets = null;
 
-    const hsb = this._hexToHsb(color);
+    const hsb = ColorMath.hexToHsb(color);
     this.h = hsb.h;
     this.s = hsb.s;
     this.b = hsb.b;
@@ -45,20 +55,17 @@ export class ColorPickerPopover {
   render() {
     this.close();
 
-    const rect = this.anchorEl ? this.anchorEl.getBoundingClientRect() : { top: 100, left: 100 };
-
+    const rect = this.anchorEl ? this.anchorEl.getBoundingClientRect() : { top: 100, left: 100, bottom: 122 };
     const popover = document.createElement('div');
     popover.id = 'figmaColorPickerPopover';
     popover.className = 'fixed z-50 bg-[#1e1e24] border border-[#2a2a32] rounded-lg shadow-2xl p-3 w-[260px] text-zinc-300 font-sans text-xs flex flex-col gap-2.5 select-none';
 
     const topPos = Math.min(rect.bottom + 6, window.innerHeight - 410);
     const leftPos = Math.max(12, Math.min(rect.left - 210, window.innerWidth - 280));
-
     popover.style.top = `${topPos}px`;
     popover.style.left = `${leftPos}px`;
 
     popover.innerHTML = `
-      <!-- Encabezado Arrastrable con Estilo Exacto de Propiedades -->
       <div id="cpHeader" class="flex items-center justify-between pb-1 border-b border-[#2a2a32] cursor-grab active:cursor-grabbing select-none" title="Arrastrar ventana">
         <span class="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">SELECCIONAR COLOR</span>
         <button id="cpCloseBtn" class="text-zinc-500 hover:text-zinc-200 transition-colors p-0.5 text-xs rounded hover:bg-[#27272a] cursor-pointer">
@@ -66,7 +73,6 @@ export class ColorPickerPopover {
         </button>
       </div>
 
-      <!-- Área de Selección: Canvas Sat/Brillo + Sliders -->
       <div class="flex gap-2 h-[140px] w-full">
         <div class="relative flex-1 h-full rounded overflow-hidden cursor-crosshair border border-[#2a2a32] touch-none" id="cpSatValContainer">
           <canvas id="cpSatValCanvas" class="w-full h-full block"></canvas>
@@ -86,7 +92,6 @@ export class ColorPickerPopover {
         </div>
       </div>
 
-      <!-- Selector de Formato (Sin Borde) -->
       <div class="grid grid-cols-4 bg-[#121215] p-0.5 rounded text-[10px] font-normal text-zinc-400 uppercase tracking-wider font-sans">
         <button data-fmt="HEX" class="cp-fmt-btn py-0.5 rounded transition-colors ${this.format === 'HEX' ? 'bg-[#27272a] text-zinc-200' : 'hover:text-zinc-300'}">Hex</button>
         <button data-fmt="RGB" class="cp-fmt-btn py-0.5 rounded transition-colors ${this.format === 'RGB' ? 'bg-[#27272a] text-zinc-200' : 'hover:text-zinc-300'}">RGB</button>
@@ -94,36 +99,23 @@ export class ColorPickerPopover {
         <button data-fmt="HSB" class="cp-fmt-btn py-0.5 rounded transition-colors ${this.format === 'HSB' ? 'bg-[#27272a] text-zinc-200' : 'hover:text-zinc-300'}">HSB</button>
       </div>
 
-      <!-- Controles e Inputs Estilo Properties -->
       <div class="flex items-center gap-1.5">
-        <!-- Cuentagotas con Ícono Ampliado -->
         <button id="cpEyedropperBtn" class="cad-button cad-button-square h-6 w-6 text-zinc-400 hover:text-zinc-100 shrink-0" title="Cuentagotas">
           <i class="fa-solid fa-eye-dropper text-xs"></i>
         </button>
 
-        <!-- Grupo de Valor del Color -->
-        <div id="cpInputsContainer" class="flex-1 flex items-center bg-[#17171c] hover:bg-[#27272a] text-[11px] px-2 py-1 rounded transition-colors">
-        </div>
+        <div id="cpInputsContainer" class="flex-1 flex items-center bg-[#17171c] hover:bg-[#27272a] text-[11px] px-2 py-1 rounded transition-colors"></div>
 
-        <!-- Input de Opacidad -->
         <div id="cpAlphaContainerInput" class="flex items-center justify-end w-[50px] shrink-0 bg-[#17171c] hover:bg-[#27272a] text-[11px] px-2 py-1 rounded cursor-ew-resize border-0 outline-none transition-colors" title="Haz clic para editar o arrastra">
-          <input 
-            type="number" 
-            id="cpAlphaInput" 
-            min="0" 
-            max="100" 
-            value="${Math.round(this.a * 100)}" 
-            class="w-7 bg-transparent text-right outline-none border-0 text-zinc-300 text-[11px] font-sans tabular-nums p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none cursor-ew-resize focus:cursor-text"
-          />
+          <input type="number" id="cpAlphaInput" min="0" max="100" value="${Math.round(this.a * 100)}" class="w-7 bg-transparent text-right outline-none border-0 text-zinc-300 text-[11px] font-sans tabular-nums p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none cursor-ew-resize focus:cursor-text" />
           <span class="text-[11px] text-zinc-500 font-sans tabular-nums ml-0.5 pointer-events-none">%</span>
         </div>
       </div>
 
-      <!-- Paleta Flotante de Muestras (10 Por Renglón) -->
       <div class="flex flex-col gap-1.5 pt-1 border-t border-[#2a2a32]">
         <span class="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">MUESTRAS</span>
         <div class="grid grid-cols-10 gap-1.5 items-center">
-          ${this.presets.map(c => `
+          ${this.presets.map((c) => `
             <button class="cp-swatch w-full aspect-square rounded-sm hover:scale-110 transition-transform cursor-pointer shrink-0" style="background-color: ${c}" data-color="${c}"></button>
           `).join('')}
         </div>
@@ -132,17 +124,12 @@ export class ColorPickerPopover {
 
     document.body.appendChild(popover);
     this.popoverEl = popover;
-
-    this.satValCanvas = this.popoverEl.querySelector('#cpSatValCanvas');
-    this.satValHandle = this.popoverEl.querySelector('#cpSatValHandle');
-    this.hueHandle = this.popoverEl.querySelector('#cpHueHandle');
-    this.alphaHandle = this.popoverEl.querySelector('#cpAlphaHandle');
-    this.alphaGradient = this.popoverEl.querySelector('#cpAlphaGradient');
+    this.widgets = new ColorCanvasWidgets(popover);
 
     this._bindEvents();
     this._makeModalDraggable();
-    this._attachAlphaScrubbing();
-    this._drawSatValCanvas();
+    this._attachAlphaControls();
+    this.widgets.drawSatValCanvas(this.h);
     this._updateUI(false);
   }
 
@@ -151,7 +138,10 @@ export class ColorPickerPopover {
     if (!header) return;
 
     let isDraggingModal = false;
-    let startX = 0, startY = 0, initialLeft = 0, initialTop = 0;
+    let startX = 0;
+    let startY = 0;
+    let initialLeft = 0;
+    let initialTop = 0;
 
     header.addEventListener('pointerdown', (e) => {
       if (e.target.closest('#cpCloseBtn')) return;
@@ -166,82 +156,45 @@ export class ColorPickerPopover {
 
     header.addEventListener('pointermove', (e) => {
       if (!isDraggingModal) return;
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
-      this.popoverEl.style.left = `${initialLeft + dx}px`;
-      this.popoverEl.style.top = `${initialTop + dy}px`;
+      this.popoverEl.style.left = `${initialLeft + (e.clientX - startX)}px`;
+      this.popoverEl.style.top = `${initialTop + (e.clientY - startY)}px`;
     });
 
     const stopModalDrag = (e) => {
-      if (isDraggingModal) {
-        isDraggingModal = false;
-        try { header.releasePointerCapture(e.pointerId); } catch (_) {}
-      }
+      if (!isDraggingModal) return;
+      isDraggingModal = false;
+      try {
+        header.releasePointerCapture(e.pointerId);
+      } catch (_) {}
     };
 
     header.addEventListener('pointerup', stopModalDrag);
     header.addEventListener('pointercancel', stopModalDrag);
   }
 
-  _attachAlphaScrubbing() {
+  _attachAlphaControls() {
     const container = this.popoverEl?.querySelector('#cpAlphaContainerInput');
     const input = this.popoverEl?.querySelector('#cpAlphaInput');
     if (!container || !input) return;
 
-    let isDragging = false;
-    let startX = 0;
-    let startAlpha = this.a;
-    let hasMoved = false;
-
-    container.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0 || e.target === input) return;
-      this._blurActiveInput(); // <-- Quita el foco
-      isDragging = true;
-      hasMoved = false;
-      startX = e.clientX;
-      startAlpha = this.a;
-
-      container.setPointerCapture(e.pointerId);
-
-      const onPointerMove = (moveEvt) => {
-        if (!isDragging) return;
-        const deltaX = moveEvt.clientX - startX;
-        if (Math.abs(deltaX) > 2) {
-          hasMoved = true;
-        }
-        if (hasMoved) {
-          this.opacityChanged = true; // <-- Marcado de cambio en vivo desde el primer movimiento
-          const newPct = Math.max(0, Math.min(100, Math.round(startAlpha * 100 + deltaX)));
-          this.a = newPct / 100;
-          input.value = newPct;
-          this._updateUI(true);
-        }
-      };
-
-      const onPointerUp = (upEvt) => {
-        if (!isDragging) return;
-        isDragging = false;
-        try { container.releasePointerCapture(upEvt.pointerId); } catch (_) {}
-        container.removeEventListener('pointermove', onPointerMove);
-        container.removeEventListener('pointerup', onPointerUp);
-        container.removeEventListener('pointercancel', onPointerUp);
-
-        if (hasMoved) {
-          this.opacityChanged = true;
-          const newPct = Math.max(0, Math.min(100, Math.round(startAlpha * 100 + deltaX)));
-          this.a = newPct / 100;
-          input.value = newPct;
-          this._updateUI(true);
-        }
-      };
-
-      container.addEventListener('pointermove', onPointerMove);
-      container.addEventListener('pointerup', onPointerUp);
-      container.addEventListener('pointercancel', onPointerUp);
+    PropertyControls.attachScrubInput(container, input, (pctVal) => {
+      this.opacityChanged = true;
+      this.a = Math.max(0, Math.min(1, pctVal / 100));
+      this._updateUI(true);
+      this._notifyChangeEnd();
+    }, {
+      min: 0,
+      max: 100,
+      step: 1,
+      precision: 0,
+      onLiveChange: (pctVal) => {
+        this.opacityChanged = true;
+        this.a = Math.max(0, Math.min(1, pctVal / 100));
+        this._updateUI(true);
+      }
     });
   }
 
-  // Helper para re-vincular anchorEl si el panel de propiedades se re-renderiza
   _getFreshAnchorEl() {
     if (this.anchorEl && !this.anchorEl.isConnected && this.anchorEl.id) {
       const fresh = document.getElementById(this.anchorEl.id);
@@ -256,51 +209,46 @@ export class ColorPickerPopover {
     }
   }
 
+  _applyHexSelection(hex) {
+    this.colorChanged = true;
+    const hsb = ColorMath.hexToHsb(hex);
+    this.h = hsb.h;
+    this.s = hsb.s;
+    this.b = hsb.b;
+    this.widgets.drawSatValCanvas(this.h);
+    this._updateUI(true);
+    this._notifyChangeEnd();
+  }
+
   _bindEvents() {
     if (!this.popoverEl) return;
+    const blur = () => this._blurActiveInput();
 
     this.popoverEl.querySelector('#cpCloseBtn')?.addEventListener('click', () => this.close());
 
-    this.popoverEl.querySelectorAll('.cp-fmt-btn').forEach(btn => {
+    this.popoverEl.querySelectorAll('.cp-fmt-btn').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         this.format = e.currentTarget.getAttribute('data-fmt');
-        this.popoverEl.querySelectorAll('.cp-fmt-btn').forEach(b => {
+        this.popoverEl.querySelectorAll('.cp-fmt-btn').forEach((b) => {
           b.className = `cp-fmt-btn py-0.5 rounded transition-colors font-sans ${b.getAttribute('data-fmt') === this.format ? 'bg-[#27272a] text-zinc-200' : 'hover:text-zinc-300'}`;
         });
         this._renderInputs();
       });
     });
 
-    // Cuentagotas
     this.popoverEl.querySelector('#cpEyedropperBtn')?.addEventListener('click', async () => {
-      this._blurActiveInput();
-      if ('EyeDropper' in window) {
-        try {
-          const eyeDropper = new EyeDropper();
-          const result = await eyeDropper.open();
-          if (result?.sRGBHex) {
-            this.colorChanged = true;
-            const hsb = this._hexToHsb(result.sRGBHex);
-            this.h = hsb.h; this.s = hsb.s; this.b = hsb.b;
-            this._drawSatValCanvas();
-            this._updateUI(true);
-            this._notifyChangeEnd();
-          }
-        } catch (e) {}
-      }
+      blur();
+      if (!('EyeDropper' in window)) return;
+      try {
+        const result = await new window.EyeDropper().open();
+        if (result?.sRGBHex) this._applyHexSelection(result.sRGBHex);
+      } catch (_) {}
     });
 
-    // Swatches
-    this.popoverEl.querySelectorAll('.cp-swatch').forEach(btn => {
+    this.popoverEl.querySelectorAll('.cp-swatch').forEach((btn) => {
       btn.addEventListener('click', (e) => {
-        this._blurActiveInput();
-        this.colorChanged = true;
-        const hex = e.currentTarget.getAttribute('data-color');
-        const hsb = this._hexToHsb(hex);
-        this.h = hsb.h; this.s = hsb.s; this.b = hsb.b;
-        this._drawSatValCanvas();
-        this._updateUI(true);
-        this._notifyChangeEnd();
+        blur();
+        this._applyHexSelection(e.currentTarget.getAttribute('data-color'));
       });
     });
 
@@ -313,47 +261,47 @@ export class ColorPickerPopover {
         this._updateUI(true);
       }
     });
-    alphaInput?.addEventListener('change', () => this._notifyChangeEnd());
 
-    // --- Arrastres Suaves (Detección automática de orientación X / Y) ---
-    const satContainer = this.popoverEl.querySelector('#cpSatValContainer');
-    this._attachDrag(satContainer, 
+    ColorCanvasWidgets.attachDrag(
+      this.popoverEl.querySelector('#cpSatValContainer'),
       (x, y) => {
         this.colorChanged = true;
         this.s = Math.max(0, Math.min(100, x * 100));
         this.b = Math.max(0, Math.min(100, (1 - y) * 100));
         this._updateUI(true);
       },
-      () => this._notifyChangeEnd()
+      () => this._notifyChangeEnd(),
+      blur
     );
 
     const hueContainer = this.popoverEl.querySelector('#cpHueContainer');
-    this._attachDrag(hueContainer, 
+    ColorCanvasWidgets.attachDrag(
+      hueContainer,
       (x, y) => {
         this.colorChanged = true;
-        const isHorizontal = hueContainer.offsetWidth >= hueContainer.offsetHeight;
-        const pos = isHorizontal ? x : y;
+        const pos = hueContainer.offsetWidth >= hueContainer.offsetHeight ? x : y;
         this.h = Math.max(0, Math.min(360, pos * 360));
-        this._drawSatValCanvas();
+        this.widgets.drawSatValCanvas(this.h);
         this._updateUI(true);
       },
-      () => this._notifyChangeEnd()
+      () => this._notifyChangeEnd(),
+      blur
     );
 
     const alphaContainer = this.popoverEl.querySelector('#cpAlphaContainer');
-    this._attachDrag(alphaContainer, 
+    ColorCanvasWidgets.attachDrag(
+      alphaContainer,
       (x, y) => {
         this.opacityChanged = true;
-        const isHorizontal = alphaContainer.offsetWidth >= alphaContainer.offsetHeight;
-        const pos = isHorizontal ? x : y;
+        const pos = alphaContainer.offsetWidth >= alphaContainer.offsetHeight ? x : y;
         this.a = Math.max(0, Math.min(1, pos));
         if (alphaInput) alphaInput.value = Math.round(this.a * 100);
         this._updateUI(true);
       },
-      () => this._notifyChangeEnd()
+      () => this._notifyChangeEnd(),
+      blur
     );
 
-    // --- Cierre con Clic Exterior y tecla ESC ---
     if (this._outsideClickTimer) clearTimeout(this._outsideClickTimer);
     this._outsideClickTimer = setTimeout(() => {
       this._outsideClickListener = (e) => {
@@ -374,60 +322,12 @@ export class ColorPickerPopover {
     document.addEventListener('keydown', this._escKeyDownListener, true);
   }
 
-  _attachDrag(container, onMove, onEnd) {
-    if (!container) return;
-    let isDragging = false;
-    let rafId = null;
-
-    const handleMove = (e) => {
-      const rect = container.getBoundingClientRect();
-      const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-      const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
-
-      if (rafId) cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => {
-        onMove(x, y);
-      });
-    };
-
-    container.addEventListener('pointerdown', (e) => {
-      this._blurActiveInput(); // <-- Desenfoca el input al hacer clic/arrastrar
-      e.preventDefault();
-      e.stopPropagation();
-      isDragging = true;
-      container.setPointerCapture(e.pointerId);
-      handleMove(e);
-
-      const onPointerMove = (moveEvt) => {
-        if (isDragging) handleMove(moveEvt);
-      };
-
-      const onPointerUp = (upEvt) => {
-        if (isDragging) {
-          isDragging = false;
-          if (rafId) cancelAnimationFrame(rafId);
-          try { container.releasePointerCapture(upEvt.pointerId); } catch (_) {}
-          container.removeEventListener('pointermove', onPointerMove);
-          container.removeEventListener('pointerup', onPointerUp);
-          container.removeEventListener('pointercancel', onPointerUp);
-          if (typeof onEnd === 'function') onEnd();
-        }
-      };
-
-      container.addEventListener('pointermove', onPointerMove);
-      container.addEventListener('pointerup', onPointerUp);
-      container.addEventListener('pointercancel', onPointerUp);
-    });
-  }
-
   _updateUI(triggerLiveChange = false) {
-    this._positionHandles();
-    this._drawAlphaSlider();
+    this.widgets?.updateHandlesAndAlpha(this.h, this.s, this.b, this.a);
     this._renderInputs();
 
     if (triggerLiveChange && typeof this.onChange === 'function') {
-      const hex = this._hsbToHex(this.h, this.s, this.b);
-      this.onChange(hex, this.a, {
+      this.onChange(ColorMath.hsbToHex(this.h, this.s, this.b), this.a, {
         colorChanged: this.colorChanged,
         opacityChanged: this.opacityChanged
       });
@@ -436,68 +336,19 @@ export class ColorPickerPopover {
 
   _notifyChangeEnd() {
     if (typeof this.onChangeEnd === 'function') {
-      const hex = this._hsbToHex(this.h, this.s, this.b);
-      this.onChangeEnd(hex, this.a, {
+      this.onChangeEnd(ColorMath.hsbToHex(this.h, this.s, this.b), this.a, {
         colorChanged: this.colorChanged,
         opacityChanged: this.opacityChanged
       });
     }
   }
 
-  _drawSatValCanvas() {
-    const canvas = this.satValCanvas;
-    if (!canvas) return;
-
-    if (!canvas.width || canvas.width !== canvas.clientWidth) {
-      canvas.width = canvas.clientWidth || 180;
-      canvas.height = canvas.clientHeight || 140;
-    }
-
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = `hsl(${this.h}, 100%, 50%)`;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    const whiteGrad = ctx.createLinearGradient(0, 0, canvas.width, 0);
-    whiteGrad.addColorStop(0, '#ffffff');
-    whiteGrad.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = whiteGrad;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    const blackGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    blackGrad.addColorStop(0, 'rgba(0,0,0,0)');
-    blackGrad.addColorStop(1, '#000000');
-    ctx.fillStyle = blackGrad;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-  }
-
-  _drawAlphaSlider() {
-    if (!this.alphaGradient) return;
-    const solidHex = this._hsbToHex(this.h, this.s, this.b);
-    this.alphaGradient.style.background = `linear-gradient(to bottom, rgba(0,0,0,0) 0%, ${solidHex} 100%)`;
-  }
-
-  _positionHandles() {
-    if (this.satValHandle) {
-      this.satValHandle.style.left = `${this.s}%`;
-      this.satValHandle.style.top = `${100 - this.b}%`;
-    }
-    if (this.hueHandle) {
-      this.hueHandle.style.top = `${(this.h / 360) * 100}%`;
-    }
-    if (this.alphaHandle) {
-      this.alphaHandle.style.top = `${this.a * 100}%`;
-    }
-  }
-
-  // --- Renderizado y Sincronización Dinámica de Inputs ---
   _renderInputs() {
     const container = this.popoverEl?.querySelector('#cpInputsContainer');
     if (!container) return;
 
     if (container.getAttribute('data-fmt') !== this.format) {
       container.setAttribute('data-fmt', this.format);
-
-      // Etiqueta en gris (#, RGB, HSL, HSB) fuera del campo editable
       const prefixLabel = this.format === 'HEX' ? '#' : this.format;
 
       container.innerHTML = `
@@ -506,73 +357,25 @@ export class ColorPickerPopover {
           <input id="cpValueInput" type="text" class="bg-transparent text-zinc-200 text-[11px] font-sans tabular-nums outline-none w-full ${this.format === 'HEX' ? 'uppercase' : ''}" />
         </div>`;
 
+      PropertyControls.attachInputIsolation(container);
       const inputEl = container.querySelector('#cpValueInput');
-      inputEl?.addEventListener('keydown', (e) => e.stopPropagation());
-      inputEl?.addEventListener('keyup', (e) => e.stopPropagation());
-      inputEl?.addEventListener('input', (e) => this._parseInputValue(e.target.value));
+      inputEl?.addEventListener('input', (e) => {
+        const parsed = ColorMath.parseInput(this.format, e.target.value);
+        if (parsed) {
+          this.colorChanged = true;
+          this.h = parsed.h;
+          this.s = parsed.s;
+          this.b = parsed.b;
+          this.widgets.drawSatValCanvas(this.h);
+          this._updateUI(true);
+        }
+      });
       inputEl?.addEventListener('change', () => this._notifyChangeEnd());
     }
 
     const inputEl = container.querySelector('#cpValueInput');
     if (inputEl && document.activeElement !== inputEl) {
-      const pad3 = (n) => String(n).padStart(3, ' ');
-
-      if (this.format === 'HEX') {
-        inputEl.value = this._hsbToHex(this.h, this.s, this.b).replace('#', '').toUpperCase();
-      } else if (this.format === 'RGB') {
-        const { r, g, b } = this._hsbToRgb(this.h, this.s, this.b);
-        inputEl.value = `${pad3(r)}, ${pad3(g)}, ${pad3(b)}`;
-      } else if (this.format === 'HSL' || this.format === 'HLS') {
-        const { h, s, l } = this._hsbToHsl(this.h, this.s, this.b);
-        inputEl.value = `${pad3(h)}, ${pad3(s)}%, ${pad3(l)}%`;
-      } else if (this.format === 'HSV' || this.format === 'HSB') {
-        const h = Math.round(this.h), s = Math.round(this.s), b = Math.round(this.b);
-        inputEl.value = `${pad3(h)}, ${pad3(s)}%, ${pad3(b)}%`;
-      }
-    }
-  }
-
-  _parseInputValue(rawStr) {
-    const val = rawStr.trim();
-    if (!val) return;
-
-    if (this.format === 'HEX') {
-      const cleanHex = val.replace('#', '');
-      if (/^[0-9A-Fa-f]{6}$/.test(cleanHex)) {
-        this.colorChanged = true;
-        const hsb = this._hexToHsb(`#${cleanHex}`);
-        this.h = hsb.h; this.s = hsb.s; this.b = hsb.b;
-        this._drawSatValCanvas();
-        this._updateUI(true);
-      }
-    } else {
-      const cleanStr = val.replace(/(RGB|HSL|HLS|HSV|HSB|%|#)/gi, '');
-      const nums = cleanStr.split(/[\s,]+/).map(n => parseFloat(n)).filter(n => !isNaN(n));
-
-      if (nums.length >= 3) {
-        this.colorChanged = true;
-        if (this.format === 'RGB') {
-          const hsb = this._rgbToHsb(
-            Math.max(0, Math.min(255, nums[0])),
-            Math.max(0, Math.min(255, nums[1])),
-            Math.max(0, Math.min(255, nums[2]))
-          );
-          this.h = hsb.h; this.s = hsb.s; this.b = hsb.b;
-        } else if (this.format === 'HSL' || this.format === 'HLS') {
-          const hsb = this._hslToHsb(
-            Math.max(0, Math.min(360, nums[0])),
-            Math.max(0, Math.min(100, nums[1])),
-            Math.max(0, Math.min(100, nums[2]))
-          );
-          this.h = hsb.h; this.s = hsb.s; this.b = hsb.b;
-        } else if (this.format === 'HSV' || this.format === 'HSB') {
-          this.h = Math.max(0, Math.min(360, nums[0]));
-          this.s = Math.max(0, Math.min(100, nums[1]));
-          this.b = Math.max(0, Math.min(100, nums[2]));
-        }
-        this._drawSatValCanvas();
-        this._updateUI(true);
-      }
+      inputEl.value = ColorMath.formatDisplay(this.format, this.h, this.s, this.b);
     }
   }
 
@@ -596,73 +399,12 @@ export class ColorPickerPopover {
       document.removeEventListener('keydown', this._escKeyDownListener, true);
       this._escKeyDownListener = null;
     }
-
     if (this.popoverEl) {
       this.popoverEl.remove();
       this.popoverEl = null;
     }
-
     if (typeof this.onClose === 'function') {
       this.onClose();
     }
-  }
-
-  // --- Funciones Matemáticas de Conversión de Color ---
-  _hsbToRgb(h, s, b) {
-    s /= 100; b /= 100;
-    const k = (n) => (n + h / 60) % 6;
-    const f = (n) => b * (1 - s * Math.max(0, Math.min(k(n), 4 - k(n), 1)));
-    return {
-      r: Math.round(255 * f(5)),
-      g: Math.round(255 * f(3)),
-      b: Math.round(255 * f(1))
-    };
-  }
-
-  _rgbToHsb(r, g, b) {
-    r /= 255; g /= 255; b /= 255;
-    const max = Math.max(r, g, b), min = Math.min(r, g, b);
-    const d = max - min;
-    let h = 0;
-    const s = max === 0 ? 0 : (d / max) * 100;
-    const v = max * 100;
-
-    if (max !== min) {
-      switch (max) {
-        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-        case g: h = (b - r) / d + 2; break;
-        case b: h = (r - g) / d + 4; break;
-      }
-      h /= 6;
-    }
-    return { h: Math.round(h * 360), s: Math.round(s), b: Math.round(v) };
-  }
-
-  _hsbToHsl(h, s, b) {
-    s /= 100; b /= 100;
-    const l = b * (1 - s / 2);
-    const sl = (l === 0 || l === 1) ? 0 : (b - l) / Math.min(l, 1 - l);
-    return { h: Math.round(h), s: Math.round(sl * 100), l: Math.round(l * 100) };
-  }
-
-  _hslToHsb(h, s, l) {
-    s /= 100; l /= 100;
-    const b = l + s * Math.min(l, 1 - l);
-    const sb = b === 0 ? 0 : 2 * (1 - l / b);
-    return { h: Math.round(h), s: Math.round(sb * 100), b: Math.round(b * 100) };
-  }
-
-  _hsbToHex(h, s, b) {
-    const { r, g, b: blue } = this._hsbToRgb(h, s, b);
-    return `#${[r, g, blue].map(x => x.toString(16).padStart(2, '0')).join('')}`.toUpperCase();
-  }
-
-  _hexToHsb(hex) {
-    let c = (hex || '#000000').replace('#', '');
-    if (c.length === 3) c = c.split('').map(x => x + x).join('');
-    const r = parseInt(c.substring(0, 2), 16) || 0;
-    const g = parseInt(c.substring(2, 4), 16) || 0;
-    const b = parseInt(c.substring(4, 6), 16) || 0;
-    return this._rgbToHsb(r, g, b);
   }
 }

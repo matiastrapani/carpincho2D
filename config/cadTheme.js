@@ -75,5 +75,14 @@ export const CAD_THEME = {
     snapStrokeWidthPx: 1.7,
     snapMarkerSizePx: 12.0,
     extensionFactor: 1.3
+  },
+  properties: {
+    defaultColor: '#ffffff',
+    customFallbackColor: '#00e5ff',
+    strokeWidthPresets: [0, 1, 1.5, 2, 3],
+    colorPresets: [
+      '#001988', '#4c72fb', '#f35c54', '#ffcc00',
+      '#3bcf1d', '#e148ae', '#93a115', '#7877d5'
+    ]
   }
 };
