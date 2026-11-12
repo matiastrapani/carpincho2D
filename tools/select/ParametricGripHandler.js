@@ -69,31 +69,56 @@ export class ParametricGripHandler {
   }
 
   onMouseDrag(event) {
-    if (!this.activeGripEntity || !this.activeGripId) return false;
-
-    const point = event.point || event;
-    const isShiftPressed = event.event?.shiftKey || false;
-    const controller = this.activeGripEntity.data?.controller;
-    let targetPt = point.clone();
-
-    // OSNAP omitiendo la entidad que se está transformando
-    const osnap = this.service.calculateOsnap(
-      point,
-      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type),
-      null,
-      { ignoreEntities: [this.activeGripEntity] }
-    );
-
-    if (osnap?.type) {
-      targetPt = osnap.point;
+    if (!this.service.selectedSegments.length || !this.mouseStartPt || !this.selectedSegmentsStartData) {
+      return false;
     }
 
-    if (controller && typeof controller.onGripDrag === 'function') {
-      controller.onGripDrag(this.activeGripId, targetPt, this.gripStartPoint, { isShiftPressed });
-      if (this.utils.selectionRenderEngine.renderBezierHandles) this.utils.selectionRenderEngine.renderBezierHandles();
-      paper.view.update();
+    const isShift = event.event ? event.event.shiftKey : false;
+    const targetMousePt = this.utils.applyOrthoConstraint(this.mouseStartPt, event.point, isShift);
+
+    const pivotSegData = this.selectedSegmentsStartData.find((s) => s.segment === this.dragAnchorSegment)
+      || this.selectedSegmentsStartData[0];
+
+    let globalDelta = targetMousePt.subtract(this.mouseStartPt);
+
+    if (pivotSegData && pivotSegData.initialPt) {
+      let currentPivotPos = pivotSegData.initialPt.add(globalDelta);
+
+      const activePaths = Array.from(new Set(
+        this.selectedSegmentsStartData.map((item) => item.path).filter(Boolean)
+      ));
+      const activeSegments = this.selectedSegmentsStartData.map((item) => item.segment).filter(Boolean);
+      const selectedPointsCoords = this.selectedSegmentsStartData.map((item) => item.initialPt);
+
+      const osnap = this.service.calculateOsnap(
+        currentPivotPos,
+        (pt, type) => this.utils.hud.renderSnapMarker(pt, type),
+        null,
+        {
+          path: pivotSegData.path,
+          segment: pivotSegData.segment,
+          ignoreEntities: activePaths,
+          ignoreSegments: activeSegments,
+          selectedPointsCoords
+        }
+      );
+
+      if (osnap && osnap.type) {
+        globalDelta = osnap.point.subtract(pivotSegData.initialPt);
+      }
+
+      currentPivotPos = pivotSegData.initialPt.add(globalDelta);
+      this.utils.hud.updateHUD(currentPivotPos);
+      this.utils.renderPivotMarker(currentPivotPos);
     }
 
+    this.selectedSegmentsStartData.forEach((item) => {
+      if (item.segment) {
+        item.segment.point = item.initialPt.add(globalDelta);
+      }
+    });
+
+    this.utils.selectionRenderEngine.renderBezierHandles();
     return true;
   }
 

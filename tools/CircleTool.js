@@ -18,7 +18,7 @@ export class CircleTool extends BaseTool {
 
   onMouseDown(event) {
     // Procesar ÚNICAMENTE el clic izquierdo (ignora clic derecho)
-    if (event.event.button !== 0) return;
+    if (event.event && event.event.button !== 0) return;
 
     const isShift = event.event ? event.event.shiftKey : false;
     let pt = event.point.clone();
@@ -29,10 +29,10 @@ export class CircleTool extends BaseTool {
       (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type)
     );
 
-    if (osnap.type) {
+    if (osnap && osnap.type) {
       pt = osnap.point;
-    } else if (this.centerPoint && isShift) {
-      pt = this.utils.applyOrthoConstraint(this.centerPoint, event.point, true);
+    } else if (this.centerPoint) {
+      pt = this.utils.applyOrthoConstraint(this.centerPoint, event.point, isShift);
     }
 
     // PASO 1: Fijar el Punto Central
@@ -44,28 +44,32 @@ export class CircleTool extends BaseTool {
 
     // PASO 2: Fijar el Radio y Confirmar la Entidad
     const radius = this.centerPoint.getDistance(pt);
-    if (radius > 0.001) {
-      const circleEntity = this.service.createCircleEntity(this.centerPoint, radius, true, 1);
-      
-      if (circleEntity) {
-        if (!circleEntity.data) circleEntity.data = {};
-        circleEntity.data.isCircleEntity = true;
+    this.commitCircle(radius);
+  }
 
-        const circleName = this.utils.generateNextEntityName ? this.utils.generateNextEntityName('Círculo') : 'Círculo';
-        circleEntity.name = circleName;
-        circleEntity.data.name = circleName;
+  commitCircle(radius) {
+    if (!this.centerPoint || isNaN(radius) || radius <= 0.001) return;
 
-        if (this.utils.propertyManager) {
-          this.utils.propertyManager.applyDefaultSettings(circleEntity);
-        }
+    const circleEntity = this.service.createCircleEntity(this.centerPoint, radius, true, 1);
 
-        // Registrar comando en el historial para Undo / Redo
-        const cmd = new AddEntityCommand(this.service, circleEntity);
-        this.service.executeCommand(cmd);
+    if (circleEntity) {
+      if (!circleEntity.data) circleEntity.data = {};
+      circleEntity.data.isCircleEntity = true;
 
-        if (this.utils?.selectionRenderEngine?.updateEntitiesStroke) {
-          this.utils.selectionRenderEngine.updateEntitiesStroke();
-        }
+      const circleName = this.utils.generateNextEntityName ? this.utils.generateNextEntityName('Círculo') : 'Círculo';
+      circleEntity.name = circleName;
+      circleEntity.data.name = circleName;
+
+      if (this.utils.propertyManager) {
+        this.utils.propertyManager.applyDefaultSettings(circleEntity);
+      }
+
+      // Registrar comando en el historial para Undo / Redo
+      const cmd = new AddEntityCommand(this.service, circleEntity);
+      this.service.executeCommand(cmd);
+
+      if (this.utils?.selectionRenderEngine?.updateEntitiesStroke) {
+        this.utils.selectionRenderEngine.updateEntitiesStroke();
       }
     }
 
@@ -83,11 +87,13 @@ export class CircleTool extends BaseTool {
       (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type)
     );
 
-    if (osnap.type) {
+    if (osnap && osnap.type) {
       pt = osnap.point;
-    } else if (this.centerPoint && isShift) {
-      pt = this.utils.applyOrthoConstraint(this.centerPoint, event.point, true);
+    } else if (this.centerPoint) {
+      pt = this.utils.applyOrthoConstraint(this.centerPoint, event.point, isShift);
     }
+
+    this.utils.hud.updateHUD(pt);
 
     // Si el centro ya está definido, renderizamos el círculo y la línea de radio
     if (this.centerPoint) {
@@ -131,8 +137,6 @@ export class CircleTool extends BaseTool {
       });
 
       this.utils.hud.updateFeedbackLabels(this.centerPoint, pt);
-    } else {
-      this.utils.hud.updateHUD(pt);
     }
   }
 

@@ -53,6 +53,8 @@ export class CADUtils {
     this.isPanning = false;
     this.panStartPoint = null;
     this.lastMousePoint = null;
+    this.isPointerDown = false;
+    this.isShiftPressed = false;
 
     // 5. Estado de Dibujo Activo y Previsualización Temporal
     this.activePath = null;
@@ -241,7 +243,9 @@ export class CADUtils {
     if (upperVal === 'CIRCLE' || upperVal === 'C') { this.setTool('circle'); return; }
 
     if (this.activePath && ['line', 'polyline', 'spline', 'bezier'].includes(this.currentToolMode)) {
-      const originPt = this.activePath.firstSegment.point;
+      const originPt = (this.currentToolMode === 'line')
+        ? this.activePath.firstSegment.point
+        : (this.activePath.lastSegment?.point || this.activePath.firstSegment.point);
 
       if (val.includes(',')) {
         const parts = val.split(',');
@@ -273,6 +277,17 @@ export class CADUtils {
             this.selectionRenderEngine.updateEntitiesStroke();
           } else {
             this.activePath.add(newPt);
+            if (this.currentToolMode === 'spline') {
+              this.activePath.smooth({ type: 'catmull-rom' });
+            }
+            this.selectionRenderEngine.updateEntitiesStroke();
+            if (this.rubberBandLine) {
+              this.rubberBandLine.firstSegment.point = newPt;
+              this.rubberBandLine.lastSegment.point = newPt;
+            }
+            if (this.hud) {
+              this.hud.updateFeedbackLabels(newPt, newPt);
+            }
           }
         }
       } else {
@@ -305,7 +320,37 @@ export class CADUtils {
               this.selectionRenderEngine.updateEntitiesStroke();
             } else {
               this.activePath.add(newPt);
+              this.selectionRenderEngine.updateEntitiesStroke();
+              this.rubberBandLine.firstSegment.point = newPt;
+              this.rubberBandLine.lastSegment.point = newPt;
+              if (this.hud) {
+                this.hud.updateFeedbackLabels(newPt, newPt);
+              }
             }
+          }
+        }
+      }
+    }
+
+    if (this.currentToolMode === 'circle') {
+      const circleTool = this.toolManager?.activeTool;
+      if (circleTool && circleTool.centerPoint && typeof circleTool.commitCircle === 'function') {
+        if (val.includes(',')) {
+          const parts = val.split(',');
+          const x = parseFloat(parts[0]);
+          const y = -parseFloat(parts[1]);
+
+          if (!isNaN(x) && !isNaN(y)) {
+            const targetPt = new paper.Point(x, y);
+            const radius = circleTool.centerPoint.getDistance(targetPt);
+            if (radius > 0.001) {
+              circleTool.commitCircle(radius);
+            }
+          }
+        } else {
+          const radius = parseFloat(val);
+          if (!isNaN(radius) && radius > 0.001) {
+            circleTool.commitCircle(radius);
           }
         }
       }
@@ -479,6 +524,31 @@ export class CADUtils {
     const isEnabled = this.service.toggleOrtho();
     const btnOrtho = document.getElementById('btnOrtho');
     if (btnOrtho) btnOrtho.classList.toggle('active', isEnabled);
+    this.refreshActivePreview();
+  }
+
+  refreshActivePreview(shiftOverride = null) {
+    if (typeof shiftOverride === 'boolean') {
+      this.isShiftPressed = shiftOverride;
+    }
+
+    const activeTool = this.toolManager?.activeTool;
+    if (!activeTool || !this.lastMousePoint) return;
+
+    const mockEvent = {
+      point: this.lastMousePoint.clone(),
+      event: { shiftKey: Boolean(this.isShiftPressed), button: 0 }
+    };
+
+    if (this.isPointerDown && typeof activeTool.onMouseDrag === 'function') {
+      activeTool.onMouseDrag(mockEvent);
+    } else if (typeof activeTool.onMouseMove === 'function') {
+      activeTool.onMouseMove(mockEvent);
+    }
+
+    if (window.paper?.view) {
+      paper.view.update();
+    }
   }
 
   closeAllMenus() {

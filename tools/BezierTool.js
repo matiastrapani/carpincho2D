@@ -17,29 +17,18 @@ export class BezierTool extends BaseTool {
 
     const isShift = event.event ? event.event.shiftKey : false;
     let pt = event.point;
-    
-    // Clic derecho -> Finalizar curva o salir
-    if (event.event.button === 2) {
-      if (this.utils.activePath) {
-        this.utils.finishCurrentDrawing();
-      } else {
-        this.cancelAndExit();
-      }
-      return;
-    }
 
     // 1. Evaluar OSNAP sobre el punto REAL del cursor
     const osnap = this.service.calculateOsnap(
       event.point, 
-      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type),
-      this.utils.activePath
+      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type)
     );
 
-    if (osnap.type) {
+    if (osnap && osnap.type) {
       pt = osnap.point;
-    } else if (this.utils.activePath && this.utils.activePath.lastSegment && isShift) {
+    } else if (this.utils.activePath && this.utils.activePath.lastSegment) {
       const lastPt = this.utils.activePath.lastSegment.point;
-      pt = this.utils.applyOrthoConstraint(lastPt, event.point, true);
+      pt = this.utils.applyOrthoConstraint(lastPt, event.point, isShift);
     }
 
     if (!this.utils.activePath) {
@@ -78,9 +67,24 @@ export class BezierTool extends BaseTool {
 
   onMouseDrag(event) {
     if (this.utils.activePath && this.utils.activePath.lastSegment) {
+      const isShift = event.event ? event.event.shiftKey : false;
       const lastSeg = this.utils.activePath.lastSegment;
-      const handleVec = event.point.subtract(lastSeg.point);
+      let dragPt = event.point;
 
+      const osnap = this.service.calculateOsnap(
+        event.point,
+        (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type)
+      );
+
+      if (osnap && osnap.type) {
+        dragPt = osnap.point;
+      } else {
+        dragPt = this.utils.applyOrthoConstraint(lastSeg.point, event.point, isShift);
+      }
+
+      this.utils.hud.updateHUD(dragPt);
+
+      const handleVec = dragPt.subtract(lastSeg.point);
       lastSeg.handleOut = handleVec;
       lastSeg.handleIn = handleVec.multiply(-1);
 
@@ -97,15 +101,14 @@ export class BezierTool extends BaseTool {
 
     const osnap = this.service.calculateOsnap(
       event.point, 
-      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type),
-      this.utils.activePath
+      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type)
     );
 
-    if (osnap.type) {
+    if (osnap && osnap.type) {
       currentPt = osnap.point;
-    } else if (this.utils.activePath && this.utils.activePath.lastSegment && isShift) {
+    } else if (this.utils.activePath && this.utils.activePath.lastSegment) {
       const lastConfirmedPt = this.utils.activePath.lastSegment.point;
-      currentPt = this.utils.applyOrthoConstraint(lastConfirmedPt, event.point, true);
+      currentPt = this.utils.applyOrthoConstraint(lastConfirmedPt, event.point, isShift);
     }
 
     this.utils.hud.updateHUD(currentPt);

@@ -64,11 +64,10 @@ export class InputDispatcher {
     }
     if (e.key === 'F8') {
       e.preventDefault();
-      if (cadUtils?.toggleOrtho) cadUtils.toggleOrtho();
-      else this.service?.toggleOrtho();
-
-      if (cadUtils?.lastMousePoint && cadUtils?.activePath && activeTool?.onMouseMove) {
-        activeTool.onMouseMove({ point: cadUtils.lastMousePoint.clone(), event: e });
+      if (cadUtils?.toggleOrtho) {
+        cadUtils.toggleOrtho();
+      } else {
+        this.service?.toggleOrtho();
       }
       return;
     }
@@ -142,8 +141,10 @@ export class InputDispatcher {
     }
 
     // 6. Re-evaluar cursor dinámico al presionar Shift (Ortho)
-    if (e.key === 'Shift' && cadUtils?.lastMousePoint && cadUtils?.activePath && activeTool) {
-      activeTool.onMouseMove({ point: cadUtils.lastMousePoint.clone(), event: e });
+    if (e.key === 'Shift' || e.keyCode === 16) {
+      if (cadUtils?.refreshActivePreview) {
+        cadUtils.refreshActivePreview(true);
+      }
       return;
     }
 
@@ -195,16 +196,10 @@ export class InputDispatcher {
 
   handleGlobalKeyup(e) {
     const cadUtils = window.cadUtils;
-    const toolManager = cadUtils?.toolManager || window.toolManager;
-    const activeTool = toolManager?.activeTool;
 
-    if ((e.key === 'Shift' || e.keyCode === 16) && cadUtils?.lastMousePoint && activeTool) {
-      const mockEvent = {
-        point: cadUtils.lastMousePoint.clone(),
-        event: { shiftKey: true }
-      };
-      if (typeof activeTool.onMouseMove === 'function') {
-        activeTool.onMouseMove(mockEvent);
+    if (e.key === 'Shift' || e.keyCode === 16) {
+      if (cadUtils?.refreshActivePreview) {
+        cadUtils.refreshActivePreview(false);
       }
     }
   }

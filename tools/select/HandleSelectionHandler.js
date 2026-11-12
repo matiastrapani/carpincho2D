@@ -161,36 +161,33 @@ export class HandleSelectionHandler {
       return;
     }
 
-    const isShift = event.event.shiftKey;
-    let rawTargetPoint = event.point.add(this.grabOffset);
+    const isShift = event.event ? event.event.shiftKey : false;
+    const rawTargetPoint = event.point.add(this.grabOffset);
 
-    if (isShift && this.handleDragStartPt) {
-      const dx = Math.abs(rawTargetPoint.x - this.handleDragStartPt.x);
-      const dy = Math.abs(rawTargetPoint.y - this.handleDragStartPt.y);
-      if (dx > dy) rawTargetPoint.y = this.handleDragStartPt.y;
-      else rawTargetPoint.x = this.handleDragStartPt.x;
-    }
+    const activePaths = Array.from(new Set(
+      (this.selectedSegmentsStartData || []).map(item => item.path).filter(Boolean)
+    ));
+    const activeSegments = (this.selectedSegmentsStartData || []).map(item => item.segment).filter(Boolean);
 
-    let finalPoint = rawTargetPoint;
-    if (!isShift) {
-      const activePaths = Array.from(new Set(
-        (this.selectedSegmentsStartData || []).map(item => item.path).filter(Boolean)
-      ));
-      const activeSegments = (this.selectedSegmentsStartData || []).map(item => item.segment).filter(Boolean);
+    const osnap = this.service.calculateOsnap(
+      rawTargetPoint,
+      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type),
+      null,
+      { 
+        path: activeSeg.path, 
+        segment: activeSeg,
+        ignoreEntities: activePaths,
+        ignoreSegments: activeSegments
+      }
+    );
 
-      const osnap = this.service.calculateOsnap(
-        rawTargetPoint,
-        (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type),
-        null,
-        { 
-          path: activeSeg.path, 
-          segment: activeSeg,
-          ignoreEntities: activePaths,
-          ignoreSegments: activeSegments
-        }
-      );
-      finalPoint = osnap.point;
-    }
+    const finalPoint = (osnap && osnap.type)
+      ? osnap.point
+      : (this.handleDragStartPt
+          ? this.utils.applyOrthoConstraint(this.handleDragStartPt, rawTargetPoint, isShift)
+          : rawTargetPoint);
+
+    this.utils.hud.updateHUD(finalPoint);
 
     const currentHandlePt = handleType === 'anchor'
       ? activeSeg.point

@@ -14,11 +14,20 @@ export class SplineTool extends BaseTool {
     // Procesar ÚNICAMENTE el clic izquierdo
     if (event.event && event.event.button !== 0) return;
 
+    const isShift = event.event ? event.event.shiftKey : false;
+    let pt = event.point;
+
     const osnap = this.service.calculateOsnap(
       event.point, 
       (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type)
     );
-    const pt = osnap.point;
+
+    if (osnap && osnap.type) {
+      pt = osnap.point;
+    } else if (this.utils.activePath && this.utils.activePath.lastSegment) {
+      const lastPt = this.utils.activePath.lastSegment.point;
+      pt = this.utils.applyOrthoConstraint(lastPt, event.point, isShift);
+    }
 
     if (!this.utils.activePath) {
       this.utils.activePath = new paper.Path({
@@ -56,11 +65,21 @@ export class SplineTool extends BaseTool {
   }
 
   onMouseMove(event) {
+    const isShift = event.event ? event.event.shiftKey : false;
+    let pt = event.point;
+
     const osnap = this.service.calculateOsnap(
       event.point, 
-      (pt, type) => this.utils.hud.renderSnapMarker(pt, type)
+      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type)
     );
-    const pt = osnap.point;
+
+    if (osnap && osnap.type) {
+      pt = osnap.point;
+    } else if (this.utils.activePath && this.utils.activePath.lastSegment) {
+      const lastPt = this.utils.activePath.lastSegment.point;
+      pt = this.utils.applyOrthoConstraint(lastPt, event.point, isShift);
+    }
+
     this.utils.hud.updateHUD(pt);
 
     if (this.utils.activePath && this.utils.activePath.segments.length > 0) {

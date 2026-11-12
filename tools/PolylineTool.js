@@ -12,7 +12,7 @@ export class PolylineTool extends BaseTool {
 
   onMouseDown(event) {
     // Procesar ÚNICAMENTE el clic izquierdo (ignora clic derecho)
-    if (event.event.button !== 0) return;
+    if (event.event && event.event.button !== 0) return;
 
     const isShift = event.event ? event.event.shiftKey : false;
     let pt = event.point;
@@ -20,17 +20,16 @@ export class PolylineTool extends BaseTool {
     // 1. Evaluar OSNAP sobre el punto REAL del cursor del ratón
     const osnap = this.service.calculateOsnap(
       event.point, 
-      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type),
-      this.utils.activePath
+      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type)
     );
 
-    if (osnap.type) {
+    if (osnap && osnap.type) {
       // Si hay atracción magnética, toma el punto OSNAP exacto
       pt = osnap.point;
-    } else if (this.utils.activePath && this.utils.activePath.lastSegment && isShift) {
-      // 2. Si no hay OSNAP y Shift está presionado, aplica restricción ORTHO respecto al último vértice
+    } else if (this.utils.activePath && this.utils.activePath.lastSegment) {
+      // 2. Si no hay OSNAP, aplica restricción ORTHO (F8/botón XOR Shift) respecto al último vértice
       const lastPt = this.utils.activePath.lastSegment.point;
-      pt = this.utils.applyOrthoConstraint(lastPt, event.point, true);
+      pt = this.utils.applyOrthoConstraint(lastPt, event.point, isShift);
     }
 
     if (!this.utils.activePath) {
@@ -85,16 +84,15 @@ export class PolylineTool extends BaseTool {
     // 1. Evaluar OSNAP directamente en el cursor real del ratón
     const osnap = this.service.calculateOsnap(
       event.point, 
-      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type),
-      this.utils.activePath
+      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type)
     );
 
-    if (osnap.type) {
+    if (osnap && osnap.type) {
       pt = osnap.point;
-    } else if (this.utils.activePath && this.utils.activePath.segments.length > 0 && isShift) {
-      // 2. Si no hay enganche OSNAP, aplicar restricción ORTHO respecto al último vértice
+    } else if (this.utils.activePath && this.utils.activePath.lastSegment) {
+      // 2. Si no hay enganche OSNAP, aplicar restricción ORTHO (F8/botón XOR Shift) respecto al último vértice
       const lastPt = this.utils.activePath.lastSegment.point;
-      pt = this.utils.applyOrthoConstraint(lastPt, event.point, true);
+      pt = this.utils.applyOrthoConstraint(lastPt, event.point, isShift);
     }
 
     this.utils.hud.updateHUD(pt);

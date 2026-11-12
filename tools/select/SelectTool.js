@@ -214,14 +214,8 @@ export class SelectTool extends BaseTool {
     }
 
     if (this.service.selectedEntities.length > 0 && !this.dragState.selectionStartPoint && this.dragState.mouseStartPt && this.dragState.entityStartPositions) {
-      let targetMousePt = event.point.clone();
-
-      if (event.event.shiftKey) {
-        const dx = Math.abs(targetMousePt.x - this.dragState.mouseStartPt.x);
-        const dy = Math.abs(targetMousePt.y - this.dragState.mouseStartPt.y);
-        if (dx > dy) targetMousePt.y = this.dragState.mouseStartPt.y;
-        else targetMousePt.x = this.dragState.mouseStartPt.x;
-      }
+      const isShift = event.event ? event.event.shiftKey : false;
+      const targetMousePt = this.utils.applyOrthoConstraint(this.dragState.mouseStartPt, event.point, isShift);
 
       const pivotPoint = this.dragState.pivotPoint || this.dragState.mouseStartPt;
       const grabOffset = pivotPoint.subtract(this.dragState.mouseStartPt);
@@ -234,7 +228,8 @@ export class SelectTool extends BaseTool {
         { ignoreEntities: this.service.selectedEntities }
       );
 
-      const finalTargetPivot = osnap.type ? osnap.point : projectedPivot;
+      const finalTargetPivot = (osnap && osnap.type) ? osnap.point : projectedPivot;
+      this.utils.hud.updateHUD(finalTargetPivot);
       const globalDelta = finalTargetPivot.subtract(pivotPoint);
 
       this.dragState.entityStartPositions.forEach((item) => {

@@ -64,18 +64,36 @@ export class ToolManager {
   }
 
   onMouseDown(event) {
+    if (this.utils && event?.point) {
+      this.utils.lastMousePoint = event.point.clone();
+      if (!event.event || event.event.button === 0) {
+        this.utils.isPointerDown = true;
+      }
+    }
     if (this.activeTool) this.activeTool.onMouseDown(event);
   }
 
   onMouseDrag(event) {
+    if (this.utils && event?.point) {
+      this.utils.lastMousePoint = event.point.clone();
+      this.utils.isPointerDown = true;
+    }
     if (this.activeTool) this.activeTool.onMouseDrag(event);
   }
 
   onMouseMove(event) {
+    if (this.utils && event?.point) {
+      this.utils.lastMousePoint = event.point.clone();
+      this.utils.isPointerDown = false;
+    }
     if (this.activeTool) this.activeTool.onMouseMove(event);
   }
 
   onMouseUp(event) {
+    if (this.utils) {
+      if (event?.point) this.utils.lastMousePoint = event.point.clone();
+      this.utils.isPointerDown = false;
+    }
     if (this.activeTool) this.activeTool.onMouseUp(event);
   }
 }
