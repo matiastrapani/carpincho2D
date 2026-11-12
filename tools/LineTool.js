@@ -12,16 +12,13 @@ export class LineTool extends BaseTool {
   }
 
   onMouseDown(event) {
-    // 1. Ignorar cualquier clic que NO sea el izquierdo (button 0)
     if (event.event && event.event.button !== 0) {
       return;
     }
 
-    // Clic izquierdo -> Dibujar
     const isShift = event.event ? event.event.shiftKey : false;
     let pt = event.point;
 
-    // 1. Evaluar OSNAP sobre el punto REAL del cursor del ratón
     const osnap = this.service.calculateOsnap(
       event.point, 
       (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type)
@@ -29,15 +26,14 @@ export class LineTool extends BaseTool {
 
     if (osnap && osnap.type) {
       pt = osnap.point;
-    } else if (this.utils.activePath && isShift) {
+    } else if (this.utils.activePath) {
       const startPt = this.utils.activePath.firstSegment.point;
-      pt = this.utils.applyOrthoConstraint(startPt, event.point, true);
+      pt = this.utils.applyOrthoConstraint(startPt, event.point, isShift);
     }
 
     const propMgr = this.utils.propertyManager;
 
     if (!this.utils.activePath) {
-      // Primer clic: Iniciar segmento
       this.utils.activePath = new paper.Path.Line({
         from: pt, 
         to: pt
@@ -56,7 +52,6 @@ export class LineTool extends BaseTool {
       this.utils.selectionRenderEngine.updateEntitiesStroke();
       this.setPrompt('Especifique el punto final de la línea:');
     } else {
-      // Segundo clic: Confirmar segmento actual
       this.utils.activePath.lastSegment.point = pt;
       
       const cmd = new AddLineCommand(this.service, this.utils.activePath);
@@ -104,9 +99,9 @@ export class LineTool extends BaseTool {
 
     if (osnap.type) {
       pt = osnap.point;
-    } else if (this.utils.activePath && isShift) {
+    } else if (this.utils.activePath) {
       const lastConfirmedPt = this.utils.activePath.firstSegment.point;
-      pt = this.utils.applyOrthoConstraint(lastConfirmedPt, event.point, true);
+      pt = this.utils.applyOrthoConstraint(lastConfirmedPt, event.point, isShift);
     }
 
     this.utils.hud.updateHUD(pt);

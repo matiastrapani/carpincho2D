@@ -5,12 +5,26 @@ import { FixedConsoleUI } from './FixedConsoleUI.js';
 import { FloatingConsoleUI } from './FloatingConsoleUI.js';
 
 export class ConsoleManager {
-  constructor(slotId = 'fixedConsoleSlot') {
+  constructor(slotId = 'fixedConsoleSlot', cadUtils = null) {
+    this.utils = cadUtils;
+    this.state = 'IDLE'; // 'IDLE' | 'COMMAND_ACTIVE'
+    this.lastCommand = null;
+
     this.fixedUI = new FixedConsoleUI(slotId);
     this.floatingUI = new FloatingConsoleUI();
 
+    this._onInputKeyDown = this._handleInputKeyDown.bind(this);
+    this._onLogClick = this._handleLogClick.bind(this);
+
     this.initSync();
     this.initInputEvents();
+  }
+
+  setUtils(cadUtils) {
+    this.utils = cadUtils;
+    if (this.utils && typeof this.utils.setConsoleManager === 'function') {
+      this.utils.setConsoleManager(this);
+    }
   }
 
   initSync() {
@@ -21,29 +35,26 @@ export class ConsoleManager {
 
   initInputEvents() {
     const fixedInput = this.fixedUI.input;
-    if (!fixedInput) return;
+    if (fixedInput) {
+      fixedInput.addEventListener('keydown', this._onInputKeyDown);
+    }
 
-    fixedInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        const value = fixedInput.value;
-        
-        fixedInput.value = '';
-        if (this.floatingUI.input) this.floatingUI.input.value = '';
+    if (this.fixedUI.logArea) {
+      this.fixedUI.logArea.addEventListener('click', this._onLogClick);
+    }
 
-        this.handleExecute(value);
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        this.handleCancel();
-      }
-    });
+    if (this.floatingUI.log) {
+      this.floatingUI.log.addEventListener('click', this._onLogClick);
+    }
   }
 
   // --- MÉTODOS ESPEJADOS EN AMBAS CONSOLAS ---
 
   setPrompt(text) {
-    this.fixedUI.setPrompt(text);
-    this.floatingUI.setPrompt(text);
+    const formatted = text || 'Command:';
+    this.state = formatted === 'Command:' ? 'IDLE' : 'COMMAND_ACTIVE';
+    this.fixedUI.setPrompt(formatted);
+    this.floatingUI.setPrompt(formatted);
   }
 
   logUser(text) {
@@ -62,7 +73,9 @@ export class ConsoleManager {
 
   logInteractive(htmlContent) {
     this.fixedUI.appendInteractiveEntry(htmlContent);
-    this.floatingUI.appendInteractiveEntry(htmlContent);
+    if (typeof this.floatingUI.appendInteractiveEntry === 'function') {
+      this.floatingUI.appendInteractiveEntry(htmlContent);
+    }
   }
 
   clear() {
@@ -76,83 +89,136 @@ export class ConsoleManager {
   appendInteractiveEntry(html) { this.logInteractive(html); }
 
   handleExecute(cmdText) {
-    if (!cmdText) return;
-    const trimmed = cmdText.trim();
-    if (!trimmed) return;
+    const trimmed = (cmdText || '').trim();
+
+    if (!this.utils) {
+      throw new Error('ConsoleManager: falta referencia obligatoria a cadUtils.');
+    }
+
+    const toolManager = this.utils.toolManager;
+    const activeTool = toolManager?.activeTool;
+    const isCommandRunning = this.state === 'COMMAND_ACTIVE' && this.utils.currentToolMode !== 'select' && this.utils.currentToolMode !== 'pan';
+
+    // 1. ENTER / ESPACIO CON INPUT VACÍO
+    if (!trimmed) {
+      if (isCommandRunning) {
+        if (activeTool && typeof activeTool.onCommandInput === 'function') {
+          activeTool.onCommandInput('');
+        } else if (typeof this.utils.finishCurrentDrawing === 'function') {
+          this.utils.finishCurrentDrawing();
+        }
+        return;
+      }
+
+      if (this.lastCommand) {
+        this.handleExecute(this.lastCommand);
+      }
+      return;
+    }
 
     this.logUser(trimmed);
 
-    if (!window.cadUtils) return;
+    // 2. ESTADO COMMAND_ACTIVE: Entregar valor/opción a la herramienta activa
+    if (isCommandRunning) {
+      if (activeTool && typeof activeTool.onCommandInput === 'function') {
+        activeTool.onCommandInput(trimmed);
+        return;
+      }
 
-    const activeTool = window.cadUtils.activeTool || window.cadUtils.currentToolInstance;
-
-    if (activeTool && typeof activeTool.onCommandInput === 'function' && window.cadUtils.currentToolMode !== 'select') {
-      activeTool.onCommandInput(trimmed);
+      this.utils.executeCommandLine(trimmed);
       return;
     }
 
-    if (typeof window.cadUtils.executeCommandLine === 'function') {
-      window.cadUtils.executeCommandLine(trimmed);
-      return;
-    }
-
-    const lowerCmd = trimmed.toLowerCase();
-    const commandMap = {
-      'point': 'point', 'punto': 'point', 'p': 'point',
-      'line': 'line', 'linea': 'line', 'l': 'line',
-      'circle': 'circle', 'circulo': 'circle', 'c': 'circle',
-      'polyline': 'polyline', 'polilinea': 'polyline', 'pl': 'polyline',
-      'spline': 'spline', 's': 'spline',
-      'bezier': 'bezier', 'b': 'bezier',
-      'trim': 'trim', 't': 'trim',
-      'extend': 'extend', 'ex': 'extend'
-    };
-
-    const targetTool = commandMap[lowerCmd] || lowerCmd;
-    if (typeof window.cadUtils.setTool === 'function') {
-      window.cadUtils.setTool(targetTool);
-    }
+    // 3. ESTADO IDLE: Resolver comando nuevo y guardarlo como último comando
+    this.lastCommand = trimmed;
+    this.utils.executeCommandLine(trimmed);
   }
 
   handleCancel() {
-    const utils = this.utils;
-    const service = utils?.service;
+    const service = this.utils?.service;
 
-    if (utils) {
-      const activeTool = utils.activeTool || utils.currentToolInstance;
-      const currentToolName = utils.currentToolMode || utils.activeToolName || activeTool?.name;
+    if (this.utils) {
+      const activeTool = this.utils.toolManager?.activeTool;
+      const currentToolName = this.utils.currentToolMode;
 
-      // 1. Si hay una herramienta activa en progreso (ej. Polilínea, Spline, Trim), cancelarla
       if (activeTool && typeof activeTool.cancel === 'function') {
         activeTool.cancel();
-      } else if (typeof utils.cancelCurrentTool === 'function') {
-        utils.cancelCurrentTool();
-      } 
-      // 2. Solo cambiar a 'select' si estabas en OTRA herramienta (línea, círculo, etc.)
-      else if (currentToolName !== 'select' && typeof utils.setTool === 'function') {
-        utils.setTool('select');
       }
 
-      // 3. Si YA estabas en 'select', deseleccionar entidades en silencio (sin llamar a setTool)
-      if (currentToolName === 'select' && service) {
-        if (typeof service.deselectAll === 'function') {
-          service.deselectAll();
-        } else if (Array.isArray(service.selectedEntities)) {
-          service.selectedEntities = [];
-          utils.selectionRenderEngine?.updateEntitiesStroke();
-          utils.selectionRenderEngine?.renderBezierHandles();
-          if (typeof paper !== 'undefined' && paper.view) paper.view.update();
+      if (currentToolName !== 'select' && typeof this.utils.setTool === 'function') {
+        this.utils.setTool('select');
+      } else if (currentToolName === 'select' && service) {
+        if (service.selectedEntities.length > 0 || service.selectedSegments.length > 0) {
+          service.deselectAllEntities();
+        } else if (service.editingEntities.length > 0) {
+          service.deselectAllEditingEntities();
         }
       }
     }
 
-    // Vaciar los inputs sin imprimir "select"
-    if (this.fixedUI?.input) this.fixedUI.input.value = '';
-    if (this.floatingUI?.input) this.floatingUI.input.value = '';
+    if (this.fixedUI.input) this.fixedUI.input.value = '';
+    if (this.floatingUI.input) this.floatingUI.input.value = '';
 
     this.setPrompt('Command:');
     this.logSystem('*Cancelado*');
   }
+
+  _handleInputKeyDown(e) {
+    const fixedInput = this.fixedUI.input;
+    if (!fixedInput) return;
+
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      const value = fixedInput.value;
+
+      fixedInput.value = '';
+      if (this.floatingUI.input) this.floatingUI.input.value = '';
+
+      this.handleExecute(value);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      this.handleCancel();
+      fixedInput.blur();
+    } else if ((e.key === 'Delete' || e.key === 'Backspace') && fixedInput.value === '') {
+      e.preventDefault();
+      if (this.utils?.deleteSelectedHandleOrSegment) {
+        this.utils.deleteSelectedHandleOrSegment();
+      } else if (this.utils?.service?.deleteSelectedElements) {
+        this.utils.service.deleteSelectedElements();
+      }
+    }
+  }
+
+  _handleLogClick(e) {
+    const optionEl = e.target.closest('.cmd-option');
+    if (!optionEl) return;
+
+    e.preventDefault();
+    const optionValue = optionEl.dataset.cmd || optionEl.textContent.trim();
+    if (!optionValue) return;
+
+    if (this.fixedUI.input) this.fixedUI.input.value = '';
+    if (this.floatingUI.input) this.floatingUI.input.value = '';
+
+    this.handleExecute(optionValue);
+    this.focus();
+  }
+
+  cleanup() {
+    if (this.fixedUI.input) {
+      this.fixedUI.input.removeEventListener('keydown', this._onInputKeyDown);
+    }
+    if (this.fixedUI.logArea) {
+      this.fixedUI.logArea.removeEventListener('click', this._onLogClick);
+    }
+    if (this.floatingUI.log) {
+      this.floatingUI.log.removeEventListener('click', this._onLogClick);
+    }
+    if (typeof this.floatingUI.unbindInputSync === 'function') {
+      this.floatingUI.unbindInputSync();
+    }
+  }
+
 
   focus() {
     this.fixedUI.input?.focus();

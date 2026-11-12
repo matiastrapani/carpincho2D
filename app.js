@@ -19,21 +19,18 @@ const onLoadHandler = () => {
   window.fixedConsoleUI = window.consoleManager.fixedUI;
   window.floatingConsoleUI = window.consoleManager.floatingUI;
 
-  // Iniciar sincronización bidireccional entre consolas
-  const fixedInputEl = document.getElementById('cmdInput');
-  window.floatingConsoleUI.bindInputSync(fixedInputEl);
-
   if (window.Iconify) {
     window.Iconify.scan(document.getElementById('fixedConsoleContainer'));
   }
 
-  // 2. Inicializar Servicios CAD
+  // 2. Inicializar Servicios CAD y vincular consola
   window.cadService = new CADService();
   window.cadUtils = new CADUtils('cadCanvas', window.cadService);
+  window.consoleManager.setUtils(window.cadUtils);
   window.cadIO = window.cadUtils.ioService;
   window.canvasViewportManager = window.cadUtils.viewportManager;
 
-  // 3. Inicializar Administradores de UI (Engancha automáticamente todos los listeners nativos)
+  // 3. Inicializar Administradores de UI
   window.cadUI = new CADUIManager(window.cadUtils, window.cadService);
   window.layerPanelUI = new LayerPanelUI(window.cadUtils, 'layerPanelContainer');
   window.propertyPanelUI = new PropertyPanelUI(window.cadUtils, 'propertyPanelContainer');
@@ -50,7 +47,7 @@ const onLoadHandler = () => {
       paper.view.update();
     });
   }
-  
+
   window.layerPanelUI.refresh();
   window.propertyPanelUI.refresh();
 

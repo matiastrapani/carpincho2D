@@ -30,43 +30,94 @@ export class InputDispatcher {
 
   handleGlobalKeydown(e) {
     const cadUtils = window.cadUtils;
+    const consoleManager = cadUtils?.consoleManager || window.consoleManager;
     const toolManager = cadUtils?.toolManager || window.toolManager;
     const activeTool = toolManager?.activeTool;
 
-    // 1. Filtrado de foco en inputs DOM
     const activeElement = document.activeElement;
     const activeTag = activeElement ? activeElement.tagName : '';
-    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(activeTag) || activeElement === document.getElementById('cmdInput')) {
+    const isConsoleInput = activeElement === document.getElementById('cmdInput') ||
+                           activeElement === document.getElementById('cmdInputFloating');
+
+    // 1. Si el usuario está escribiendo en un input del panel lateral, no interferir
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(activeTag) && !isConsoleInput) {
       if (e.key === 'Escape') {
         activeElement.blur();
       }
       return;
     }
 
-    // 2. Delegar primero a la herramienta activa si intercepta la tecla
-    if (activeTool && typeof activeTool.onKeyDown === 'function') {
-      const handled = activeTool.onKeyDown(e);
-      if (handled) return;
-    }
-
-    // 3. Re-evaluar cursor dinámico al presionar Shift (Ortho)
-    if (e.key === 'Shift' && cadUtils?.lastMousePoint && cadUtils?.activePath && activeTool) {
-      const mockEvent = {
-        point: cadUtils.lastMousePoint.clone(),
-        event: e
-      };
-      activeTool.onMouseMove(mockEvent);
-    }
-
     const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+
+    // 2. Teclas de función hardware (F3 Snap, F7 Grid, F8 Ortho) funcionan siempre
+    if (e.key === 'F3') {
+      e.preventDefault();
+      if (cadUtils?.toggleSnapMaster) cadUtils.toggleSnapMaster();
+      else this.service?.toggleSnapMaster();
+      return;
+    }
+    if (e.key === 'F7') {
+      e.preventDefault();
+      if (cadUtils?.toggleGrid) cadUtils.toggleGrid();
+      else this.service?.viewportManager?.toggleGrid();
+      return;
+    }
+    if (e.key === 'F8') {
+      e.preventDefault();
+      if (cadUtils?.toggleOrtho) cadUtils.toggleOrtho();
+      else this.service?.toggleOrtho();
+
+      if (cadUtils?.lastMousePoint && cadUtils?.activePath && activeTool?.onMouseMove) {
+        activeTool.onMouseMove({ point: cadUtils.lastMousePoint.clone(), event: e });
+      }
+      return;
+    }
+
+    // 3. Seleccionar todo (Ctrl+A / Cmd+A) en el lienzo
+    if (isCtrlOrCmd && e.key.toLowerCase() === 'a') {
+      // Si la consola tiene texto escrito, permitir seleccionar el texto normalmente
+      if (isConsoleInput && activeElement.value.length > 0) {
+        return;
+      }
+      e.preventDefault();
+
+      if (cadUtils?.currentToolMode !== 'select' && typeof cadUtils?.setTool === 'function') {
+        cadUtils.setTool('select');
+      }
+
+      const service = this.service;
+      if (service?.demoEntities) {
+        const layerManager = cadUtils?.layerManager;
+        const selectableEntities = service.demoEntities.filter((ent) => {
+          if (!ent || !ent.visible) return false;
+          const layerId = String(ent.data?.layerId || '0');
+          const layer = layerManager?.layers?.get(layerId);
+          if (layer && (layer.locked || !layer.visible)) return false;
+          return true;
+        });
+
+        service.editingEntities = [];
+        service.deselectAllSegments();
+        service.deselectAllHandles();
+        service.selectedEntities = [...selectableEntities];
+
+        if (service.selectionManager?._notifySelectionChanged) {
+          service.selectionManager._notifySelectionChanged();
+        }
+        cadUtils?.selectionRenderEngine?.updateEntitiesStroke();
+        cadUtils?.selectionRenderEngine?.renderBezierHandles();
+        if (window.paper?.view) window.paper.view.update();
+      }
+      return;
+    }
 
     // 4. Deshacer / Rehacer
     if (isCtrlOrCmd && e.key.toLowerCase() === 'z' && !e.shiftKey) {
       e.preventDefault();
       if (cadUtils?.finishCurrentDrawing) cadUtils.finishCurrentDrawing();
       this.service?.undo();
-      if (cadUtils?.selectionRenderEngine?.updateEntitiesStroke) cadUtils.selectionRenderEngine.updateEntitiesStroke();
-      if (cadUtils?.selectionRenderEngine?.renderBezierHandles) cadUtils.selectionRenderEngine.renderBezierHandles();
+      cadUtils?.selectionRenderEngine?.updateEntitiesStroke();
+      cadUtils?.selectionRenderEngine?.renderBezierHandles();
       return;
     }
 
@@ -74,68 +125,71 @@ export class InputDispatcher {
       e.preventDefault();
       if (cadUtils?.finishCurrentDrawing) cadUtils.finishCurrentDrawing();
       this.service?.redo();
-      if (cadUtils?.selectionRenderEngine?.updateEntitiesStroke) cadUtils.selectionRenderEngine.updateEntitiesStroke();
-      if (cadUtils?.selectionRenderEngine?.renderBezierHandles) cadUtils.selectionRenderEngine.renderBezierHandles();
+      cadUtils?.selectionRenderEngine?.updateEntitiesStroke();
+      cadUtils?.selectionRenderEngine?.renderBezierHandles();
       return;
     }
 
-    // 5. Teclas de función y atajos directos
-    if (e.key === 'F3') {
-      e.preventDefault();
-      this.service?.toggleSnapMaster();
-    } else if (e.key === 'F7') {
-      e.preventDefault();
-      if (this.service.viewportManager?.toggleGrid) this.service.viewportManager.toggleGrid();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
+    // Si el foco ya está en el input de la consola, ConsoleManager maneja Enter, Espacio, Escape y Delete
+    if (isConsoleInput) {
+      return;
+    }
 
-      if (cadUtils?.closeAllMenus) cadUtils.closeAllMenus();
-      if (cadUtils) cadUtils.selectedHandle = null;
+    // 5. Delegar primero a la herramienta activa si intercepta la tecla
+    if (activeTool && typeof activeTool.onKeyDown === 'function') {
+      const handled = activeTool.onKeyDown(e);
+      if (handled) return;
+    }
 
-      if (cadUtils?.activePath) {
-        cadUtils.activePath.remove();
-        cadUtils.activePath = null;
-        if (cadUtils.finishCurrentDrawing) cadUtils.finishCurrentDrawing();
-        if (cadUtils.setTool) cadUtils.setTool('select');
-      } else if (cadUtils?.currentToolMode === 'trim') {
-        this.service.trimCuttingBoundaries = [];
-        this.service.isTrimCuttingPhase = false;
-        this.service.deselectAllEditingEntities();
-        if (cadUtils.setTool) cadUtils.setTool('select');
-      } else {
-        const selectedEntities = this.service?.selectedEntities || [];
-        const selectedSegments = this.service?.selectedSegments || [];
-        const editingEntities = this.service?.editingEntities || [];
+    // 6. Re-evaluar cursor dinámico al presionar Shift (Ortho)
+    if (e.key === 'Shift' && cadUtils?.lastMousePoint && cadUtils?.activePath && activeTool) {
+      activeTool.onMouseMove({ point: cadUtils.lastMousePoint.clone(), event: e });
+      return;
+    }
 
-        if (selectedEntities.length > 0 || selectedSegments.length > 0) {
-          this.service.deselectAllEntities();
-        } else if (editingEntities.length > 0) {
-          this.service.deselectAllEditingEntities();
-        }
-        if (cadUtils?.setTool) cadUtils.setTool('select');
-      }
-    } else if (e.key === 'Delete' || e.key === 'Backspace') {
+    // 7. Borrado de elementos seleccionados
+    if (e.key === 'Delete' || e.key === 'Backspace') {
       if (cadUtils?.deleteSelectedHandleOrSegment) {
         cadUtils.deleteSelectedHandleOrSegment();
       } else {
         this.service?.deleteSelectedElements();
       }
-    } else if (e.key === 'Enter' || e.key === ' ') {
-      if (cadUtils?.currentToolMode === 'trim') {
-        if (activeTool && typeof activeTool.confirmTrimBoundaries === 'function') {
-          activeTool.confirmTrimBoundaries();
-          return;
-        }
+      return;
+    }
+
+    // 8. Escape, Enter y Espacio pasan por la máquina de estados de la consola
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      if (cadUtils?.closeAllMenus) cadUtils.closeAllMenus();
+      if (cadUtils) cadUtils.selectedHandle = null;
+      if (consoleManager) consoleManager.handleCancel();
+      return;
+    }
+
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      if (cadUtils?.currentToolMode === 'trim' && typeof activeTool?.confirmTrimBoundaries === 'function') {
+        activeTool.confirmTrimBoundaries();
+        return;
       }
-      if (cadUtils?.finishCurrentDrawing) cadUtils.finishCurrentDrawing();
-    } else if (cadUtils?.setTool) {
-      const key = e.key.toLowerCase();
-      if (key === 'l') cadUtils.setTool('line');
-      else if (key === 'p') cadUtils.setTool('polyline');
-      else if (key === 's') cadUtils.setTool('spline');
-      else if (key === 'b') cadUtils.setTool('bezier');
-      else if (key === 't') cadUtils.setTool('trim');
-      else if (key === 'e' && !isCtrlOrCmd) cadUtils.setTool('extend');
+      if (consoleManager) {
+        const currentText = consoleManager.fixedUI?.input?.value || '';
+        if (consoleManager.fixedUI?.input) consoleManager.fixedUI.input.value = '';
+        if (consoleManager.floatingUI?.input) consoleManager.floatingUI.input.value = '';
+        consoleManager.handleExecute(currentText);
+      }
+      return;
+    }
+
+    // 9. Estilo Rhino 3D: Cualquier tecla imprimible va directo a la consola
+    if (!isCtrlOrCmd && !e.altKey && e.key.length === 1) {
+      const targetInput = (consoleManager?.floatingUI?.isOpen && consoleManager.floatingUI.input)
+        ? consoleManager.floatingUI.input
+        : consoleManager?.fixedUI?.input;
+
+      if (targetInput) {
+        targetInput.focus();
+      }
     }
   }
 

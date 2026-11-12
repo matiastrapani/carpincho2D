@@ -15,12 +15,12 @@ export class CADToolbarComponent {
         <div class="flex flex-wrap items-center justify-between gap-2 w-full h-6 min-h-[24px]">
           
           <!-- OSNAP & Filtros -->
-          <div class="h-6 flex items-center gap-1.5 overflow-x-auto max-w-full shrink-0 z-11">
-            <button id="btnSnap" class="cad-button cad-button-square snap-btn active h-6 w-6 tooltip-top" data-tooltip="OSNAP [F3]">
+          <div class="h-6 flex items-center gap-1 max-w-full shrink-0 z-11">
+            <button id="btnSnap" type="button" class="cad-button cad-button-square snap-btn active h-6 w-6 tooltip-top-left" data-tooltip="Refobj [F3]">
               <i id="btnSnapIcon" class="fa-solid fa-magnet text-[10px]"></i>
             </button>
 
-            <button id="btnGrid" class="cad-button cad-button-square snap-btn active h-6 w-6 tooltip-top" data-tooltip="GRID [F7]">
+            <button id="btnGrid" type="button" class="cad-button cad-button-square snap-btn active h-6 w-6 tooltip-top" data-tooltip="Grilla [F7]">
               <i class="fa-solid fa-border-all text-[10px]"></i>
             </button>
 
@@ -56,12 +56,18 @@ export class CADToolbarComponent {
                 <span class="text-zinc-300 text-[10px] font-bold leading-none">✕</span>
                 <span class="text-[11px] font-medium leading-none">Int</span>
               </div>
-
-              <div id="chipGrid" class="snap-chip rounded px-2 h-6 flex items-center justify-center gap-1.5 shrink-0">
-                <span class="w-1.5 h-1.5 rounded-full bg-zinc-500"></span>
-                <span class="text-[11px] font-medium leading-none">Ajustar a grilla</span>
-              </div>
             </div>
+
+            <div class="flat-divider h-4"></div>
+
+            <div id="chipGrid" class="snap-chip rounded px-2 h-6 flex items-center justify-center gap-1.5 shrink-0">
+              <span class="w-1.5 h-1.5 rounded-full bg-zinc-500"></span>
+              <span class="text-[11px] font-medium leading-none">Ajustar a grilla</span>
+            </div>
+
+            <button id="btnOrtho" type="button" class="snap-chip rounded px-2 h-6 flex items-center justify-center gap-1.5 tooltip-top shrink-0" data-tooltip="Ortogonal [F8]">
+              <span class="text-[11px] font-medium leading-none">Orto</span>
+            </button>
           </div>
 
           <!-- Coordenadas & Zoom -->
@@ -107,11 +113,11 @@ export class CADToolbarComponent {
 
       <!-- Barra de Herramientas Flotante/Acoplada -->
       <div id="verticalToolbar" style="top: 16px; left: 16px; --tool-cols: 1;" class="toolbar-floating dock-left absolute cad-panel p-1 flex flex-col items-center gap-1 z-50 transition-none pointer-events-auto">
-        <div id="toolbarDragHandle" class="drag-handle w-full py-1 flex items-center justify-center text-zinc-500 select-none tracking-widest text-[10px] font-bold" title="Arrastrar para mover">
+        <div id="toolbarDragHandle" class="drag-handle w-full py-1 flex items-center justify-center text-zinc-500 select-none tracking-widest text-[10px] font-bold" data-tooltip-="Arrastrar para mover">
           :::
         </div>
 
-        <div id="toolbarWidthResizer" class="toolbar-resizer" title="Arrastrar para cambiar ancho y columnas"></div>
+        <div id="toolbarWidthResizer" class="toolbar-resizer" data-tooltip-="Arrastrar para cambiar ancho y columnas"></div>
 
         <div id="toolGridContainer" class="tool-grid">
           <button id="btnSelect" class="cad-button cad-button-square" data-tooltip="Seleccionar & Mover Nodos">

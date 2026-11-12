@@ -22,6 +22,10 @@ body, html {
   color: #94a3b8;
 }
 
+button, input, select, textarea {
+  font-family: inherit;
+}
+
 /* ==========================================================================
    2. LIENZO CAD (CANVAS)
    ========================================================================== */
@@ -166,6 +170,33 @@ canvas.tool-trim { cursor: cell; }
   bottom: 100%;
   left: 50%;
   transform: translateX(-50%) translateY(-6px);
+}
+
+[data-tooltip].tooltip-top-left::before,
+.tooltip-top-left[data-tooltip]::before {
+  top: auto;
+  bottom: 100%;
+  left: 0;
+  right: auto;
+  transform: translateY(-6px);
+}
+
+[data-tooltip].tooltip-top-right::before,
+.tooltip-top-right[data-tooltip]::before {
+  bottom: 100%;
+  top: auto;
+  left: auto;
+  right: 0;
+  transform: translateY(-6px);
+}
+
+[data-tooltip].tooltip-bottom-right::before,
+.tooltip-bottom-right[data-tooltip]::before {
+  top: 100%;
+  bottom: auto;
+  left: auto;
+  right: 0;
+  transform: translateY(6px);
 }
 
 .dock-right [data-tooltip]::before,
@@ -374,75 +405,94 @@ canvas.tool-trim { cursor: cell; }
 }
 
 /* ==========================================================================
-   7. CONTROLES Y CHIPS DE SNAPPING (OSNAP & GRID)
+   7. CONTROLES Y CHIPS DE SNAPPING (OSNAP, GRID & ORTHO)
    ========================================================================== */
-.snap-btn {
-  background: transparent;
-  color: #71717a;
-}
-
-.snap-btn:hover {
-  background: transparent !important;
-  color: #e4e4e7 !important;
-}
-
-.snap-btn.active {
-  background: #27272a !important;
-  color: #f4f4f5 !important;
-}
-
-.snap-btn.active:hover {
-  background: #27272a !important;
-  color: #ffffff !important;
-}
-
+.snap-btn,
 .snap-chip {
-  transition: background-color 0.12s ease, color 0.12s ease;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease;
   cursor: pointer;
-  background: transparent;
-  color: #71717a;
+  background-color: #19191f !important;
+  color: #9ca3af !important;
   border: none !important;
   height: 24px;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
-.snap-chip:hover {
-  background: transparent !important;
+/* Acoplar siempre el color de los íconos internos al color del texto (currentColor) */
+.snap-btn i,
+.snap-chip span {
+  color: inherit !important;
+}
+
+.snap-chip .bg-zinc-300,
+.snap-chip .bg-zinc-500 {
+  background-color: currentColor !important;
+}
+
+.snap-chip .border-zinc-300 {
+  border-color: currentColor !important;
+}
+
+.snap-chip .border-b-zinc-300 {
+  border-bottom-color: currentColor !important;
+}
+
+/* Hover en estado apagado */
+.snap-btn:not(.disabled):hover,
+.snap-chip:not(.disabled):hover {
+  background-color: #24242d !important;
   color: #e4e4e7 !important;
 }
 
-.snap-chip:hover span {
-  color: #e4e4e7 !important;
-}
-
+/* Estado activo (encendido) - mayor separación de fondo */
+.cad-button.snap-btn.active,
+.snap-btn.active,
 .snap-chip.active {
-  background: #27272a !important;
+  background-color: #32323c !important;
   color: #f4f4f5 !important;
 }
 
-.snap-chip.active:hover {
-  background: #27272a !important;
+.cad-button.snap-btn.active:not(.disabled):hover,
+.snap-btn.active:not(.disabled):hover,
+.snap-chip.active:not(.disabled):hover {
+  background-color: #3c3c48 !important;
   color: #ffffff !important;
 }
 
-.snap-chips-disabled {
-  opacity: 0.4;
-  pointer-events: none;
-  filter: grayscale(1);
+/* ==========================================================================
+   Estado bloqueado (cuando F3 está desactivado)
+   Mantiene la relación de contraste entre apagado y encendido:
+   - Apagado-bloqueado: fondo #121215 | texto e ícono #3f3f46
+   - Encendido-bloqueado: fondo #19191f | texto e ícono #54545f
+   ========================================================================== */
+.snap-chip.disabled,
+.snap-chips-disabled .snap-chip {
+  background-color: #121215 !important;
+  color: #3f3f46 !important;
+  opacity: 1 !important;
+  cursor: not-allowed !important;
 }
 
-/* Entrada de texto en consola */
-.command-input {
-  background: #121215;
-  border: none !important;
-  color: #f4f4f5;
-  font-family: 'Inter', system-ui, sans-serif;
-  transition: background-color 0.12s ease;
+.snap-chip.disabled.active,
+.snap-chips-disabled .snap-chip.active {
+  background-color: #19191f !important;
+  color: #54545f !important;
 }
 
-.command-input:focus {
-  background: #09090b;
+/* Anular hover en bloqueo */
+.snap-chip.disabled:hover,
+.snap-chips-disabled .snap-chip:hover {
+  background-color: #121215 !important;
+  color: #3f3f46 !important;
+}
+
+.snap-chip.disabled.active:hover,
+.snap-chips-disabled .snap-chip.active:hover {
+  background-color: #19191f !important;
+  color: #54545f !important;
 }
 
 /* ==========================================================================
@@ -561,22 +611,48 @@ input[type="range"].cad-slider::-moz-range-thumb:hover {
 
 
 /* ==========================================================================
-   CONSOLA CAD (FIJA Y FLOTANTE)
+   10. CONSOLA CAD (FIJA Y FLOTANTE)
    ========================================================================== */
+#cmdInput,
+#cmdInputFloating,
+#fixedConsoleSlot input[type="text"],
+.command-input {
+  background-color: #17171c !important;
+  color: #f4f4f5 !important;
+  border: none !important;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
+}
+
+#cmdInput:focus,
+#cmdInputFloating:focus,
+#fixedConsoleSlot input[type="text"]:focus,
+.command-input:focus {
+  background-color: #17171c !important;
+  color: #ffffff !important;
+}
+
+#fixedConsoleLogArea,
+#cmdConsoleLog {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
+}
+
 #fixedConsoleResizer:hover #fixedConsoleResizerVisual,
 #fixedConsoleResizer.is-dragging #fixedConsoleResizerVisual {
   background-color: #008800 !important;
   height: 3px !important;
 }
 
-#cmdConsoleLog::-webkit-scrollbar {
+#cmdConsoleLog::-webkit-scrollbar,
+#fixedConsoleLogArea::-webkit-scrollbar {
   width: 5px;
 }
-#cmdConsoleLog::-webkit-scrollbar-thumb {
+#cmdConsoleLog::-webkit-scrollbar-thumb,
+#fixedConsoleLogArea::-webkit-scrollbar-thumb {
   background: #27272a;
   border-radius: 3px;
 }
-#cmdConsoleLog::-webkit-scrollbar-thumb:hover {
+#cmdConsoleLog::-webkit-scrollbar-thumb:hover,
+#fixedConsoleLogArea::-webkit-scrollbar-thumb:hover {
   background: #008800;
 }
 

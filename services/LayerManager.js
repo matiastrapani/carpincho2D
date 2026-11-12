@@ -164,10 +164,10 @@ export class LayerManager {
     // Purgar selección y edición si la capa se bloquea O se oculta
     if (this.service && ((property === 'locked' && value === true) || (property === 'visible' && value === false))) {
       this._purgeLockedLayerState(layerId);
-      
-      // Sincronizar el panel de propiedades para que vuelva a "Sin selección"
-      if (window.propertyPanelUI) {
-        window.propertyPanelUI.setSelectedEntities(this.service.selectedEntities);
+
+      // Notificar el cambio de selección por el canal estándar del servicio
+      if (this.service.selectionManager?._notifySelectionChanged) {
+        this.service.selectionManager._notifySelectionChanged();
       }
     }
 

@@ -22,14 +22,15 @@ export class CADService {
 
     this.history = new CommandHistory();
     this.isSnapMasterEnabled = true;
+    this.isOrthoEnabled = false;
 
     this.snapFilters = {
       endpoint: true,
       midpoint: true,
       node: true,
       intersection: true,
-      center: true,    // <--- Nuevo filtro
-      quadrant: true,  // <--- Nuevo filtro
+      center: true,
+      quadrant: true,
       grid: false
     };
 
@@ -81,11 +82,17 @@ export class CADService {
     return this.snapFilters[filterKey];
   }
 
+  toggleOrtho() {
+    this.isOrthoEnabled = !this.isOrthoEnabled;
+    return this.isOrthoEnabled;
+  }
+
   calculateOsnap(mousePoint, renderMarkerFn, activePath = null, ignoreContext = null) {
     return this.osnapEngine.calculateOsnap(mousePoint, renderMarkerFn, activePath, ignoreContext);
   }
 
   //SELECTION SECTION
+  
   selectEntity(entity, addToSelection = false) {
     return this.selectionManager.selectEntity(entity, addToSelection);
   }
@@ -133,8 +140,8 @@ export class CADService {
   deleteSelectedElements(renderBezierFn) {
     return this.selectionManager.deleteSelectedElements(renderBezierFn);
   }
-  //SELECTION SECTION
 
+  //SELECTION SECTION
 
   performTrim(targetPath, clickPt, renderBezierFn) {
     return this.geometryEngine.performTrim(targetPath, clickPt, renderBezierFn);

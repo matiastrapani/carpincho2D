@@ -254,15 +254,31 @@ export class CADUIManager {
     const menus = document.querySelectorAll('.flyout-menu');
     menus.forEach(m => m.classList.remove('show'));
   }
-
-  // 3. Botones de acción rápida (Snap, Grid, Extents, OK)
+  
+  // 3. Botones de acción rápida (Snap, Grid, Ortho, Extents, OK)
   bindTogglesAndActions() {
     const btnSnap = document.getElementById('btnSnap');
     if (btnSnap) btnSnap.addEventListener('click', () => this.cadUtils.toggleSnapMaster());
 
     const btnGrid = document.getElementById('btnGrid');
-    if (btnGrid) btnGrid.addEventListener('click', () => this.cadUtils.viewportManager.toggleGrid());
+    if (btnGrid) {
+      btnGrid.addEventListener('click', () => {
+        if (typeof this.cadUtils.toggleGrid === 'function') {
+          this.cadUtils.toggleGrid();
+        } else {
+          this.cadUtils.viewportManager.toggleGrid();
+        }
+      });
+    }
 
+    const btnOrtho = document.getElementById('btnOrtho');
+    if (btnOrtho) {
+      btnOrtho.addEventListener('click', () => {
+        if (typeof this.cadUtils.toggleOrtho === 'function') {
+          this.cadUtils.toggleOrtho();
+        }
+      });
+    }
 
     // Restablecer Zoom al 100% y centrar en Origen (0,0)
     const btnZoomReset = document.getElementById('btnZoomReset');
@@ -355,21 +371,23 @@ export class CADUIManager {
   bindSidebarControls() {
     const rightSidebar = document.getElementById('rightSidebar');
     const sidebarHeader = document.getElementById('sidebarHeader');
-    const sidebarTitleGroup = document.getElementById('sidebarTitleGroup');
     const sidebarContent = document.getElementById('sidebarContent');
     const resizer = document.getElementById('resizer');
     const btnToggleSidebar = document.getElementById('btnToggleSidebar');
-    const sidebarIcon = document.getElementById('sidebarIcon');
+    const btnExpandSidebar = document.getElementById('btnExpandSidebar');
 
     if (!rightSidebar || !btnToggleSidebar) return;
 
     this._sidebarResizeState.rightSidebar = rightSidebar;
     this._sidebarResizeState.resizer = resizer;
+    this._sidebarResizeState.btnExpandSidebar = btnExpandSidebar;
+    this._sidebarResizeState.expandRevealTimer = null;
 
     resizer?.addEventListener('mousedown', () => {
       if (this._sidebarResizeState.isCollapsed) return;
       this._sidebarResizeState.isResizingSidebar = true;
       resizer.classList.add('is-dragging');
+      rightSidebar.style.transition = 'none';
       document.body.style.cursor = 'col-resize';
       document.body.style.userSelect = 'none';
 
@@ -377,26 +395,85 @@ export class CADUIManager {
       window.addEventListener('mouseup', this._onSidebarMouseUp);
     });
 
-    btnToggleSidebar.addEventListener('click', () => {
-      this._sidebarResizeState.isCollapsed = !this._sidebarResizeState.isCollapsed;
-      if (this._sidebarResizeState.isCollapsed) {
-        rightSidebar.style.width = `40px`;
-        sidebarTitleGroup?.classList.add('hidden');
-        sidebarContent?.classList.add('hidden');
-        sidebarHeader?.classList.remove('justify-between', 'pl-2');
-        sidebarHeader?.classList.add('justify-center', 'p-1');
-        if (sidebarIcon) sidebarIcon.className = 'fa-solid fa-chevron-left text-xs';
-        if (resizer) resizer.style.pointerEvents = 'none';
+    const setCollapsedState = (collapsed) => {
+      this._sidebarResizeState.isCollapsed = collapsed;
+      clearTimeout(this._sidebarResizeState.expandRevealTimer);
+      rightSidebar.style.transition = 'width 180ms ease-out';
+
+      if (collapsed) {
+        rightSidebar.classList.add('overflow-hidden');
+        rightSidebar.style.width = '0px';
+        resizer?.classList.add('hidden');
+        resizer?.classList.remove('has-docked-border');
+
+        if (this._dragState.currentDockState === 'docked-right') {
+          this._applyDockState('docked-panel-left');
+        }
+
+        const revealExpandBtn = () => {
+          if (!this._sidebarResizeState.isCollapsed) return;
+          sidebarHeader?.classList.add('hidden');
+          sidebarContent?.classList.add('hidden');
+          this._updateExpandButtonPosition();
+          btnExpandSidebar?.classList.remove('hidden');
+        };
+
+        const onTransitionEnd = (e) => {
+          if (e.propertyName !== 'width') return;
+          rightSidebar.removeEventListener('transitionend', onTransitionEnd);
+          clearTimeout(this._sidebarResizeState.expandRevealTimer);
+          revealExpandBtn();
+        };
+
+        rightSidebar.addEventListener('transitionend', onTransitionEnd);
+        this._sidebarResizeState.expandRevealTimer = setTimeout(() => {
+          rightSidebar.removeEventListener('transitionend', onTransitionEnd);
+          revealExpandBtn();
+        }, 195);
       } else {
-        rightSidebar.style.width = `${this._sidebarResizeState.lastExpandedWidth}px`;
-        sidebarTitleGroup?.classList.remove('hidden');
+        btnExpandSidebar?.classList.add('hidden');
+        sidebarHeader?.classList.remove('hidden');
         sidebarContent?.classList.remove('hidden');
-        sidebarHeader?.classList.remove('justify-center');
-        sidebarHeader?.classList.add('justify-between', 'p-1');
-        if (sidebarIcon) sidebarIcon.className = 'fa-solid fa-chevron-right text-xs';
-        if (resizer) resizer.style.pointerEvents = 'auto';
+        rightSidebar.style.width = `${this._sidebarResizeState.lastExpandedWidth}px`;
+        resizer?.classList.remove('hidden');
+
+        if (this._dragState.currentDockState === 'docked-panel-left') {
+          resizer?.classList.add('has-docked-border');
+        }
+
+        const onExpandEnd = (e) => {
+          if (e.propertyName !== 'width') return;
+          rightSidebar.removeEventListener('transitionend', onExpandEnd);
+          if (!this._sidebarResizeState.isCollapsed) {
+            rightSidebar.classList.remove('overflow-hidden');
+          }
+        };
+
+        rightSidebar.addEventListener('transitionend', onExpandEnd);
+        this._sidebarResizeState.expandRevealTimer = setTimeout(() => {
+          rightSidebar.removeEventListener('transitionend', onExpandEnd);
+          if (!this._sidebarResizeState.isCollapsed) {
+            rightSidebar.classList.remove('overflow-hidden');
+          }
+        }, 195);
       }
-    });
+    };
+
+    btnToggleSidebar.addEventListener('click', () => setCollapsedState(true));
+    btnExpandSidebar?.addEventListener('click', () => setCollapsedState(false));
+  }
+
+  _updateExpandButtonPosition() {
+    const btnExpandSidebar = this._sidebarResizeState.btnExpandSidebar || document.getElementById('btnExpandSidebar');
+    if (!btnExpandSidebar) return;
+
+    const dockState = this._dragState.currentDockState;
+    if (this._sidebarResizeState.isCollapsed && dockState === 'docked-panel-left') {
+      const dockWidth = this._dragState.panelLeftDockContainer?.offsetWidth || 0;
+      btnExpandSidebar.style.right = `${dockWidth + 6}px`;
+    } else {
+      btnExpandSidebar.style.right = '6px';
+    }
   }
 
   bindImageImport() {
@@ -603,7 +680,6 @@ export class CADUIManager {
     if (btnRedo) btnRedo.disabled = !canRedo;
   }
 
-
   _handleDocumentMouseDown(e) {
     // Si el clic ocurre FUERA de cualquier contenedor de flyout/desplegable
     if (!e.target.closest('.has-flyout') && !e.target.closest('.flyout-menu')) {
@@ -629,6 +705,7 @@ export class CADUIManager {
 
   _applyDockState(dockState) {
     const s = this._dragState;
+    const isCollapsed = this._sidebarResizeState.isCollapsed;
     s.currentDockState = dockState;
     
     if (dockState === 'docked-panel-left') {
@@ -636,7 +713,11 @@ export class CADUIManager {
       s.verticalToolbar.className = 'relative cad-panel p-1 flex flex-col items-center gap-1 z-50 toolbar-docked dock-panel-left pointer-events-auto';
       s.verticalToolbar.style.top = '';
       s.verticalToolbar.style.left = '';
-      s.resizer?.classList.add('has-docked-border');
+      if (isCollapsed) {
+        s.resizer?.classList.remove('has-docked-border');
+      } else {
+        s.resizer?.classList.add('has-docked-border');
+      }
     } else {
       s.resizer?.classList.remove('has-docked-border');
 
@@ -645,7 +726,7 @@ export class CADUIManager {
         s.verticalToolbar.className = 'relative cad-panel p-1 flex flex-col items-center gap-1 z-50 toolbar-docked dock-left pointer-events-auto';
         s.verticalToolbar.style.top = '';
         s.verticalToolbar.style.left = '';
-      } else if (dockState === 'docked-right') {
+      } else if (dockState === 'docked-right' && !isCollapsed) {
         s.rightDockContainer?.appendChild(s.verticalToolbar);
         s.verticalToolbar.className = 'relative cad-panel p-1 flex flex-col items-center gap-1 z-50 toolbar-docked dock-right pointer-events-auto';
         s.verticalToolbar.style.top = '';
@@ -655,6 +736,8 @@ export class CADUIManager {
         s.verticalToolbar.className = 'absolute cad-panel p-1 flex flex-col items-center gap-1 z-50 toolbar-floating dock-left pointer-events-auto';
       }
     }
+
+    this._updateExpandButtonPosition();
   }
 
   _handleToolbarMouseMove(e) {
@@ -664,19 +747,32 @@ export class CADUIManager {
     let newX = e.clientX - s.dragOffsetX;
     let newY = e.clientY - s.dragOffsetY;
     newY = Math.max(8, Math.min(newY, window.innerHeight - s.verticalToolbar.offsetHeight - 8));
-    const sidebarRect = s.rightSidebar ? s.rightSidebar.getBoundingClientRect() : { left: window.innerWidth, right: window.innerWidth };
+
+    const isCollapsed = this._sidebarResizeState.isCollapsed;
+    const sidebarRect = (!isCollapsed && s.rightSidebar)
+      ? s.rightSidebar.getBoundingClientRect()
+      : { left: window.innerWidth, right: window.innerWidth };
 
     if (e.clientX <= s.SNAP_THRESHOLD) {
       this._applyDockState('docked-left');
       return;
     }
-    if (Math.abs(e.clientX - sidebarRect.left) <= s.SNAP_THRESHOLD) {
-      this._applyDockState('docked-panel-left');
-      return;
-    }
-    if (e.clientX >= window.innerWidth - s.SNAP_THRESHOLD || e.clientX >= sidebarRect.right - s.SNAP_THRESHOLD) {
-      this._applyDockState('docked-right');
-      return;
+
+    // Con panel colapsado: cualquier acople en el borde derecho va a docked-panel-left (sin margen)
+    if (isCollapsed) {
+      if (e.clientX >= window.innerWidth - s.SNAP_THRESHOLD) {
+        this._applyDockState('docked-panel-left');
+        return;
+      }
+    } else {
+      if (Math.abs(e.clientX - sidebarRect.left) <= s.SNAP_THRESHOLD) {
+        this._applyDockState('docked-panel-left');
+        return;
+      }
+      if (e.clientX >= window.innerWidth - s.SNAP_THRESHOLD || e.clientX >= sidebarRect.right - s.SNAP_THRESHOLD) {
+        this._applyDockState('docked-right');
+        return;
+      }
     }
 
     if (s.currentDockState !== 'floating') this._applyDockState('floating');
@@ -720,6 +816,7 @@ export class CADUIManager {
       document.body.style.cursor = 'default';
       window.removeEventListener('mousemove', this._onToolbarResizeMouseMove);
       window.removeEventListener('mouseup', this._onToolbarResizeMouseUp);
+      this._updateExpandButtonPosition();
     }
   }
 
@@ -745,7 +842,6 @@ export class CADUIManager {
       window.removeEventListener('mouseup', this._onSidebarMouseUp);
     }
   }
-
 
   // --- MÉTODOS DE DESTRUCCIÓN Y CLEANUP ---
   destroy() {

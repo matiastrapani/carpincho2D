@@ -17,7 +17,6 @@ import { ToolManager } from './tools/ToolManager.js';
 
 import { DeleteCommand, AddLineCommand, AddEntityCommand, ImportSVGCommand } from './services/commands/cadCommands.js';
 import { HUDManager } from './ui/HUDManager.js';
-import { CommandBarManager } from './ui/CommandBarManager.js';
 import { CanvasViewportManager } from './services/CanvasViewportManager.js';
 import { SelectionRenderEngine } from './services/renderers/SelectionRenderEngine.js';
 import { InputDispatcher } from './services/input/InputDispatcher.js';
@@ -34,14 +33,13 @@ export class CADUtils {
     this.service = service;
 
     // 2. Módulo de Capas y Propiedades (BYLAYER)
-
     this.layerManager = new LayerManager(this.service, this);
     this.service.layerManager = this.layerManager;
 
     this.propertyManager = new PropertyManager(this.service, this);
     this.service.propertyManager = this.propertyManager;
 
-    this.selectionRenderEngine = new SelectionRenderEngine(window.cadService);
+    this.selectionRenderEngine = new SelectionRenderEngine(this.service);
     this.inputDispatcher = new InputDispatcher(this.service);
     this.ioService = new CADIOService(this.service, this);
 
@@ -55,7 +53,6 @@ export class CADUtils {
     this.isPanning = false;
     this.panStartPoint = null;
     this.lastMousePoint = null;
-    
 
     // 5. Estado de Dibujo Activo y Previsualización Temporal
     this.activePath = null;
@@ -75,12 +72,11 @@ export class CADUtils {
 
     // 8. Sub-Módulos Delegados (UI y Gestor de Herramientas)
     this.hud = new HUDManager(this);
-    this.commandBar = new CommandBarManager(this);
+    this.consoleManager = null;
     this.toolManager = new ToolManager(this.service, this);
 
     // 9. Registro Organizado de Herramientas
     this._registerTools();
-
   }
 
   // Getters/Setters de retrocompatibilidad para el Viewport
@@ -134,9 +130,15 @@ export class CADUtils {
     this.toolManager.registerTool('extend', new ExtendTool(this.service, this));
   }
 
+  setConsoleManager(consoleManager) {
+    this.consoleManager = consoleManager;
+  }
+
   // --- MÉTODOS PUENTE / DELEGADOS HACIA MÓDULOS ---
   setPrompt(text) {
-    this.commandBar.setPrompt(text);
+    if (this.consoleManager) {
+      this.consoleManager.setPrompt(text);
+    }
   }
 
   clearSelectedHandle() {
@@ -214,14 +216,17 @@ export class CADUtils {
     }
   }
 
-  executeCommandLine() {
-    const inputEl = document.getElementById('cmdInput');
-    const val = inputEl?.value.trim();
-    if (inputEl) inputEl.value = '';
-
+  executeCommandLine(rawCmd = null) {
+    const val = (rawCmd !== null ? String(rawCmd) : '').trim();
     if (!val) return;
+
     const upperVal = val.toUpperCase();
 
+    if (upperVal === 'DELETE' || upperVal === 'DEL' || upperVal === 'ERASE') {
+      this.deleteSelectedHandleOrSegment();
+      this.setPrompt('Command:');
+      return;
+    }
     if (upperVal === 'POINT' || upperVal === 'PT') { this.setTool('point'); return; }
     if (upperVal === 'DIVIDE' || upperVal === 'DIV') { this.setTool('divide_count'); return; }
     if (upperVal === 'MEASURE' || upperVal === 'DIST_DIV') { this.setTool('divide_dist'); return; }
@@ -242,13 +247,13 @@ export class CADUtils {
         const parts = val.split(',');
         const x = parseFloat(parts[0]);
         const y = -parseFloat(parts[1]);
-        
+
         if (!isNaN(x) && !isNaN(y)) {
           const newPt = new paper.Point(x, y);
 
           if (this.currentToolMode === 'line') {
             this.activePath.lastSegment.point = newPt;
-            
+
             const cmd = new AddLineCommand(this.service, this.activePath);
             this.service.executeCommand(cmd);
 
@@ -317,17 +322,16 @@ export class CADUtils {
 
   // Selección de herramienta con registro automático en consola
   setTool(toolName) {
+    const previousTool = this.currentToolMode;
     this.isChangingTool = true;
     this.currentToolMode = toolName;
     this.closeAllMenus();
 
-    // 1. RESPALDO INMEDIATO: Guardar selección previa antes de que se limpie por cambio de herramienta
     const isDivisionTool = (toolName === 'divide_count' || toolName === 'divide_dist');
-    const preservedEntities = isDivisionTool 
-      ? this.service.selectedEntities.filter(ent => ent && !ent.data?.isPointEntity) 
+    const preservedEntities = isDivisionTool
+      ? this.service.selectedEntities.filter(ent => ent && !ent.data?.isPointEntity)
       : [];
 
-    // 2. Limpieza de estados de edición de nodos (sin deseleccionar si es división)
     if (toolName !== 'select' && toolName !== 'pan') {
       this.service.editingEntities = [];
       this.service.deselectAllSegments();
@@ -340,18 +344,19 @@ export class CADUtils {
       this.lastActiveToolMode = toolName;
     }
 
-    // 3. Registro en la Consola / Historial
-    if (this.commandBar && typeof this.commandBar.logUserCommand === 'function') {
-      // Solo loguea el cambio de herramienta si NO es un setTool('select') repetitivo en estado select
-      if (toolName !== 'select' || this.currentToolMode !== 'select') {
-        this.commandBar.logUserCommand(toolName.toUpperCase());
+    if (this.consoleManager) {
+      if (toolName === 'select' || toolName === 'pan') {
+        this.consoleManager.setPrompt('Command:');
+      } else {
+        if (previousTool !== toolName) {
+          this.consoleManager.logSystem(`Comando: ${toolName.toUpperCase()}`);
+        }
+        this.consoleManager.state = 'COMMAND_ACTIVE';
       }
     }
 
-    // 4. Cambiar herramienta en ToolManager (esto ejecuta cancel() de la tool previa)
     this.toolManager.setTool(toolName);
 
-    // 5. RESTAURACIÓN Y TRANSICIÓN DIRECTA: Restaurar selección y saltar al paso de ingreso
     if (isDivisionTool && preservedEntities.length > 0) {
       this.service.selectedEntities = [...preservedEntities];
       this.divisionSelectedEntities = [...preservedEntities];
@@ -363,11 +368,10 @@ export class CADUtils {
     }
 
     this.isChangingTool = false;
-    
-    // 6. Actualización de clases visuales en Botones de UI
+
     const allButtons = document.querySelectorAll('.cad-button');
     allButtons.forEach(btn => btn.classList.remove('active'));
-    
+
     const btnSnap = document.getElementById('btnSnap');
     if (btnSnap && this.service.isSnapMasterEnabled) {
       btnSnap.classList.add('active');
@@ -376,6 +380,10 @@ export class CADUtils {
     const btnGrid = document.getElementById('btnGrid');
     if (btnGrid && this.isGridVisible) {
       btnGrid.classList.add('active');
+    }
+    const btnOrtho = document.getElementById('btnOrtho');
+    if (btnOrtho && this.service.isOrthoEnabled) {
+      btnOrtho.classList.add('active');
     }
 
     const toolBtnMap = {
@@ -408,7 +416,6 @@ export class CADUtils {
       if (this.hud) this.hud.clear();
     }
 
-    // 7. Actualización del icono y de la herramienta por defecto del botón Flyout
     const iconMap = {
       'point': { btn: 'btnPointGroup', icon: 'currentPointIcon', name: 'custom:dot' },
       'divide_count': { btn: 'btnPointGroup', icon: 'currentPointIcon', name: 'custom:divide' },
@@ -442,39 +449,36 @@ export class CADUtils {
 
   toggleSnapMaster() {
     const isEnabled = this.service.toggleSnapMaster();
+    const btnSnap = document.getElementById('btnSnap');
+    if (btnSnap) btnSnap.classList.toggle('active', isEnabled);
 
-    const btn = document.getElementById('btnSnap');
-    const icon = document.getElementById('btnSnapIcon');
-    if (btn) btn.classList.toggle('active', isEnabled);
-    if (icon) {
-      icon.className = isEnabled 
-        ? 'fa-solid fa-magnet text-[10px] text-zinc-100' 
-        : 'fa-solid fa-magnet text-[10px] text-zinc-500';
-    }
-
-    const chipContainer = document.getElementById('chipEndpoint')?.parentElement;
-    if (chipContainer) {
-      chipContainer.classList.toggle('snap-chips-disabled', !isEnabled);
-    }
-
-    if (!isEnabled && this.hud) {
-      this.hud.clear();
-    }
+    const osnapFilters = ['endpoint', 'midpoint', 'center', 'quadrant', 'node', 'intersection'];
+    osnapFilters.forEach(filter => {
+      const chip = document.getElementById(`chip${filter.charAt(0).toUpperCase() + filter.slice(1)}`);
+      if (!chip) return;
+      chip.classList.toggle('disabled', !isEnabled);
+      chip.classList.toggle('active', Boolean(this.service.snapFilters[filter]));
+    });
   }
 
   toggleSnapFilter(filterKey) {
+    if (filterKey !== 'grid' && !this.service.isSnapMasterEnabled) return;
     const isActive = this.service.toggleSnapFilter(filterKey);
-    const chipMap = {
-      endpoint: 'chipEndpoint',
-      midpoint: 'chipMidpoint',
-      center: 'chipCenter',
-      quadrant: 'chipQuadrant',
-      node: 'chipNode',
-      intersection: 'chipIntersection',
-      grid: 'chipGrid'
-    };
-    const chip = document.getElementById(chipMap[filterKey]);
+    const chip = document.getElementById(`chip${filterKey.charAt(0).toUpperCase() + filterKey.slice(1)}`);
     if (chip) chip.classList.toggle('active', isActive);
+  }
+
+  toggleGrid() {
+    if (!this.viewportManager?.toggleGrid) return;
+    this.viewportManager.toggleGrid();
+    const btnGrid = document.getElementById('btnGrid');
+    if (btnGrid) btnGrid.classList.toggle('active', this.isGridVisible);
+  }
+
+  toggleOrtho() {
+    const isEnabled = this.service.toggleOrtho();
+    const btnOrtho = document.getElementById('btnOrtho');
+    if (btnOrtho) btnOrtho.classList.toggle('active', isEnabled);
   }
 
   closeAllMenus() {
@@ -503,13 +507,13 @@ export class CADUtils {
     return this.ioService.setupDragAndDrop(canvasElement || this.canvasElement);
   }
 
-  applyOrthoConstraint(fromPt, toPt, isShiftPressed) {
-    if (!isShiftPressed || !fromPt || !toPt) return toPt;
+  applyOrthoConstraint(fromPt, toPt, isShiftPressed = false) {
+    const effectiveOrtho = Boolean(this.service?.isOrthoEnabled) !== Boolean(isShiftPressed);
+    if (!effectiveOrtho || !fromPt || !toPt) return toPt;
 
     const dx = Math.abs(toPt.x - fromPt.x);
     const dy = Math.abs(toPt.y - fromPt.y);
 
-    // Si el desplazamiento horizontal es mayor, mantiene Y fija; de lo contrario mantiene X fija.
     if (dx > dy) {
       return new paper.Point(toPt.x, fromPt.y);
     } else {
@@ -563,8 +567,8 @@ export class CADUtils {
       this.cadUI.cleanup();
     }
 
-    if (this.commandBarManager && typeof this.commandBarManager.cleanup === 'function') {
-      this.commandBarManager.cleanup();
+    if (this.consoleManager && typeof this.consoleManager.cleanup === 'function') {
+      this.consoleManager.cleanup();
     }
 
     if (this.layerPanelUI && typeof this.layerPanelUI.cleanup === 'function') {
@@ -586,7 +590,7 @@ export class CADUtils {
     if (this.viewportManager && typeof this.viewportManager.cleanup === 'function') {
       this.viewportManager.cleanup();
     }
-    
+
     if (this.hud && typeof this.hud.cleanup === 'function') {
       this.hud.cleanup();
     }
@@ -594,9 +598,8 @@ export class CADUtils {
     if (this.ioService && typeof this.ioService.cleanup === 'function') {
       this.ioService.cleanup();
     }
-    
+
     this.activePath = null;
     this.rubberBandLine = null;
   }
-
 }

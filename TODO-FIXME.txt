@@ -15,3 +15,10 @@ pasar todo a iconos personalizados usar solo iconify
 aumentar solo 1px el espesor de la seleccion
 el export svg exporta los colores de la seleccion, y los puntos escalados por zoom
 
+usar data-tooltips
+el bloqueo del osnap se ve igual que el estado apagado del osnap deberia estar bloqueado y sin hover
+los botones en el estado apagado deben mostrar el fondo del boton tambien 
+orto para select, polyline, bezier y spline
+separacion gridsnap y orto
+quitar barra de desplazamiento lateral osnaps
+ocultar barra de panel al colapsar y dejar solo boton de desplegado

@@ -28,3 +28,8 @@
 1. **Plan antes de código:** Antes de escribir JS, explicar en español qué archivos y métodos se tocan (máximo 2 archivos), por qué es la solución definitiva y qué puede verse afectado. Esperar aprobación explícita.
 2. **Solo Métodos Completos:** Nunca entregar archivos enteros ni fragmentos sueltos de 2 líneas. Entregar siempre **el método completo** desde su firma `nombreMetodo(...) {` hasta su llave de cierre `}`, indicando claramente a qué clase pertenece.
 3. **Chats atómicos:** Una tarea por chat. Al terminar y verificar en navegador, hacer `git commit` y abrir chat nuevo adjuntando este `ARCHITECTURE.md`.
+
+## 7. Estándares de Interfaz y Estilo (UI / CSS)
+- **Tipografía Única:** Toda la interfaz (incluyendo `<button>`, `<input>`, `<select>`, consola y tooltips) debe usar exclusivamente la familia `'Inter', sans-serif`. Prohibido mezclar `font-mono` o fuentes del sistema en controles de UI.
+- **Sistema Único de Tooltips:** Todo tooltip de la aplicación debe implementarse mediante el atributo `data-tooltip="..."` (y clases de alineación como `tooltip-top`, `tooltip-top-left`). Prohibido usar el atributo nativo `title="..."` del navegador.
+- **Modularidad CSS:** Al igual que los módulos JS, los archivos CSS deben mantenerse acotados (< 350 líneas) y dividirse por dominio funcional cuando crezcan.
