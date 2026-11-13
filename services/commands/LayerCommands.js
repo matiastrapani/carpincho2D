@@ -17,7 +17,16 @@ export class CreateLayerCommand {
         this.createdLayerId = layer.id;
       }
     } else {
-      this.manager.layers.set(this.createdLayerId, { ...this.layerData, id: this.createdLayerId });
+      this.manager.layers.set(this.createdLayerId, {
+        ...this.layerData,
+        id: this.createdLayerId,
+        paperGroup: null
+      });
+      if (typeof this.manager.ensureLayerGroups === 'function') {
+        this.manager.ensureLayerGroups();
+      } else if (typeof this.manager.syncZOrder === 'function') {
+        this.manager.syncZOrder();
+      }
     }
     
     if (this.panelUI && typeof this.panelUI.refresh === 'function') {
@@ -99,14 +108,12 @@ export class DeleteLayerCommand {
     this.affectedEntities = [];
 
     if (this.cadService && Array.isArray(this.cadService.entities)) {
-      // Iterar en reversa por si eliminamos elementos del array
       for (let i = this.cadService.entities.length - 1; i >= 0; i--) {
         const ent = this.cadService.entities[i];
         if (ent.data && String(ent.data.layerId) === this.layerId) {
           this.affectedEntities.push(ent);
 
           if (this.targetLayerId) {
-            // Opción A: Reasignar a la capa elegida
             ent.data.layerId = this.targetLayerId;
             const targetLayer = this.manager.layers.get(this.targetLayerId);
             if (targetLayer) {
@@ -116,7 +123,6 @@ export class DeleteLayerCommand {
               }
             }
           } else {
-            // Opción B: Eliminar entidades del lienzo y de la selección
             if (typeof this.cadService.deselectEntity === 'function') {
               this.cadService.deselectEntity(ent);
             }
@@ -127,23 +133,22 @@ export class DeleteLayerCommand {
       }
     }
 
-    // Si la capa eliminada era la activa, activar fallback
     if (String(this.manager.activeLayerId) === this.layerId) {
-      const fallbackId = this.targetLayerId || Array.from(this.manager.layers.keys()).find(id => String(id) !== this.layerId);
+      const fallbackId = this.targetLayerId || Array.from(this.manager.layers.keys()).find((id) => String(id) !== this.layerId);
       if (fallbackId) {
         this.manager.setActiveLayer(fallbackId);
       }
     }
 
     this.manager.deleteLayer(this.layerId);
-    this.panelUI?._syncPaperZIndex();
+    this.manager.syncZOrder();
     this.panelUI?.refresh();
 
-    if (this.panelUI?.utils?.selectionRenderEngine?.updateEntitiesStroke) {
-      this.panelUI.utils.selectionRenderEngine.updateEntitiesStroke();
+    if (this.manager.utils?.selectionRenderEngine?.updateEntitiesStroke) {
+      this.manager.utils.selectionRenderEngine.updateEntitiesStroke();
     }
-    if (window.paper?.view) {
-      window.paper.view.update();
+    if (paper?.view) {
+      paper.view.update();
     }
   }
 
@@ -157,7 +162,6 @@ export class DeleteLayerCommand {
       if (ent.data) ent.data.layerId = this.layerId;
 
       if (this.targetLayerId) {
-        // Estaban movidas: devolverlas al grupo/visibilidad de la capa restaurada
         if (restoredLayer) {
           ent.visible = restoredLayer.visible !== false;
           if (restoredLayer.paperGroup) {
@@ -165,13 +169,12 @@ export class DeleteLayerCommand {
           }
         }
       } else {
-        // Estaban eliminadas: reinsertarlas en Paper.js y entities
         if (restoredLayer?.paperGroup) {
           restoredLayer.paperGroup.addChild(ent);
-        } else if (this.panelUI?.utils?.drawLayer) {
-          this.panelUI.utils.drawLayer.addChild(ent);
-        } else if (window.paper?.project?.activeLayer) {
-          window.paper.project.activeLayer.addChild(ent);
+        } else if (this.manager.utils?.drawLayer) {
+          this.manager.utils.drawLayer.addChild(ent);
+        } else if (paper?.project?.activeLayer) {
+          paper.project.activeLayer.addChild(ent);
         }
         if (restoredLayer) {
           ent.visible = restoredLayer.visible !== false;
@@ -186,14 +189,14 @@ export class DeleteLayerCommand {
       this.manager.setActiveLayer(this.oldActiveLayerId);
     }
 
-    this.panelUI?._syncPaperZIndex();
+    this.manager.syncZOrder();
     this.panelUI?.refresh();
 
-    if (this.panelUI?.utils?.selectionRenderEngine?.updateEntitiesStroke) {
-      this.panelUI.utils.selectionRenderEngine.updateEntitiesStroke();
+    if (this.manager.utils?.selectionRenderEngine?.updateEntitiesStroke) {
+      this.manager.utils.selectionRenderEngine.updateEntitiesStroke();
     }
-    if (window.paper?.view) {
-      window.paper.view.update();
+    if (paper?.view) {
+      paper.view.update();
     }
   }
 }
@@ -259,27 +262,18 @@ export class ReorderLayersCommand {
   }
 
   execute() {
-    this.manager.setActiveLayer(this.newLayerId);
-    this.panelUI.refresh();
+    this.manager.layers = new Map(this.newOrderEntries);
+    this.manager.syncZOrder();
+    if (this.panelUI && typeof this.panelUI.refresh === 'function') {
+      this.panelUI.refresh();
+    }
   }
 
   undo() {
-    // Restaurar estado previo de la capa que se había activado si no quedó activa
-    const layer = this.manager.layers.get(this.newLayerId);
-    if (layer && String(this.oldLayerId) !== String(this.newLayerId)) {
-      layer.visible = this.wasVisible;
-      layer.locked = this.wasLocked;
-      
-      if (!this.wasVisible && this.manager.service?.entities) {
-        this.manager.service.entities.forEach(ent => {
-          if (ent.data && String(ent.data.layerId) === String(this.newLayerId)) {
-            ent.visible = false;
-          }
-        });
-      }
+    this.manager.layers = new Map(this.oldOrderEntries);
+    this.manager.syncZOrder();
+    if (this.panelUI && typeof this.panelUI.refresh === 'function') {
+      this.panelUI.refresh();
     }
-
-    this.manager.setActiveLayer(this.oldLayerId);
-    this.panelUI.refresh();
   }
 }

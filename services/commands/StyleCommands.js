@@ -58,6 +58,9 @@ export class UpdateEntityPropertyCommand {
   _applyState(state) {
     if (!this.entities || this.entities.length === 0) return;
 
+    const layerManager = this.utils?.layerManager || this.service?.layerManager || window.cadUtils?.layerManager;
+    let hasLayerChange = false;
+
     this.entities.forEach((entity, idx) => {
       if (!entity.data) entity.data = {};
       const entityState = Array.isArray(state) ? state[idx] : state;
@@ -71,12 +74,24 @@ export class UpdateEntityPropertyCommand {
         }
       });
 
+      if (entityState.layerId !== undefined && layerManager) {
+        hasLayerChange = true;
+        if (typeof layerManager.ensureLayerGroups === 'function') {
+          layerManager.ensureLayerGroups();
+        }
+        layerManager.assignEntityToLayer(entity, entityState.layerId);
+      }
+
       if (entityState.name !== undefined) entity.name = entityState.name;
       if (entityState.opacity !== undefined) entity.opacity = entityState.opacity;
       if (entityState.origOpacity !== undefined && !entityState.opacityByLayer) entity.opacity = entityState.origOpacity;
       if (entityState.strokeColor !== undefined) entity.strokeColor = entityState.strokeColor;
       if (entityState.origStrokeColor !== undefined && !entityState.colorByLayer) entity.strokeColor = entityState.origStrokeColor;
     });
+
+    if (hasLayerChange && layerManager && typeof layerManager.syncZOrder === 'function') {
+      layerManager.syncZOrder();
+    }
 
     if (this.utils?.selectionRenderEngine?.updateEntitiesStroke) {
       this.utils.selectionRenderEngine.updateEntitiesStroke();

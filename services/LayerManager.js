@@ -2,59 +2,129 @@
  * LayerManager.js - Gestión de capas, visibilidad, bloqueo y propiedades BYLAYER.
  */
 
+import { CAD_THEME } from '../config/cadTheme.js';
 
 export class LayerManager {
   constructor(cadService, cadUtils) {
     this.service = cadService;
     this.utils = cadUtils;
 
-    // Capa por defecto
     this.activeLayerId = '0';
     this.layers = new Map();
+    this._listeners = new Set();
 
     this.initDefaultLayers();
   }
 
+  subscribe(listener) {
+    if (typeof listener === 'function') {
+      this._listeners.add(listener);
+    }
+    return () => this._listeners.delete(listener);
+  }
+
+  _notify() {
+    this._listeners.forEach((listener) => listener());
+  }
+
   initDefaultLayers() {
-    // Capa base estándar CAD ('0')
     this.createLayer({
       id: '0',
-      name: '0',
-      color: '#18fcf1',
+      name: 'Capa 0',
+      color: CAD_THEME.properties.customFallbackColor,
       strokeWidth: 0,
       visible: true,
       locked: false
     });
   }
 
-  createLayer({ id, name, color = '#18fcf1', strokeWidth = 0, visible = true, locked = false } = {}) {
-    const layerId = id || `layer_${Date.now()}`;
-    
+  createLayer({ id, name, color, strokeWidth = 0, visible = true, locked = false } = {}) {
+    const layerId = String(id || `layer_${Date.now()}`);
+    const resolvedColor = color || CAD_THEME.properties.customFallbackColor;
+
     if (this.layers.has(layerId)) {
       console.warn(`La capa ${layerId} ya existe.`);
       return this.layers.get(layerId);
     }
 
-    // Crear grupo / capa nativa en Paper.js dentro de drawLayer
     let paperLayer = null;
-    if (paper && this.utils.drawLayer) {
+    if (typeof paper !== 'undefined' && this.utils?.drawLayer) {
       this.utils.drawLayer.activate();
       paperLayer = new paper.Group();
       paperLayer.name = `layer_group_${layerId}`;
+      paperLayer.visible = visible !== false;
     }
 
     const layerData = {
       id: layerId,
       name: name || `Capa ${this.layers.size + 1}`,
-      color: color,
-      strokeWidth: strokeWidth,
-      visible: visible,
-      locked: locked,
+      color: resolvedColor,
+      strokeWidth,
+      visible,
+      locked,
       paperGroup: paperLayer
     };
 
     this.layers.set(layerId, layerData);
+    this.syncZOrder();
+    this._notify();
     return layerData;
+  }
+
+  previewLayerVisuals(layerId, { color, opacity } = {}) {
+    const layer = this.layers.get(String(layerId));
+    if (!layer) return false;
+
+    if (color !== undefined) {
+      layer.color = color;
+    }
+    if (opacity !== undefined) {
+      layer.opacity = opacity;
+    }
+
+    if (this.utils?.selectionRenderEngine?.updateEntitiesStroke) {
+      this.utils.selectionRenderEngine.updateEntitiesStroke();
+    }
+    if (paper?.view) {
+      paper.view.update();
+    }
+
+    this._notify();
+    return true;
+  }
+
+  syncZOrder() {
+    if (!this.layers) return;
+
+    const layerList = Array.from(this.layers.values());
+    const layerOrderMap = new Map();
+    layerList.forEach((layer, idx) => layerOrderMap.set(String(layer.id), idx));
+
+    if (Array.isArray(this.service?.entities)) {
+      this.service.entities.forEach((ent) => {
+        const targetLayer = this.layers.get(String(ent.data?.layerId || '0'));
+        if (targetLayer?.paperGroup && ent.parent !== targetLayer.paperGroup) {
+          targetLayer.paperGroup.addChild(ent);
+        }
+      });
+
+      this.service.entities.sort((a, b) => {
+        const orderA = layerOrderMap.get(String(a.data?.layerId || '0')) ?? 999;
+        const orderB = layerOrderMap.get(String(b.data?.layerId || '0')) ?? 999;
+        return orderB - orderA;
+      });
+    }
+
+    for (let i = layerList.length - 1; i >= 0; i--) {
+      const layer = layerList[i];
+      if (layer.paperGroup && typeof layer.paperGroup.bringToFront === 'function') {
+        layer.paperGroup.bringToFront();
+      }
+    }
+
+    if (typeof paper !== 'undefined' && paper.view) {
+      paper.view.update();
+    }
   }
 
   deleteLayer(id) {
@@ -76,24 +146,23 @@ export class LayerManager {
         this.setActiveLayer(firstAvailableId);
       }
     }
-
+    this._notify();
     return true;
   }
   
   setActiveLayer(layerId) {
     const key = String(layerId);
     if (!this.layers.has(key)) return false;
-    
+
     this.activeLayerId = key;
     const layer = this.layers.get(key);
-    
+
     if (layer) {
       layer.visible = true;
       layer.locked = false;
 
-      // Hacer visibles los elementos gráficos vinculados a esta capa
       if (this.service && Array.isArray(this.service.entities)) {
-        this.service.entities.forEach(ent => {
+        this.service.entities.forEach((ent) => {
           if (ent.data && String(ent.data.layerId) === key) {
             ent.visible = true;
           }
@@ -105,10 +174,36 @@ export class LayerManager {
       }
     }
 
-    if (window.paper?.view) {
-      window.paper.view.update();
+    if (paper?.view) {
+      paper.view.update();
     }
 
+    this._notify();
+    return true;
+  }
+
+  updateLayerProperty(id, property, value) {
+    const layerId = String(id);
+    const layer = this.layers.get(layerId);
+    if (!layer) return false;
+
+    layer[property] = value;
+
+    if (this.service && ((property === 'locked' && value === true) || (property === 'visible' && value === false))) {
+      this._purgeLockedLayerState(layerId);
+
+      if (this.service.selectionManager?._notifySelectionChanged) {
+        this.service.selectionManager._notifySelectionChanged();
+      }
+    }
+
+    if (this.utils) {
+      this.utils.selectionRenderEngine.updateEntitiesStroke();
+      this.utils.selectionRenderEngine.renderBezierHandles();
+      if (paper?.view) paper.view.update();
+    }
+
+    this._notify();
     return true;
   }
 
@@ -154,32 +249,6 @@ export class LayerManager {
     }
   }
 
-  updateLayerProperty(id, property, value) {
-    const layerId = String(id);
-    const layer = this.layers.get(layerId);
-    if (!layer) return false;
-
-    layer[property] = value;
-
-    // Purgar selección y edición si la capa se bloquea O se oculta
-    if (this.service && ((property === 'locked' && value === true) || (property === 'visible' && value === false))) {
-      this._purgeLockedLayerState(layerId);
-
-      // Notificar el cambio de selección por el canal estándar del servicio
-      if (this.service.selectionManager?._notifySelectionChanged) {
-        this.service.selectionManager._notifySelectionChanged();
-      }
-    }
-
-    if (this.utils) {
-      this.utils.selectionRenderEngine.updateEntitiesStroke();
-      this.utils.selectionRenderEngine.renderBezierHandles();
-      if (paper?.view) paper.view.update();
-    }
-
-    return true;
-  }
-
   _purgeLockedLayerState(layerId) {
     if (!this.service) return;
     const idStr = String(layerId);
@@ -202,19 +271,48 @@ export class LayerManager {
   }
 
   assignEntityToLayer(entity, layerId) {
-    if (!entity || !this.layers.has(layerId)) return;
+    if (!entity) return;
 
-    const layer = this.layers.get(layerId);
+    const key = String(layerId || this.activeLayerId || '0');
+    const layer = this.layers.get(key) || this.layers.get('0');
+    if (!layer) return;
+
     entity.data = entity.data || {};
-    entity.data.layerId = layerId;
+    entity.data.layerId = layer.id;
 
     // Asignar color heredado BYLAYER si no tiene color propio forzado
-    if (entity.data.useColorByLayer !== false) {
+    if (entity.data.useColorByLayer !== false && entity.data.colorByLayer !== false) {
       entity.data.origStrokeColor = layer.color;
     }
 
-    if (layer.paperGroup && !layer.paperGroup.children.includes(entity)) {
+    if (layer.paperGroup && entity.parent !== layer.paperGroup) {
       layer.paperGroup.addChild(entity);
     }
+
+    entity.visible = layer.visible !== false;
+  }
+
+  ensureLayerGroups() {
+    if (typeof paper === 'undefined') return;
+    const drawLayer = this.utils?.drawLayer || paper.project?.layers?.['drawLayer'];
+    if (!drawLayer) return;
+
+    this.layers.forEach((layer) => {
+      const hasValidGroup = Boolean(
+        layer.paperGroup &&
+        layer.paperGroup.parent &&
+        layer.paperGroup.layer === drawLayer
+      );
+
+      if (!hasValidGroup) {
+        const paperLayer = new paper.Group();
+        paperLayer.name = `layer_group_${layer.id}`;
+        paperLayer.visible = layer.visible !== false;
+        drawLayer.addChild(paperLayer);
+        layer.paperGroup = paperLayer;
+      }
+    });
+
+    this.syncZOrder();
   }
 }

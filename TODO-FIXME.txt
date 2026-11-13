@@ -15,4 +15,6 @@ pasar todo a iconos personalizados usar solo iconify
 aumentar solo 1px el espesor de la seleccion
 el export svg exporta los colores de la seleccion, y los puntos escalados por zoom
 
-usar data-tooltips
+usar data-tooltips en capas?
+poner ... en nombre de capas largos
+nombre entidades con #

@@ -94,7 +94,7 @@ export class PropertyDefaultsView {
           <span class="text-[11px] text-zinc-400 w-[55px] shrink-0">Color</span>
           <div class="flex items-center flex-1 min-w-0 gap-1.5">
             <div class="tooltip-bottom flex items-center shrink-0" data-tooltip="Cambiar color">
-              <input type="color" id="defColorPicker" value="${hexColor}" class="w-[22px] h-[22px] rounded cursor-pointer border-none outline-none p-0 bg-transparent">
+              <button type="button" id="defColorPicker" data-color="${hexColor}" style="background-color: ${hexColor}" class="w-[22px] h-[22px] rounded cursor-pointer border-0 outline-none p-0 shrink-0"></button>
             </div>
             <div class="relative flex-1 min-w-0 flex items-center">
               <select id="defColorSelect" class="w-full bg-[#17171c] hover:bg-[#27272a] text-zinc-200 text-[11px] px-2 py-1 rounded outline-none cursor-pointer appearance-none pr-5">
@@ -186,7 +186,9 @@ export class PropertyDefaultsView {
       const activeLayer = layerManager ? layerManager.getActiveLayer() : null;
 
       if (defaults.color === 'BYLAYER' && colorPicker) {
-        colorPicker.value = this.getHexColor(activeLayer ? activeLayer.color : defaultColor);
+        const nextHex = this.getHexColor(activeLayer ? activeLayer.color : defaultColor);
+        colorPicker.dataset.color = nextHex;
+        colorPicker.style.backgroundColor = nextHex;
       }
 
       if (defaults.opacity === 'BYLAYER' && opacityInput) {
@@ -204,7 +206,7 @@ export class PropertyDefaultsView {
 
     colorSelect?.addEventListener('change', (e) => {
       const oldVal = defaults.color;
-      const newVal = e.target.value === 'BYLAYER' ? 'BYLAYER' : (colorPicker ? colorPicker.value : customFallbackColor);
+      const newVal = e.target.value === 'BYLAYER' ? 'BYLAYER' : (colorPicker?.dataset.color || customFallbackColor);
       if (oldVal !== newVal) {
         this.onDispatchDefaultCommand({ color: oldVal }, { color: newVal });
       }

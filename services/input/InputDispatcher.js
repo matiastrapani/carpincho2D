@@ -9,6 +9,7 @@ export class InputDispatcher {
     // Guardar referencias vinculadas para desenganche limpio
     this._onKeyDown = this.handleGlobalKeydown.bind(this);
     this._onKeyUp = this.handleGlobalKeyup.bind(this);
+    this._onWindowBlur = this._handleWindowBlur.bind(this);
 
     this.setupListeners();
   }
@@ -16,11 +17,16 @@ export class InputDispatcher {
   setupListeners() {
     window.addEventListener('keydown', this._onKeyDown);
     window.addEventListener('keyup', this._onKeyUp);
+    window.addEventListener('blur', this._onWindowBlur);
   }
 
   cleanup() {
     window.removeEventListener('keydown', this._onKeyDown);
     window.removeEventListener('keyup', this._onKeyUp);
+    window.removeEventListener('blur', this._onWindowBlur);
+    if (this.service) {
+      this.service.isSnapSuspendedByAlt = false;
+    }
     this._cadService = null;
   }
 
@@ -49,7 +55,7 @@ export class InputDispatcher {
 
     const isCtrlOrCmd = e.ctrlKey || e.metaKey;
 
-    // 2. Teclas de función hardware (F3 Snap, F7 Grid, F8 Ortho) funcionan siempre
+    // 2. Teclas de función hardware (F3 Snap, F7 Grid, F8 Ortho, F9 Grid Snap) funcionan siempre
     if (e.key === 'F3') {
       e.preventDefault();
       if (cadUtils?.toggleSnapMaster) cadUtils.toggleSnapMaster();
@@ -68,6 +74,30 @@ export class InputDispatcher {
         cadUtils.toggleOrtho();
       } else {
         this.service?.toggleOrtho();
+      }
+      return;
+    }
+    if (e.key === 'F9') {
+      e.preventDefault();
+      if (cadUtils?.toggleSnapFilter) {
+        cadUtils.toggleSnapFilter('grid');
+      } else {
+        this.service?.toggleSnapFilter('grid');
+      }
+      if (cadUtils?.refreshActivePreview) {
+        cadUtils.refreshActivePreview();
+      }
+      return;
+    }
+
+    // 2b. Alt mantenido: suspende temporalmente OSNAP y Grid Snap (estilo Rhino)
+    if (e.key === 'Alt' || e.keyCode === 18) {
+      e.preventDefault();
+      if (!e.repeat && this.service) {
+        this.service.isSnapSuspendedByAlt = true;
+        if (cadUtils?.refreshActivePreview) {
+          cadUtils.refreshActivePreview();
+        }
       }
       return;
     }
@@ -197,9 +227,30 @@ export class InputDispatcher {
   handleGlobalKeyup(e) {
     const cadUtils = window.cadUtils;
 
+    if (e.key === 'Alt' || e.keyCode === 18) {
+      e.preventDefault();
+      if (this.service) {
+        this.service.isSnapSuspendedByAlt = false;
+      }
+      if (cadUtils?.refreshActivePreview) {
+        cadUtils.refreshActivePreview();
+      }
+      return;
+    }
+
     if (e.key === 'Shift' || e.keyCode === 16) {
       if (cadUtils?.refreshActivePreview) {
         cadUtils.refreshActivePreview(false);
+      }
+    }
+  }
+
+  _handleWindowBlur() {
+    if (this.service && this.service.isSnapSuspendedByAlt) {
+      this.service.isSnapSuspendedByAlt = false;
+      const cadUtils = window.cadUtils;
+      if (cadUtils && typeof cadUtils.refreshActivePreview === 'function') {
+        cadUtils.refreshActivePreview();
       }
     }
   }

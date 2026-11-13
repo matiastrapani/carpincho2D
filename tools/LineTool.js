@@ -34,46 +34,49 @@ export class LineTool extends BaseTool {
     const propMgr = this.utils.propertyManager;
 
     if (!this.utils.activePath) {
-      this.utils.activePath = new paper.Path.Line({
-        from: pt, 
+      const draftPath = new paper.Path.Line({
+        from: pt,
         to: pt
       });
-
-      if (!this.utils.activePath.data) this.utils.activePath.data = {};
-
-      const lineName = this.utils.generateNextEntityName ? this.utils.generateNextEntityName('Línea') : 'Línea 1';
-      this.utils.activePath.name = lineName;
-      this.utils.activePath.data.name = lineName;
+      draftPath.data = {
+        isDynamicStroke: true,
+        baseStrokeWidth: 1
+      };
 
       if (propMgr) {
-        propMgr.applyDefaultSettings(this.utils.activePath);
+        propMgr.applyDefaultSettings(draftPath);
       }
 
+      this.utils.activePath = draftPath;
       this.utils.selectionRenderEngine.updateEntitiesStroke();
       this.setPrompt('Especifique el punto final de la línea:');
     } else {
-      this.utils.activePath.lastSegment.point = pt;
-      
-      const cmd = new AddLineCommand(this.service, this.utils.activePath);
-      this.service.executeCommand(cmd);
+      const startPt = this.utils.activePath.firstSegment.point;
+      if (startPt.getDistance(pt) < 0.001) {
+        return;
+      }
+
+      const confirmedLine = this.utils.activePath;
+      confirmedLine.lastSegment.point = pt;
+      this.utils.activePath = null;
+
+      this.commitNewEntity(confirmedLine, 'Línea', AddLineCommand);
 
       const startNextPt = pt.clone();
-      const nextPath = new paper.Path.Line({
+      const nextDraftPath = new paper.Path.Line({
         from: startNextPt,
         to: startNextPt
       });
-
-      if (!nextPath.data) nextPath.data = {};
-
-      const nextLineName = this.utils.generateNextEntityName ? this.utils.generateNextEntityName('Línea') : 'Línea 1';
-      nextPath.name = nextLineName;
-      nextPath.data.name = nextLineName;
+      nextDraftPath.data = {
+        isDynamicStroke: true,
+        baseStrokeWidth: 1
+      };
 
       if (propMgr) {
-        propMgr.applyDefaultSettings(nextPath);
+        propMgr.applyDefaultSettings(nextDraftPath);
       }
 
-      this.utils.activePath = nextPath;
+      this.utils.activePath = nextDraftPath;
       this.utils.selectionRenderEngine.updateEntitiesStroke();
 
       if (this.utils.rubberBandLine) {

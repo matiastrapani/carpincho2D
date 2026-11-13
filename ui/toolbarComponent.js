@@ -12,70 +12,71 @@ export class CADToolbarComponent {
     this.container.innerHTML = `    
       <!-- Barra Inferior de Control -->
       <div class="relative w-full p-2 bg-[#121215] flex flex-col gap-1 pt-1 z-10 pointer-events-auto">
-        <div class="flex flex-wrap items-center justify-between gap-2 w-full h-6 min-h-[24px]">
+        <div class="flex flex-wrap items-center justify-between gap-2 w-full h-5">
           
           <!-- OSNAP & Filtros -->
-          <div class="h-6 flex items-center gap-1 max-w-full shrink-0 z-11">
-            <button id="btnSnap" type="button" class="cad-button cad-button-square snap-btn active h-6 w-6 tooltip-top-left" data-tooltip="Refobj [F3]">
+          <div class="h-5 flex items-center gap-1 max-w-full shrink-0 z-11">
+            <button id="btnSnap" type="button" class="cad-button cad-button-square snap-btn active h-5 w-6 tooltip-top-left" data-tooltip="Refobj [F3]">
               <i id="btnSnapIcon" class="fa-solid fa-magnet text-[10px]"></i>
             </button>
 
-            <button id="btnGrid" type="button" class="cad-button cad-button-square snap-btn active h-6 w-6 tooltip-top" data-tooltip="Grilla [F7]">
+            <button id="btnGrid" type="button" class="cad-button cad-button-square snap-btn active h-5 w-6 tooltip-top" data-tooltip="Grilla [F7]">
               <i class="fa-solid fa-border-all text-[10px]"></i>
             </button>
 
             <div class="flat-divider h-4"></div>
 
-            <div class="flex items-center gap-1 text-xs h-6">
-              <div id="chipEndpoint" class="snap-chip active rounded px-2 h-6 flex items-center justify-center gap-1.5 shrink-0">
+            <div class="flex items-center gap-1 text-xs h-5">
+              <button id="chipEndpoint" type="button" class="snap-chip active rounded px-2 h-5 flex items-center justify-center gap-1.5 tooltip-top shrink-0">
                 <span class="w-1.5 h-1.5 bg-zinc-300 rounded-none"></span>
                 <span class="text-[11px] font-medium leading-none">Fin</span>
-              </div>
+              </button>
 
-              <div id="chipMidpoint" class="snap-chip active rounded px-2 h-6 flex items-center justify-center gap-1.5 shrink-0">
+              <button id="chipMidpoint" type="button" class="snap-chip active rounded px-2 h-5 flex items-center justify-center gap-1.5 tooltip-top shrink-0">
                 <span class="w-0 h-0 border-l-[3px] border-l-transparent border-r-[3px] border-r-transparent border-b-[6px] border-b-zinc-300"></span>
                 <span class="text-[11px] font-medium leading-none">Medio</span>
-              </div>
+              </button>
 
-              <div id="chipCenter" class="snap-chip active rounded px-2 h-6 flex items-center justify-center gap-1.5 shrink-0">
+              <button id="chipCenter" type="button" class="snap-chip active rounded px-2 h-5 flex items-center justify-center gap-1.5 tooltip-top shrink-0">
                 <span class="w-1.5 h-1.5 rounded-full border border-zinc-300"></span>
                 <span class="text-[11px] font-medium leading-none">Centro</span>
-              </div>
+              </button>
 
-              <div id="chipQuadrant" class="snap-chip active rounded px-2 h-6 flex items-center justify-center gap-1.5 shrink-0">
+              <button id="chipQuadrant" type="button" class="snap-chip active rounded px-2 h-5 flex items-center justify-center gap-1.5 tooltip-top shrink-0">
                 <span class="w-1.5 h-1.5 bg-zinc-300 rotate-45 transform"></span>
                 <span class="text-[11px] font-medium leading-none">Cuad</span>
-              </div>
+              </button>
 
-              <div id="chipNode" class="snap-chip active rounded px-2 h-6 flex items-center justify-center gap-1.5 shrink-0">
+              <button id="chipNode" type="button" class="snap-chip active rounded px-2 h-5 flex items-center justify-center gap-1.5 tooltip-top shrink-0">
                 <span class="w-1.5 h-1.5 rounded-full bg-zinc-300"></span>
                 <span class="text-[11px] font-medium leading-none">Punto</span>
-              </div>
+              </button>
 
-              <div id="chipIntersection" class="snap-chip active rounded px-2 h-6 flex items-center justify-center gap-1.5 shrink-0">
+              <button id="chipIntersection" type="button" class="snap-chip active rounded px-2 h-5 flex items-center justify-center gap-1.5 tooltip-top shrink-0">
                 <span class="text-zinc-300 text-[10px] font-bold leading-none">✕</span>
                 <span class="text-[11px] font-medium leading-none">Int</span>
-              </div>
+              </button>
             </div>
 
             <div class="flat-divider h-4"></div>
 
-            <div id="chipGrid" class="snap-chip rounded px-2 h-6 flex items-center justify-center gap-1.5 shrink-0">
-              <span class="w-1.5 h-1.5 rounded-full bg-zinc-500"></span>
-              <span class="text-[11px] font-medium leading-none">Ajustar a grilla</span>
-            </div>
-
-            <button id="btnOrtho" type="button" class="snap-chip rounded px-2 h-6 flex items-center justify-center gap-1.5 tooltip-top shrink-0" data-tooltip="Ortogonal [F8]">
+            <button id="btnOrtho" type="button" class="snap-chip rounded px-2 h-5 flex items-center justify-center gap-1.5 tooltip-top shrink-0" data-tooltip="Ortogonal [F8]">
               <span class="text-[11px] font-medium leading-none">Orto</span>
             </button>
+
+            <button id="chipGrid" type="button" class="snap-chip rounded px-2 h-5 flex items-center justify-center gap-1.5 tooltip-top shrink-0" data-tooltip="Ajustar a grilla [F9]">
+              <span class="text-[11px] font-medium leading-none">Ajustar a grilla</span>
+            </button>
+
+
           </div>
 
           <!-- Coordenadas & Zoom -->
-          <div class="h-6 flex items-center gap-1 text-xs shrink-0 font-sans ml-auto">
+          <div class="h-5 flex items-center gap-1 text-xs shrink-0 font-sans ml-auto">
             <div class="flat-divider h-4 shrink-0 hidden sm:block"></div>
             
-            <div class="hidden sm:flex items-center gap-1 px-1 h-6 shrink-0">
-              <div class="flex items-center gap-1 h-6">
+            <div class="hidden sm:flex items-center gap-1 px-1 h-5 shrink-0">
+              <div class="flex items-center gap-1 h-5">
                 <span class="text-zinc-500 font-bold leading-none">X:</span>
                 <span id="hudX" class="hud-value text-zinc-300 min-w-[55px] text-right font-medium text-[11px] leading-none">0.00</span>
               </div>
@@ -83,8 +84,8 @@ export class CADToolbarComponent {
             
             <div class="flat-divider h-4 shrink-0 hidden sm:block"></div>
             
-            <div class="hidden sm:flex items-center gap-1 px-1 h-6 shrink-0">
-              <div class="flex items-center gap-1 h-6">
+            <div class="hidden sm:flex items-center gap-1 px-1 h-5 shrink-0">
+              <div class="flex items-center gap-1 h-5">
                 <span class="text-zinc-500 font-bold leading-none">Y:</span>
                 <span id="hudY" class="hud-value text-zinc-300 min-w-[55px] text-right font-medium text-[11px] leading-none">0.00</span>
               </div>
@@ -92,15 +93,15 @@ export class CADToolbarComponent {
 
             <div class="flat-divider h-4 shrink-0 hidden sm:block"></div>
 
-            <button id="btnZoomReset" class="hidden md:flex cad-button rounded items-center gap-1.5 px-2 h-6 shrink-0 text-zinc-400 hover:text-zinc-100 tooltip-top cursor-pointer" data-tooltip="Restablecer vista a 100% (Origen 0,0)">
+            <button id="btnZoomReset" class="hidden md:flex cad-button rounded items-center gap-1.5 px-2 h-5 shrink-0 text-zinc-400 hover:text-zinc-100 tooltip-top cursor-pointer" data-tooltip="Restablecer vista a 100% (Origen 0,0)">
               <span class="text-zinc-500 font-medium text-[10px] leading-none pointer-events-none">ZOOM:</span>
               <span id="hudZoom" class="hud-value text-zinc-300 min-w-[32px] text-right font-medium text-[11px] leading-none pointer-events-none">100%</span>
             </button>
 
             <div class="flat-divider h-4 shrink-0 hidden sm:block"></div>
 
-            <div class="hidden md:flex items-center gap-1 h-6 shrink-0">
-              <button id="btnExtents" class="cad-button cad-button-square h-6 w-6 text-zinc-400 hover:text-zinc-100 tooltip-top shrink-0" data-tooltip="Ajustar Vista (Extents)">
+            <div class="hidden md:flex items-center gap-1 h-5 shrink-0">
+              <button id="btnExtents" class="cad-button cad-button-square h-5 w-6 text-zinc-400 hover:text-zinc-100 tooltip-top shrink-0" data-tooltip="Ajustar Vista (Extents)">
                 <i class="fa-solid fa-compress-arrows-alt text-[10px]"></i>
               </button>
             </div>

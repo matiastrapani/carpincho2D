@@ -33,10 +33,17 @@ const onLoadHandler = () => {
 
   // 3. Inicializar Administradores de UI
   window.cadUI = new CADUIManager(window.cadUtils, window.cadService);
+  window.cadService.onHistoryChange = () => window.cadUI.updateUndoRedoUI();
   window.layerPanelUI = new LayerPanelUI(window.cadUtils, 'layerPanelContainer');
+
   window.propertyPanelUI = new PropertyPanelUI(window.cadUtils, 'propertyPanelContainer', {
     layerPanelUI: window.layerPanelUI,
     paperInstance: window.paper
+  });
+
+  window.cadUtils.layerManager.subscribe(() => {
+    window.layerPanelUI.refresh();
+    window.propertyPanelUI.refresh();
   });
 
   // 4. Cargar entidades iniciales y refrescar visuales

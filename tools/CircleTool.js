@@ -51,26 +51,8 @@ export class CircleTool extends BaseTool {
     if (!this.centerPoint || isNaN(radius) || radius <= 0.001) return;
 
     const circleEntity = this.service.createCircleEntity(this.centerPoint, radius, true, 1);
-
     if (circleEntity) {
-      if (!circleEntity.data) circleEntity.data = {};
-      circleEntity.data.isCircleEntity = true;
-
-      const circleName = this.utils.generateNextEntityName ? this.utils.generateNextEntityName('Círculo') : 'Círculo';
-      circleEntity.name = circleName;
-      circleEntity.data.name = circleName;
-
-      if (this.utils.propertyManager) {
-        this.utils.propertyManager.applyDefaultSettings(circleEntity);
-      }
-
-      // Registrar comando en el historial para Undo / Redo
-      const cmd = new AddEntityCommand(this.service, circleEntity);
-      this.service.executeCommand(cmd);
-
-      if (this.utils?.selectionRenderEngine?.updateEntitiesStroke) {
-        this.utils.selectionRenderEngine.updateEntitiesStroke();
-      }
+      this.commitNewEntity(circleEntity, 'Círculo');
     }
 
     this.resetTool();

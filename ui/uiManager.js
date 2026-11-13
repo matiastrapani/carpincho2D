@@ -621,10 +621,10 @@ export class CADUIManager {
       btnUndo.addEventListener('click', (e) => {
         e.preventDefault();
         if (this.cadUtils && this.cadService) {
-          this.cadUtils.finishCurrentDrawing(); // Cancela o cierra cualquier trazo en progreso
+          this.cadUtils.finishCurrentDrawing?.();
           this.cadService.undo();
-          this.cadUtils.selectionRenderEngine.updateEntitiesStroke();
-          this.cadUtils.selectionRenderEngine.renderBezierHandles();
+          this.cadUtils.selectionRenderEngine?.updateEntitiesStroke();
+          this.cadUtils.selectionRenderEngine?.renderBezierHandles();
           paper.view.update();
           this.updateUndoRedoUI();
         }
@@ -637,10 +637,10 @@ export class CADUIManager {
       btnRedo.addEventListener('click', (e) => {
         e.preventDefault();
         if (this.cadUtils && this.cadService) {
-          this.cadUtils.finishCurrentDrawing();
+          this.cadUtils.finishCurrentDrawing?.();
           this.cadService.redo();
-          this.cadUtils.selectionRenderEngine.updateEntitiesStroke();
-          this.cadUtils.selectionRenderEngine.renderBezierHandles();
+          this.cadUtils.selectionRenderEngine?.updateEntitiesStroke();
+          this.cadUtils.selectionRenderEngine?.renderBezierHandles();
           paper.view.update();
           this.updateUndoRedoUI();
         }
@@ -649,12 +649,9 @@ export class CADUIManager {
 
     // 3. Botón Exportar a SVG
     const btnExport = document.getElementById('btnHeaderExportSVG');
-
     if (btnExport) {
       btnExport.addEventListener('click', (e) => {
         e.preventDefault();
-        
-        // Invocación directa a la nueva función de ioService
         if (window.cadIO && typeof window.cadIO.exportSVG === 'function') {
           window.cadIO.exportSVG('sketch.svg');
         }
@@ -665,16 +662,16 @@ export class CADUIManager {
   updateUndoRedoUI() {
     const btnUndo = document.getElementById('btnHeaderUndo');
     const btnRedo = document.getElementById('btnHeaderRedo');
-    const history = this.cadService?.history || window.cadService?.history;
+    const history = this.cadService?.history;
     if (!history) return;
 
-    const canUndo = typeof history.canUndo === 'function' 
-      ? history.canUndo() 
-      : (history.undoStack && history.undoStack.length > 0);
+    const canUndo = typeof history.canUndo === 'function'
+      ? history.canUndo()
+      : Boolean(history.undoStack?.length);
 
-    const canRedo = typeof history.canRedo === 'function' 
-      ? history.redoStack.length > 0 
-      : (history.redoStack && history.redoStack.length > 0);
+    const canRedo = typeof history.canRedo === 'function'
+      ? history.canRedo()
+      : Boolean(history.redoStack?.length);
 
     if (btnUndo) btnUndo.disabled = !canUndo;
     if (btnRedo) btnRedo.disabled = !canRedo;

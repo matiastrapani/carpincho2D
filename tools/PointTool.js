@@ -336,7 +336,7 @@ export class PointTool extends BaseTool {
           this.service.editingEntities = [];
           this.service.deselectAllSegments();
           if (this.utils.selectionRenderEngine.renderBezierHandles) this.utils.selectionRenderEngine.renderBezierHandles();
-          if (this.utils.selectionRenderEngine.selectionRenderEngine.updateEntitiesStroke) this.utils.selectionRenderEngine.selectionRenderEngine.updateEntitiesStroke();
+          if (this.utils.selectionRenderEngine.updateEntitiesStroke) this.utils.selectionRenderEngine.updateEntitiesStroke();
 
           const count = this.utils.divisionSelectedEntities.length;
           this.setPrompt(`Objetivos seleccionados: ${count}. Presiona ENTER o Clic Derecho para continuar...`);

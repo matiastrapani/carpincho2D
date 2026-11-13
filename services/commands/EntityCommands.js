@@ -9,13 +9,21 @@ export class AddLineCommand {
   }
 
   execute() {
-    if (!this.lineEntity.parent) {
-      paper.project.activeLayer.addChild(this.lineEntity);
+    const utils = this.cadService.utils;
+    const layerManager = utils?.layerManager;
+
+    if (layerManager) {
+      const targetLayerId = String(this.lineEntity.data?.layerId || layerManager.activeLayerId || '0');
+      layerManager.assignEntityToLayer(this.lineEntity, targetLayerId);
+    } else if (!this.lineEntity.parent) {
+      (utils?.drawLayer || paper.project.activeLayer).addChild(this.lineEntity);
     }
-    
+
     if (!this.cadService.entities.includes(this.lineEntity)) {
       this.cadService.entities.push(this.lineEntity);
     }
+
+    layerManager?.syncZOrder();
   }
 
   undo() {
@@ -39,13 +47,25 @@ export class AddPointCommand {
   execute() {
     if (!this.pointEntity) return;
 
-    if (!this.pointEntity.parent) {
-      paper.project.activeLayer.addChild(this.pointEntity);
+    const utils = this.service.utils;
+    const layerManager = utils?.layerManager;
+
+    if (layerManager) {
+      const targetLayerId = String(this.pointEntity.data?.layerId || layerManager.activeLayerId || '0');
+      layerManager.assignEntityToLayer(this.pointEntity, targetLayerId);
+    } else if (!this.pointEntity.parent) {
+      (utils?.drawLayer || paper.project.activeLayer).addChild(this.pointEntity);
     }
+
     if (!this.service.entities.includes(this.pointEntity)) {
       this.service.entities.push(this.pointEntity);
     }
-    paper.view.update();
+
+    if (layerManager) {
+      layerManager.syncZOrder();
+    } else if (typeof paper !== 'undefined' && paper.view) {
+      paper.view.update();
+    }
   }
 
   undo() {
@@ -74,7 +94,9 @@ export class AddEntityCommand {
   }
 
   execute() {
-    const drawLayer = window.cadUtils?.drawLayer || paper.project.activeLayer;
+    const utils = this.cadService.utils || window.cadUtils;
+    const layerManager = utils?.layerManager;
+    const drawLayer = utils?.drawLayer || paper.project.activeLayer;
     const existingSet = new Set(this.cadService.entities);
 
     this.entities.forEach(ent => {
@@ -82,47 +104,54 @@ export class AddEntityCommand {
         this.cadService.entities.push(ent);
       }
 
-      if (!ent.parent || ent.layer !== drawLayer) {
+      if (layerManager) {
+        const targetLayerId = String(ent.data?.layerId || layerManager.activeLayerId || '0');
+        layerManager.assignEntityToLayer(ent, targetLayerId);
+      } else if (!ent.parent || ent.layer !== drawLayer) {
         drawLayer.addChild(ent);
       }
 
       if (ent instanceof paper.Raster || ent.className === 'Raster') {
         ent.sendToBack();
-        if (window.cadUtils?.gridGroup) {
-          window.cadUtils.gridGroup.sendToBack();
+        if (utils?.gridGroup) {
+          utils.gridGroup.sendToBack();
         }
       }
     });
 
-    if (window.cadUtils?.selectionRenderEngine) {
-      window.cadUtils.selectionRenderEngine.updateEntitiesStroke();
-      window.cadUtils.selectionRenderEngine.renderBezierHandles();
+    layerManager?.syncZOrder();
+
+    if (utils?.selectionRenderEngine) {
+      utils.selectionRenderEngine.updateEntitiesStroke();
+      utils.selectionRenderEngine.renderBezierHandles();
     }
-    paper.view.update();
+    if (typeof paper !== 'undefined' && paper.view) {
+      paper.view.update();
+    }
   }
 
   undo() {
+    const utils = this.cadService.utils || window.cadUtils;
     const setToRemove = new Set(this.entities);
 
     if (Array.isArray(this.cadService.entities)) {
       this.cadService.entities = this.cadService.entities.filter(ent => !setToRemove.has(ent));
     }
 
-    if (Array.isArray(this.cadService.selectedEntities)) {
-      this.cadService.selectedEntities = this.cadService.selectedEntities.filter(ent => !setToRemove.has(ent));
-    }
-
     this.entities.forEach(ent => {
+      this.cadService.deselectEntity(ent);
       if (ent && typeof ent.remove === 'function') {
         ent.remove();
       }
     });
 
-    if (window.cadUtils?.selectionRenderEngine) {
-      window.cadUtils.selectionRenderEngine.updateEntitiesStroke();
-      window.cadUtils.selectionRenderEngine.renderBezierHandles();
+    if (utils?.selectionRenderEngine) {
+      utils.selectionRenderEngine.updateEntitiesStroke();
+      utils.selectionRenderEngine.renderBezierHandles();
     }
-    paper.view.update();
+    if (typeof paper !== 'undefined' && paper.view) {
+      paper.view.update();
+    }
   }
 }
 
@@ -154,6 +183,8 @@ export class ImportSVGCommand {
       }
       ent.visible = true;
     });
+
+    layerManager?.syncZOrder();
 
     if (window.layerPanelUI && typeof window.layerPanelUI.refresh === 'function') window.layerPanelUI.refresh();
     if (this.utils) {

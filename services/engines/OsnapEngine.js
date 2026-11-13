@@ -8,6 +8,11 @@ export class OsnapEngine {
   }
 
   calculateOsnap(mousePoint, renderMarkerFn, activePath = null, ignoreContext = null) {
+    if (this.service.isSnapSuspendedByAlt === true) {
+      if (renderMarkerFn) renderMarkerFn(null, null);
+      return { point: mousePoint, type: null };
+    }
+
     const zoom = paper.view.zoom;
     const snapRadius = 14 / zoom;
     const EPSILON = 0.01;

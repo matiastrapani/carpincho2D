@@ -1,4 +1,6 @@
 export function populateentities(cadService) {
+  const layerManager = cadService.utils?.layerManager;
+
   const rect = new paper.Path.Rectangle({
     point: [-180, -120],
     size: [120, 80],
@@ -50,8 +52,17 @@ export function populateentities(cadService) {
   };
   cadService.entities.push(curve);
 
-  cadService.createPointEntity(new paper.Point(-120, -120), { layerId: '0', colorByLayer: true });
-  cadService.createPointEntity(new paper.Point(-60, -120), { layerId: '0', colorByLayer: true });
+  const pt1 = cadService.createPointEntity(new paper.Point(-120, -120), { layerId: '0', colorByLayer: true });
+  const pt2 = cadService.createPointEntity(new paper.Point(-60, -120), { layerId: '0', colorByLayer: true });
+
+  if (layerManager) {
+    [rect, poly, curve, pt1, pt2].forEach((ent) => {
+      if (ent) {
+        layerManager.assignEntityToLayer(ent, '0');
+      }
+    });
+    layerManager.syncZOrder();
+  }
 
   cadService.utils?.selectionRenderEngine?.updateEntitiesStroke?.();
 }

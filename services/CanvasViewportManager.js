@@ -53,6 +53,7 @@ export class CanvasViewportManager {
     this.hudLayer.bringToFront();
 
     this.drawLayer.activate();
+    this.utils.layerManager?.ensureLayerGroups();
 
     this.setupPaperTool();
     if (window.cadIO?.setupDragAndDrop) window.cadIO.setupDragAndDrop();

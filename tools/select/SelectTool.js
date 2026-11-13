@@ -191,9 +191,6 @@ export class SelectTool extends BaseTool {
       });
 
       this.utils.selectionRenderEngine.renderBezierHandles();
-      if (this.dragState.pivotPoint && !this.dragState.isPivotFromPoint) {
-        this.utils.renderPivotMarker(this.dragState.pivotPoint);
-      }
     } else {
       if (!isShift) {
         this.service.deselectAllEntities();

@@ -50,10 +50,25 @@ export class SelectionRenderEngine {
         }
 
         ent.strokeWidth = strokeWidthPx / zoom;
-        ent.bringToFront();
       }
     });
     if (paper.view) paper.view.update();
+  }
+
+  _getSelectionMultiplier(entity) {
+    const styleConfig = entity?.data?.isCircleEntity
+      ? (typeof CAD_THEME !== 'undefined' && CAD_THEME?.selection?.circle ? CAD_THEME.selection.circle : {})
+      : (typeof CAD_THEME !== 'undefined' && CAD_THEME?.selection?.line ? CAD_THEME.selection.line : {});
+    return styleConfig.widthMultiplier || 1.5;
+  }
+
+  _getResolvedStrokeWidth(entity, mult = 1, zoom = 1) {
+    const propertyManager = this.service?.utils?.propertyManager || window.cadUtils?.propertyManager;
+    const effectiveBaseWidth = propertyManager
+      ? propertyManager.getResolvedStrokeWidth(entity)
+      : (entity?.data?.baseStrokeWidth !== undefined ? entity.data.baseStrokeWidth : 0);
+
+    return effectiveBaseWidth === 0 ? (1 * mult) / zoom : effectiveBaseWidth * mult;
   }
 
   updateEntitiesStroke() {
@@ -91,8 +106,9 @@ export class SelectionRenderEngine {
         ? layerOpacity 
         : (ent.data.origOpacity !== undefined ? ent.data.origOpacity : (ent.opacity ?? 1.0));
 
-      const isSelected = !isLayerLocked && this.service?.selectedEntities?.includes(ent);
-      const isHovered = !isLayerLocked && this.service?.hoveredEntity === ent;
+      const isEditing = Boolean(this.service?.editingEntities?.includes(ent));
+      const isSelected = !isLayerLocked && Boolean(this.service?.selectedEntities?.includes(ent));
+      const isHovered = !isLayerLocked && !isEditing && (this.service?.hoveredEntity === ent);
 
       // NODOS / PUNTOS
       if (ent.data.isPointEntity) {
@@ -151,10 +167,6 @@ export class SelectionRenderEngine {
           ? propertyManager.getResolvedColor(ent) 
           : (ent.data.origStrokeColor || '#00e5ff');
 
-        const effectiveBaseWidth = propertyManager 
-          ? propertyManager.getResolvedStrokeWidth(ent) 
-          : (ent.data.baseStrokeWidth !== undefined ? ent.data.baseStrokeWidth : 0);
-
         if (isSelected) {
           ent.opacity = 1.0;
           ent.strokeColor = styleConfig.strokeColor || '#ffff00';
@@ -173,30 +185,30 @@ export class SelectionRenderEngine {
           }
         }
 
-        let mult = isSelected ? (styleConfig.widthMultiplier || 1.5) : 1;
-        if (isHovered && !isSelected) {
-          mult *= 1.5;
-        }
-
-        if (effectiveBaseWidth === 0) {
-          ent.strokeWidth = (1 * mult) / zoom;
-        } else {
-          ent.strokeWidth = effectiveBaseWidth * mult;
-        }
+        const highlightMult = this._getSelectionMultiplier(ent);
+        const mult = (isSelected || isHovered) ? highlightMult : 1;
+        ent.strokeWidth = this._getResolvedStrokeWidth(ent, mult, zoom);
       }
     });
   }
 
   renderBezierHandles() {
     if (this.controlHandlesGroup) this.controlHandlesGroup.remove();
-    this.controlHandlesGroup = new paper.Group();
+    this.controlHandlesGroup = new paper.Group({ insert: false });
+
+    const cadUtils = this.service?.utils || window.cadUtils || {};
+    const nodesLayer = cadUtils.nodesLayer || paper.project?.layers?.['nodesLayer'];
+    if (nodesLayer) {
+      nodesLayer.addChild(this.controlHandlesGroup);
+    } else if (paper.project?.activeLayer) {
+      paper.project.activeLayer.addChild(this.controlHandlesGroup);
+    }
 
     // Sincronizar inmediatamente la referencia con window.cadUtils para que SelectTool y HandleSelectionHandler la encuentren
     if (window.cadUtils) {
       window.cadUtils.controlHandlesGroup = this.controlHandlesGroup;
     }
 
-    const cadUtils = window.cadUtils || {};
     const service = this.service;
     if (!service) return;
 
@@ -242,17 +254,57 @@ export class SelectionRenderEngine {
       return !layer || !layer.locked;
     });
 
-    // Renderizado de Nodos Bézier y Vértices
+    // 1. OVERLAY BASE DE ENTIDADES EN MODO EDICIÓN (respeta si la entidad completa sigue seleccionada)
     activeEntities.forEach(entity => {
       if (!entity.visible) return;
 
       if (entity instanceof paper.Path && entity.segments && entity.segments.length >= 2 && !entity.data?.isPointEntity) {
-        
-        const entityColor = entity.strokeColor 
-          ? (entity.strokeColor.toCSS ? entity.strokeColor.toCSS() : entity.strokeColor)
-          : (entity.data?.origStrokeColor || '#ffff00');
+        const isEntitySelected = Boolean(service.selectedEntities?.includes(entity));
+        const styleConfig = entity.data?.isCircleEntity
+          ? (typeof CAD_THEME !== 'undefined' && CAD_THEME?.selection?.circle ? CAD_THEME.selection.circle : {})
+          : (typeof CAD_THEME !== 'undefined' && CAD_THEME?.selection?.line ? CAD_THEME.selection.line : {});
 
-        if (entity.curves) {
+        const effectiveColor = propertyManager
+          ? propertyManager.getResolvedColor(entity)
+          : (entity.data?.origStrokeColor || '#00e5ff');
+
+        const highlightMult = this._getSelectionMultiplier(entity);
+
+        const editOverlay = entity.clone({ insert: false });
+        editOverlay.data = {};
+        editOverlay.guide = true;
+
+        if (isEntitySelected) {
+          editOverlay.opacity = 1.0;
+          editOverlay.strokeColor = styleConfig.strokeColor || '#ffff00';
+          editOverlay.strokeWidth = this._getResolvedStrokeWidth(entity, highlightMult, zoom);
+        } else {
+          editOverlay.strokeColor = effectiveColor;
+          editOverlay.strokeWidth = this._getResolvedStrokeWidth(entity, 1, zoom);
+        }
+
+        this.controlHandlesGroup.addChild(editOverlay);
+      }
+    });
+
+    // 2. RENDERIZADO DE NODOS BÉZIER, SEGMENTOS SELECCIONADOS/HOVER Y VÉRTICES
+    activeEntities.forEach(entity => {
+      if (!entity.visible) return;
+
+      if (entity instanceof paper.Path && entity.segments && entity.segments.length >= 2 && !entity.data?.isPointEntity) {
+        const isEntitySelected = Boolean(service.selectedEntities?.includes(entity));
+        const highlightMult = this._getSelectionMultiplier(entity);
+        const highlightWidth = this._getResolvedStrokeWidth(entity, highlightMult, zoom);
+
+        const resolvedBaseColor = propertyManager
+          ? propertyManager.getResolvedColor(entity)
+          : (entity.data?.origStrokeColor || '#00e5ff');
+
+        const handleBaseColor = isEntitySelected
+          ? (cfg.anchorStrokeSelected || '#ffff00')
+          : resolvedBaseColor;
+
+        if (entity.curves && !isEntitySelected) {
           const selectedChains = [];
           let currentChain = [];
 
@@ -294,8 +346,6 @@ export class SelectionRenderEngine {
 
           selectedChains.forEach(chainSegments => {
             const strokeColor = cfg.anchorStrokeSelected || '#ffff00';
-            const baseW = entity.data?.baseStrokeWidth || 1.5;
-            const mult = 1.8;
 
             let isClosedLoop = false;
             let segmentsToRender = chainSegments;
@@ -308,7 +358,7 @@ export class SelectionRenderEngine {
             const highlightedPath = new paper.Path({
               segments: segmentsToRender.map(s => new paper.Segment(s.point, s.handleIn, s.handleOut)),
               strokeColor: strokeColor,
-              strokeWidth: (baseW * mult) / (entity.data?.isDynamicStroke !== false ? zoom : 1),
+              strokeWidth: highlightWidth,
               strokeJoin: entity.strokeJoin || 'miter',
               strokeCap: entity.strokeCap || 'butt',
               miterLimit: entity.miterLimit || 3,
@@ -326,16 +376,13 @@ export class SelectionRenderEngine {
                                       service.selectedSegments?.includes(c.segment2);
 
             if (!isHoveredSelected) {
-              const baseW = entity.data?.baseStrokeWidth || 1.5;
-              const mult = 1.4;
-
               const hoveredCurvePath = new paper.Path({
                 segments: [
                   new paper.Segment(c.segment1.point, c.segment1.handleIn, c.segment1.handleOut),
                   new paper.Segment(c.segment2.point, c.segment2.handleIn, c.segment2.handleOut)
                 ],
-                strokeColor: entityColor,
-                strokeWidth: (baseW * mult) / (entity.data?.isDynamicStroke !== false ? zoom : 1),
+                strokeColor: resolvedBaseColor,
+                strokeWidth: highlightWidth,
                 strokeJoin: entity.strokeJoin || 'miter',
                 strokeCap: entity.strokeCap || 'butt',
                 miterLimit: entity.miterLimit || 3,
@@ -349,7 +396,6 @@ export class SelectionRenderEngine {
         }
         
         entity.segments.forEach(segment => {
-          const isEntitySelected = service.selectedEntities?.includes(entity);
           const isSegSelected = !isEntitySelected && service.selectedSegments?.includes(segment);
 
           ['handleIn', 'handleOut'].forEach(handleType => {
@@ -373,7 +419,7 @@ export class SelectionRenderEngine {
 
               const armColor = isArmActive 
                 ? (cfg.bezierArmStrokeSelected || '#ffff00') 
-                : entityColor;
+                : handleBaseColor;
 
               let armWidth = cfg.bezierArmStrokeWidthPx || 1.0;
               if (isArmActive) {
@@ -392,7 +438,7 @@ export class SelectionRenderEngine {
 
               const handleStrokeColor = isHandleSelected 
                 ? (cfg.bezierHandleStrokeSelected || '#ffff00') 
-                : entityColor;
+                : handleBaseColor;
 
               let handleStrokeWidth = cfg.bezierHandleStrokeWidthPx || 1.0;
               if (isHandleSelected) {
@@ -436,7 +482,7 @@ export class SelectionRenderEngine {
             point: [segment.point.x - (baseSide / zoom) / 2, segment.point.y - (baseSide / zoom) / 2],
             size: [baseSide / zoom, baseSide / zoom],
             fillColor: isSegSelected ? (cfg.anchorFillSelected || '#10141D') : (cfg.anchorFillNormal || '#10141D'),
-            strokeColor: isSegSelected ? (cfg.anchorStrokeSelected || '#ffff00') : entityColor,
+            strokeColor: isSegSelected ? (cfg.anchorStrokeSelected || '#ffff00') : handleBaseColor,
             strokeWidth: strokeW / zoom
           });
           anchorSquare.data = { type: 'anchor', segment: segment };
@@ -445,8 +491,9 @@ export class SelectionRenderEngine {
       }
     });
 
-    // Renderizado de Contornos y Grips Paramétricos
+    // 3. OVERLAY DE ENTIDADES EN MODO ENTIDAD, CONTORNOS Y GRIPS PARAMÉTRICOS
     const selectableEntities = (service.selectedEntities || []).filter(ent => {
+      if (!ent || !ent.parent) return false;
       const lId = String(ent.data?.layerId || '0');
       const layer = layerManager?.layers?.get(lId);
       return !layer || !layer.locked;
@@ -454,6 +501,39 @@ export class SelectionRenderEngine {
 
     selectableEntities.forEach(entity => {
       if (!entity.visible) return;
+
+      // Proyección visual de la entidad seleccionada por encima de todas las capas
+      if (!activeEntities.includes(entity)) {
+        if (entity.data?.isPointEntity) {
+          const pointOverlay = entity.clone({ insert: false });
+          pointOverlay.data = {};
+          pointOverlay.guide = true;
+          this.controlHandlesGroup.addChild(pointOverlay);
+        } else if (entity instanceof paper.Path || entity instanceof paper.CompoundPath) {
+          const styleConfig = entity.data?.isCircleEntity
+            ? (typeof CAD_THEME !== 'undefined' && CAD_THEME?.selection?.circle ? CAD_THEME.selection.circle : {})
+            : (typeof CAD_THEME !== 'undefined' && CAD_THEME?.selection?.line ? CAD_THEME.selection.line : {});
+
+          const mult = this._getSelectionMultiplier(entity);
+
+          const selOverlay = entity.clone({ insert: false });
+          selOverlay.data = {};
+          selOverlay.guide = true;
+          selOverlay.opacity = 1.0;
+          selOverlay.strokeColor = styleConfig.strokeColor || '#ffff00';
+          selOverlay.strokeWidth = this._getResolvedStrokeWidth(entity, mult, zoom);
+          this.controlHandlesGroup.addChild(selOverlay);
+        } else if (entity instanceof paper.Raster) {
+          const rasterOutline = new paper.Path.Rectangle({
+            rectangle: entity.bounds,
+            strokeColor: '#ffff00',
+            strokeWidth: 1.5 / zoom,
+            insert: false
+          });
+          rasterOutline.guide = true;
+          this.controlHandlesGroup.addChild(rasterOutline);
+        }
+      }
 
       if (entity.data && entity.data.controller) {
         const controller = entity.data.controller;

@@ -124,7 +124,10 @@ export class PropertyColorHandler {
         if (flags.colorChanged) {
           previewPatch.color = hexColor;
           const freshTrigger = (triggerEl?.id ? document.getElementById(triggerEl.id) : null) || triggerEl;
-          if (freshTrigger) freshTrigger.value = hexColor;
+          if (freshTrigger) {
+            freshTrigger.dataset.color = hexColor;
+            freshTrigger.style.backgroundColor = hexColor;
+          }
           const colorSelect = document.getElementById('defColorSelect');
           if (colorSelect) PropertyControls.updateSelectValueSilently(colorSelect, 'CUSTOM');
         }
@@ -201,7 +204,10 @@ export class PropertyColorHandler {
         if (flags.colorChanged) {
           const picker = document.getElementById('propColorPicker');
           const select = document.getElementById('propColorModeSelect');
-          if (picker) picker.value = hexColor;
+          if (picker) {
+            picker.dataset.color = hexColor;
+            picker.style.backgroundColor = hexColor;
+          }
           if (select) PropertyControls.updateSelectValueSilently(select, 'CUSTOM');
         }
         if (flags.opacityChanged) {
@@ -291,6 +297,7 @@ export class PropertyColorHandler {
           const picker = document.getElementById('propBatchColorPicker');
           const select = document.getElementById('propBatchColorModeSelect');
           if (picker) {
+            picker.dataset.color = hexColor;
             picker.style.backgroundColor = hexColor;
             picker.textContent = '';
           }

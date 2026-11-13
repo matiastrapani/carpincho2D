@@ -115,7 +115,7 @@ export class PropertyPanelUI {
       <div class="flex flex-col h-full w-full select-none text-zinc-300 font-sans overflow-hidden">
         <div class="flex items-center justify-between mb-2 shrink-0 px-1 py-0.5">
           <span class="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Propiedades</span>
-          <span id="propSelectionBadge" class="text-[10px] text-zinc-500 font-mono">Sin selección</span>
+          <span id="propSelectionBadge" class="text-[9px] text-zinc-500 font-bold uppercase">Sin selección</span>
         </div>
 
         <div id="propertyFieldsContainer" class="flex-1 overflow-y-auto custom-scrollbar space-y-3 min-h-0 bg-transparent pr-0.5">

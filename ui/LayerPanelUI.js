@@ -1,263 +1,190 @@
 /**
  * LayerPanelUI.js - Panel de control e interacción de capas sobrio, adaptativo y reordenable.
  */
-// ui/LayerPanelUI.js
 
-import { 
-  CreateLayerCommand, 
-  SetActiveLayerCommand, 
+import {
+  CreateLayerCommand,
+  SetActiveLayerCommand,
   DeleteLayerCommand,
   UpdateLayerPropertyCommand,
-  RenameLayerCommand, 
-  ReorderLayersCommand 
+  RenameLayerCommand,
+  ReorderLayersCommand
 } from '../services/commands/LayerCommands.js';
-import { ColorPickerPopover } from './components/ColorPickerPopover.js';
+import { LayerDeleteModal } from './components/LayerDeleteModal.js';
+import { LayerColorHandler } from './components/LayerColorHandler.js';
+import { PropertyControls } from './components/PropertyControls.js';
+import { CAD_THEME } from '../config/cadTheme.js';
 
 export class LayerPanelUI {
   constructor(cadUtils, containerId = 'layerPanelContainer') {
+    if (!cadUtils?.service || !cadUtils?.layerManager) {
+      throw new Error('LayerPanelUI requiere cadUtils.service y cadUtils.layerManager.');
+    }
+
     this.utils = cadUtils;
+    this.service = cadUtils.service;
     this.manager = cadUtils.layerManager;
     this.container = document.getElementById(containerId);
-    this.activePopover = null;
     this.draggedLayerId = null;
 
-    // Handlers guardados para poder desvincularlos si fuera necesario
+    this.colorHandler = new LayerColorHandler({
+      cadService: this.service,
+      layerManager: this.manager,
+      onPreviewChange: () => this._syncVisuals(),
+      onCommitChange: () => this.refresh()
+    });
+
     this._onAddLayerClick = this._handleAddLayerClick.bind(this);
+    this._onListClick = this._handleListClick.bind(this);
+    this._onListChange = this._handleListChange.bind(this);
+    this._onListKeyDown = this._handleListKeyDown.bind(this);
+    this._onListMouseDown = this._handleListMouseDown.bind(this);
+    this._onDragStart = this._handleDragStart.bind(this);
+    this._onDragOver = this._handleDragOver.bind(this);
+    this._onDragLeave = this._handleDragLeave.bind(this);
+    this._onDrop = this._handleDrop.bind(this);
+    this._onDragEnd = this._handleDragEnd.bind(this);
 
     this.init();
   }
 
   init() {
     if (!this.container) return;
-    this._ensureDefaultLayerConfig();
     this.renderShell();
     this.refresh();
   }
 
-  _ensureDefaultLayerConfig() {
-    if (!this.manager || !this.manager.layers) return;
-    const layer0 = this.manager.layers.get('0');
-    if (layer0) {
-      if (layer0.name === '0') {
-        layer0.name = 'Capa 0';
-      }
-      if (layer0.strokeWidth === undefined || layer0.strokeWidth === 1) {
-        layer0.strokeWidth = 0;
-      }
-    }
-  }
-
-  _generateUniqueName(desiredName, layerId) {
-    if (!this.manager || !this.manager.layers) return desiredName;
-
-    const layers = this.manager.layers;
-    const isTaken = (name) => {
-      for (const [id, l] of layers.entries()) {
-        if (String(id) !== String(layerId) && l.name.trim().toLowerCase() === name.trim().toLowerCase()) {
-          return true;
-        }
-      }
-      return false;
-    };
-
-    let cleanName = desiredName.trim() || `Capa ${layers.size}`;
-    if (!isTaken(cleanName)) return cleanName;
-
-    const match = cleanName.match(/^(.*?)(?:\s+(\d+))?$/);
-    let base = cleanName;
-    let num = 1;
-
-    if (match && match[2] !== undefined) {
-      base = match[1];
-      num = parseInt(match[2], 10) + 1;
-    }
-
-    let candidate = `${base} ${num}`;
-    while (isTaken(candidate)) {
-      num++;
-      candidate = `${base} ${num}`;
-    }
-    return candidate;
-  }
-
-  _getPresetColors() {
-    return ColorPickerPopover.getPresets();
-  }
-
-  _getRandomColor() {
-    if (!this.manager || !this.manager.layers) return '#00e5ff';
-
-    const existingLayers = Array.from(this.manager.layers.values());
-    const existingHues = existingLayers
-      .map((l) => this._hexToHue(l.color))
-      .filter((h) => h !== null);
-
-    let bestHue = Math.floor(Math.random() * 360);
-
-    if (existingHues.length > 0) {
-      let maxMinDist = -1;
-      for (let cand = 0; cand < 360; cand += 10) {
-        let minDist = 360;
-        for (const h of existingHues) {
-          let dist = Math.abs(cand - h);
-          if (dist > 180) dist = 360 - dist;
-          if (dist < minDist) minDist = dist;
-        }
-        if (minDist > maxMinDist) {
-          maxMinDist = minDist;
-          bestHue = cand;
-        }
-      }
-    }
-
-    return this._hslToHex(bestHue, 85, 55);
-  }
-
-  _hexToHue(hex) {
-    if (!hex || !hex.startsWith('#')) return null;
-    let c = hex.substring(1);
-    if (c.length === 3) c = c.split('').map((x) => x + x).join('');
-    if (c.length !== 6) return null;
-
-    const r = parseInt(c.substring(0, 2), 16) / 255;
-    const g = parseInt(c.substring(2, 4), 16) / 255;
-    const b = parseInt(c.substring(4, 6), 16) / 255;
-
-    const max = Math.max(r, g, b), min = Math.min(r, g, b);
-    let h = 0;
-    if (max !== min) {
-      const d = max - min;
-      switch (max) {
-        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-        case g: h = (b - r) / d + 2; break;
-        case b: h = (r - g) / d + 4; break;
-      }
-      h /= 6;
-    }
-    return Math.round(h * 360);
-  }
-
-  _hslToHex(h, s, l) {
-    s /= 100;
-    l /= 100;
-    const k = (n) => (n + h / 30) % 12;
-    const a = s * Math.min(l, 1 - l);
-    const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
-    const toHex = (x) => Math.round(x * 255).toString(16).padStart(2, '0');
-    return `#${toHex(f(0))}${toHex(f(8))}${toHex(f(4))}`;
-  }
-
   renderShell() {
-    // Si ya existía un botón anterior, removemos su listener antes de sobreescribir el HTML
-    const oldBtn = this.container?.querySelector('#btnAddLayerBtn');
-    if (oldBtn) {
-      oldBtn.removeEventListener('click', this._onAddLayerClick);
-    }
+    this._unbindEvents();
+
     this.container.innerHTML = `
-      <div class="flex flex-col h-full w-full select-none text-zinc-300 font-sans overflow-hidden">
+      <div class="flex flex-col h-full w-full select-none text-zinc-300 font-sans">
         <!-- Encabezado Sobrio -->
         <div class="flex items-center justify-between mb-2 shrink-0">
           <span class="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Capas</span>
-          <button id="btnAddLayerBtn" class="text-zinc-400 hover:text-zinc-100 transition-colors p-1 rounded hover:bg-[#27272a] text-xs flex items-center justify-center w-5 h-5" title="Nueva Capa">
+          <button type="button" id="btnAddLayerBtn" data-tooltip="Nueva capa" class="tooltip-top-right text-zinc-400 hover:text-zinc-100 transition-colors p-1 rounded hover:bg-[#27272a] text-xs flex items-center justify-center w-5 h-5 cursor-pointer">
             <i class="fa-solid fa-plus"></i>
           </button>
         </div>
 
-        <!-- Encabezado de Columnas con Delimitador :: -->
-        <div class="grid grid-cols-[12px_16px_16px_minmax(0,1fr)_48px_16px_16px_16px] gap-1.5 items-center px-1.5 py-1 text-[10px] font-semibold text-zinc-500 border-b border-[#2a2a32] shrink-0 uppercase tracking-wider overflow-hidden">
+        <!-- Encabezado de Columnas Compacto con Opacidad Responsiva -->
+        <div class="layer-grid-cols grid grid-cols-[8px_12px_14px_minmax(0,1fr)_45px_45px_14px_14px_14px] gap-1 items-center px-1 py-1 text-[10px] font-semibold text-zinc-500 border-b border-[#2a2a32] shrink-0 uppercase tracking-wider">
           <span></span>
-          <span title="Capa Activa" class="flex items-center justify-center">A</span>
-          <span title="Color de Capa" class="flex items-center justify-center">C</span>
+          <span data-tooltip="Capa activa" class="tooltip-top flex items-center justify-center">A</span>
+          <span data-tooltip="Color de capa" class="tooltip-top flex items-center justify-center">C</span>
           <span class="truncate min-w-0">Nombre</span>
-          <span class="text-center truncate" title="Grosor de Línea">Grosor</span>
-          <span class="flex items-center justify-center" title="Visibilidad"><i class="fa-solid fa-eye text-[9px]"></i></span>
-          <span class="flex items-center justify-center" title="Bloqueo"><i class="fa-solid fa-lock text-[9px]"></i></span>
+          <span class="layer-col-opacity text-center truncate tooltip-top" data-tooltip="Opacidad">Opac.</span>
+          <span class="text-center truncate tooltip-top" data-tooltip="Grosor de línea">Grosor</span>
+          <span class="flex items-center justify-center tooltip-top" data-tooltip="Visibilidad"><i class="fa-solid fa-eye text-[9px]"></i></span>
+          <span class="flex items-center justify-center tooltip-top-right" data-tooltip="Bloqueo"><i class="fa-solid fa-lock text-[9px]"></i></span>
           <span></span>
         </div>
 
-        <!-- Lista de Capas (Sin divide-y) -->
-        <div id="layerListContainer" class="flex-1 overflow-y-auto custom-scrollbar min-h-0 bg-transparent"></div>
+        <!-- Lista de Capas -->
+        <div id="layerListContainer" class="flex-1 custom-scrollbar min-h-0 bg-transparent"></div>
       </div>
     `;
-    const btnAdd = this.container.querySelector('#btnAddLayerBtn');
-    if (btnAdd) {
-      btnAdd.addEventListener('click', this._onAddLayerClick);
-    }
+
+    this._bindEvents();
   }
 
   refresh() {
-    const list = document.getElementById('layerListContainer');
-
-    // Cerrar popovers flotantes si la lista se regenera
+    const list = this.container?.querySelector('#layerListContainer');
     if (!list) return;
 
-    list.innerHTML = '';
-
-    if (!this.manager || !this.manager.layers) return;
-
-    this.manager.layers.forEach((layer) => {
-      const row = this.createLayerRow(layer);
-      list.appendChild(row);
+    document.querySelectorAll('.cad-custom-dropdown').forEach((d) => {
+      if (d._triggerEl && !d._triggerEl.isConnected) {
+        d.remove();
+      }
     });
 
-    if (window.propertyPanelUI) {
-      window.propertyPanelUI.refresh();
-    }
-  }
-
-  createLayerRow(layer) {
+    const prevScrollTop = list.scrollTop;
     const activeLayer = this.manager.getActiveLayer();
-    const activeId = activeLayer ? activeLayer.id : this.manager.activeLayerId;
-    const isActive = String(activeId) === String(layer.id);
+    const activeId = String(activeLayer ? activeLayer.id : this.manager.activeLayerId);
     const canDelete = this.manager.layers.size > 1;
 
-    // Regla: La capa activa SIEMPRE está visible y desbloqueada
-    if (isActive) {
-      layer.visible = true;
-      layer.locked = false;
-    }
+    const fragment = document.createDocumentFragment();
+    this.manager.layers.forEach((layer) => {
+      fragment.appendChild(this._buildLayerRow(layer, activeId, canDelete));
+    });
 
+    list.innerHTML = '';
+    list.appendChild(fragment);
+    list.scrollTop = prevScrollTop;
+
+    PropertyControls.ensureGlobalListeners();
+    this._syncVisuals();
+  }
+
+  _formatStrokeWidth(val) {
+    const num = Number(val || 0);
+    if (isNaN(num) || num <= 0) return '-';
+    return num.toFixed(1);
+  }
+
+  _parseStrokeWidth(raw) {
+    const clean = String(raw ?? '').trim().replace(',', '.');
+    if (clean === '' || clean === '-') return 0;
+    const parsed = parseFloat(clean);
+    if (isNaN(parsed) || parsed < 0) return null;
+    return Math.round(parsed * 100) / 100;
+  }
+
+  _buildLayerRow(layer, activeId, canDelete) {
+    const isActive = String(layer.id) === activeId;
     const displayName = (layer.id === '0' && layer.name === '0') ? 'Capa 0' : layer.name;
+
+    const opacityVal = layer.opacity !== undefined ? Number(layer.opacity) : 1;
+    const opacityPct = Math.round(opacityVal * 100);
+    const isDefaultOpacity = opacityPct === 100;
+
+    const strokeVal = Number(layer.strokeWidth || 0);
+    const strokeDisplay = this._formatStrokeWidth(strokeVal);
+    const isPreset = CAD_THEME.properties.strokeWidthPresets.includes(strokeVal);
 
     const row = document.createElement('div');
     row.setAttribute('draggable', 'false');
     row.dataset.layerId = layer.id;
-
-    row.className = `grid grid-cols-[12px_16px_16px_minmax(0,1fr)_48px_16px_16px_16px] gap-1.5 items-center px-1.5 py-1 overflow-hidden ${
-      isActive ? 'bg-[#17171c] text-zinc-200' : 'hover:bg-[#1e1e24] text-zinc-400'
+    row.className = `layer-row layer-grid-cols grid grid-cols-[8px_12px_14px_minmax(0,1fr)_45px_45px_14px_14px_14px] gap-1 items-center px-1 py-1 ${
+      isActive ? 'bg-[#17171c] text-zinc-100' : 'hover:bg-[#1e1e24] text-zinc-400'
     }`;
 
-    const actionBtnBase = "w-4 h-4 flex items-center justify-center transition-colors text-[11px]";
-
-    // Estilos de texto gris cuando la capa está invisible
+    const actionBtnBase = 'w-3.5 h-3.5 flex items-center justify-center transition-colors';
     const nameTextColor = layer.visible ? 'text-zinc-200' : 'text-zinc-600';
-    const strokeTextColor = layer.visible ? 'text-zinc-300' : 'text-zinc-600';
+    const opacityTextColor = !layer.visible
+      ? 'text-zinc-600'
+      : 'text-white';
+    const strokeTextColor = !layer.visible
+      ? 'text-zinc-600'
+      : isPreset
+        ? 'text-zinc-300'
+        : 'text-white';
 
-    // Botón Visibilidad: mantiene color encendido (text-zinc-200) pero muestra el cursor de bloqueo en la capa activa
     const visBtnStyle = isActive
       ? 'text-zinc-200 cursor-not-allowed'
-      : layer.visible 
-        ? 'text-zinc-200 cursor-pointer' 
-        : 'text-zinc-600 hover:text-zinc-300 cursor-pointer';
+      : layer.visible
+        ? 'text-zinc-200 cursor-pointer'
+        : 'text-zinc-600 cursor-pointer';
 
-    // Botón Bloqueo: mantiene el color habitual (text-zinc-600 / hover) pero muestra el cursor de bloqueo en la capa activa
     const lockBtnStyle = isActive
-      ? 'text-zinc-600 hover:text-zinc-300 cursor-not-allowed'
+      ? 'text-zinc-600 cursor-not-allowed'
       : !layer.visible
-        ? 'text-zinc-600 hover:text-zinc-300 cursor-pointer'
-        : layer.locked 
-          ? 'text-zinc-200 cursor-pointer' 
-          : 'text-zinc-600 hover:text-zinc-300 cursor-pointer';
+        ? 'text-zinc-600 cursor-pointer'
+        : layer.locked
+          ? 'text-white cursor-pointer'
+          : 'text-zinc-600 cursor-pointer';
+    
+    const inputBoxBg = isActive ? 'bg-[#17171c]' : 'bg-transparent';
 
     row.innerHTML = `
-      <!-- 0. Delimitador / Tirador de Arrastre :: -->
-      <div class="drag-handle flex items-center justify-center cursor-grab active:cursor-grabbing text-zinc-600 hover:text-zinc-300 font-mono text-[10px] leading-none select-none" title="Arrastrar para reordenar">
+      <!-- 0. Tirador de Arrastre Compacto -->
+      <div data-role="drag-handle" class="drag-handle h-full flex items-center justify-center cursor-grab active:cursor-grabbing text-zinc-600 hover:text-zinc-300 text-[9px] tracking-tighter leading-none select-none -translate-y-[1px]">
         ::
       </div>
 
       <!-- 1. Capa Activa -->
       <div class="flex items-center justify-center">
-        <button class="btn-activate ${actionBtnBase} cursor-pointer" title="Establecer como activa">
+        <button type="button" data-action="activate" data-tooltip="Establecer como activa" class="tooltip-top ${actionBtnBase} cursor-pointer">
           ${
             isActive
               ? '<span class="w-2 h-2 rounded-full bg-zinc-200"></span>'
@@ -268,318 +195,345 @@ export class LayerPanelUI {
 
       <!-- 2. Color Swatch -->
       <div class="flex items-center justify-center">
-        <button class="btn-color-picker w-3.5 h-3.5 rounded-sm overflow-hidden cursor-pointer shrink-0 transition-transform hover:scale-110" 
-             style="background-color: ${layer.color}" title="Cambiar color de capa"></button>
+        <button type="button" data-action="color" data-tooltip="Cambiar color de capa" class="tooltip-top w-3 h-3 rounded-sm cursor-pointer shrink-0 border-0 outline-none p-0"
+             style="background-color: ${layer.color}"></button>
       </div>
 
       <!-- 3. Nombre Editable -->
       <div class="min-w-0 flex items-center">
-        <input type="text" value="${displayName}" 
-          class="layer-name-input bg-transparent hover:bg-[#27272a] focus:bg-[#27272a] text-[11px] font-medium outline-none border-0 ring-0 shadow-none ${nameTextColor} truncate w-full px-1.5 py-0.5 rounded transition-colors">
+        <input type="text" data-field="name" value="${displayName}" aria-label="Nombre de capa"
+          class="layer-name-input bg-transparent hover:bg-[#27272a] focus:bg-[#27272a] text-[11px] font-medium outline-none border-0 ring-0 shadow-none ${nameTextColor} truncate w-full px-1 py-0.5 rounded transition-colors">
       </div>
 
-      <!-- 4. Selector de Grosor -->
-      <div class="flex items-center justify-center min-w-0">
-        <div class="relative flex items-center justify-center w-full">
-          <select class="layer-stroke-select bg-transparent hover:bg-[#27272a] focus:bg-[#27272a] ${strokeTextColor} hover:text-white text-[11px] outline-none border-0 ring-0 shadow-none cursor-pointer w-full text-center appearance-none pr-3 py-0.5 rounded transition-colors">
-            <option value="0" class="bg-[#121215] text-zinc-200" ${!layer.strokeWidth || layer.strokeWidth === 0 ? 'selected' : ''}>-</option>
-            <option value="1" class="bg-[#121215] text-zinc-200" ${layer.strokeWidth === 1 ? 'selected' : ''}>1.0</option>
-            <option value="1.5" class="bg-[#121215] text-zinc-200" ${layer.strokeWidth === 1.5 ? 'selected' : ''}>1.5</option>
-            <option value="2" class="bg-[#121215] text-zinc-200" ${layer.strokeWidth === 2 ? 'selected' : ''}>2.0</option>
-            <option value="3" class="bg-[#121215] text-zinc-200" ${layer.strokeWidth === 3 ? 'selected' : ''}>3.0</option>
-          </select>
-          <i class="fa-solid fa-chevron-down text-[7px] text-zinc-500 pointer-events-none absolute right-1"></i>
+      <!-- 4. Opacidad Scrub / Editable -->
+      <div class="layer-col-opacity flex items-center justify-center min-w-0">
+        <div data-role="opacity-scrub" data-tooltip="Clic para editar o arrastra" class="tooltip-top flex items-center justify-end w-full ${inputBoxBg} hover:bg-[#27272a] focus-within:bg-[#27272a] rounded px-1.5 py-0.5 cursor-ew-resize transition-colors">
+          <input type="number" data-field="opacity" min="0" max="100" value="${opacityPct}" aria-label="Opacidad de capa"
+            class="w-full min-w-0 bg-transparent text-right outline-none border-0 ring-0 shadow-none ${opacityTextColor} text-[11px] font-sans tabular-nums p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none cursor-ew-resize focus:cursor-text">
+          <span class="text-[11px] ${opacityTextColor} font-sans tabular-nums ml-0.5 pointer-events-none">%</span>
         </div>
       </div>
 
-      <!-- 5. Visibilidad -->
+      <!-- 5. Combo Editable de Grosor -->
+      <div class="flex items-center justify-center min-w-0">
+        <div data-role="stroke-combo" class="flex items-center w-full ${inputBoxBg} hover:bg-[#27272a] focus-within:bg-[#27272a] rounded px-1 py-0.5 transition-colors">
+          <input type="text" data-field="strokeWidth" value="${strokeDisplay}" aria-label="Grosor de capa"
+            class="layer-stroke-input w-full min-w-0 bg-transparent text-right outline-none border-0 ring-0 shadow-none ${strokeTextColor} text-[11px] font-sans tabular-nums p-0 pr-0.5">
+          <button type="button" data-action="stroke-dropdown" aria-label="Opciones de grosor"
+            class="flex items-center justify-center text-zinc-500 hover:text-zinc-200 cursor-pointer shrink-0 pl-0.5">
+            <i class="fa-solid fa-chevron-down text-[8px]"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- 6. Visibilidad -->
       <div class="flex items-center justify-center">
-        <button class="btn-vis ${actionBtnBase} ${visBtnStyle}" title="${isActive ? 'La capa activa no se puede ocultar' : layer.visible ? 'Ocultar' : 'Mostrar'}">
+        <button type="button" data-action="toggle-visibility" data-tooltip="${isActive ? 'La capa activa no se puede ocultar' : layer.visible ? 'Ocultar' : 'Mostrar'}" class="tooltip-top-right ${actionBtnBase} text-[9px] ${visBtnStyle}">
           <i class="fa-solid ${layer.visible ? 'fa-eye' : 'fa-eye-slash'}"></i>
         </button>
       </div>
 
-      <!-- 6. Bloqueo -->
+      <!-- 7. Bloqueo -->
       <div class="flex items-center justify-center">
-        <button class="btn-lock ${actionBtnBase} ${lockBtnStyle}" title="${isActive ? 'La capa activa no se puede bloquear' : layer.locked ? 'Desbloquear' : 'Bloquear'}">
+        <button type="button" data-action="toggle-lock" data-tooltip="${isActive ? 'La capa activa no se puede bloquear' : layer.locked ? 'Desbloquear' : 'Bloquear'}" class="tooltip-top-right ${actionBtnBase} text-[9px] ${lockBtnStyle}">
           <i class="fa-solid ${layer.locked ? 'fa-lock' : 'fa-lock-open'}"></i>
         </button>
       </div>
 
-      <!-- 7. Eliminar -->
+      <!-- 8. Eliminar -->
       <div class="flex items-center justify-center">
         ${
           canDelete
-            ? `<button class="btn-del ${actionBtnBase} text-zinc-600 hover:text-zinc-200 cursor-pointer" title="Eliminar capa"><i class="fa-solid fa-xmark"></i></button>`
-            : `<span class="text-zinc-700 text-[10px] cursor-not-allowed" title="Debe existir al menos una capa">-</span>`
+            ? `<button type="button" data-action="delete" data-tooltip="Eliminar capa" class="tooltip-top-right ${actionBtnBase} text-[10px] text-zinc-600 hover:text-zinc-200 cursor-pointer"><i class="fa-solid fa-xmark"></i></button>`
+            : `<span data-tooltip="Debe existir al menos una capa" class="tooltip-top-right text-zinc-700 text-[10px] cursor-not-allowed">-</span>`
         }
       </div>
     `;
 
-    // Referencias y manejadores de eventos
-    const dragHandle = row.querySelector('.drag-handle');
-    const activateBtn = row.querySelector('.btn-activate');
-    const colorBtn = row.querySelector('.btn-color-picker');
-    const nameInput = row.querySelector('.layer-name-input');
-    const strokeSelect = row.querySelector('.layer-stroke-select');
-    const visBtn = row.querySelector('.btn-vis');
-    const lockBtn = row.querySelector('.btn-lock');
-    const delBtn = row.querySelector('.btn-del');
-
-    const updatePropertyWithCommand = (prop, oldValue, newValue) => {
-      if (oldValue === newValue) return;
-      if (this.utils?.service?.executeCommand) {
-        const cmd = new UpdateLayerPropertyCommand(this.manager, layer.id, prop, oldValue, newValue, this);
-        this.utils.service.executeCommand(cmd);
-      } else {
-        this.manager.updateLayerProperty(layer.id, prop, newValue);
-        this.refresh();
-        if (this.utils?.selectionRenderEngine?.updateEntitiesStroke) this.utils.selectionRenderEngine.updateEntitiesStroke();
-        if (window.paper?.view) window.paper.view.update();
-      }
-    };
-
-    activateBtn?.addEventListener('click', () => {
-      const oldActiveId = this.manager.activeLayerId;
-      if (String(oldActiveId) !== String(layer.id)) {
-        if (this.utils?.service?.executeCommand) {
-          const cmd = new SetActiveLayerCommand(this.manager, oldActiveId, layer.id, this);
-          this.utils.service.executeCommand(cmd);
-        } else {
-          this.manager.setActiveLayer(layer.id);
-          this.refresh();
-        }
-      }
-    });
-
-    colorBtn?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this._openColorPickerPopover(layer, colorBtn);
-    });
-
-    let isFocusedByClick = false;
-
-    nameInput?.addEventListener('focus', () => {
-      if (!isFocusedByClick) nameInput.select();
-    });
-
-    nameInput?.addEventListener('blur', () => {
-      isFocusedByClick = false;
-    });
-
-    nameInput?.addEventListener('mousedown', (e) => {
-      e.stopPropagation();
-      if (document.activeElement !== nameInput) {
-        isFocusedByClick = true;
-        setTimeout(() => {
-          nameInput.select();
-          isFocusedByClick = false;
-        }, 0);
-      }
-    });
-
-    nameInput?.addEventListener('click', (e) => e.stopPropagation());
-
-    nameInput?.addEventListener('keydown', (e) => {
-      e.stopPropagation();
-      if (e.key === 'Enter' || e.key === 'Escape') nameInput.blur();
-    });
-
-    nameInput?.addEventListener('change', (e) => {
-      const oldName = layer.name;
-      const rawName = e.target.value;
-      const uniqueName = this._generateUniqueName(rawName, layer.id);
-
-      if (uniqueName !== oldName) {
-        if (this.utils?.service?.executeCommand) {
-          const cmd = new RenameLayerCommand(this.manager, layer.id, oldName, uniqueName, this);
-          this.utils.service.executeCommand(cmd);
-        } else {
-          this.manager.updateLayerProperty(layer.id, 'name', uniqueName);
-          this.refresh();
-        }
-      } else {
-        e.target.value = oldName;
-      }
-    });
-
-    strokeSelect?.addEventListener('change', (e) => {
-      const oldVal = layer.strokeWidth || 0;
-      const newVal = parseFloat(e.target.value);
-      updatePropertyWithCommand('strokeWidth', oldVal, newVal);
-    });
-
-    visBtn?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (isActive) return;
-      const oldVal = layer.visible;
-      updatePropertyWithCommand('visible', oldVal, !oldVal);
-    });
-
-    lockBtn?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (isActive) return;
-      const oldVal = layer.locked;
-      updatePropertyWithCommand('locked', oldVal, !oldVal);
-    });
-
-    delBtn?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (!canDelete) return;
-
-      const availableLayers = Array.from(this.manager.layers.values())
-        .filter((l) => String(l.id) !== String(layer.id));
-
-      // Capa sugerida por defecto: la activa (si no es la que se borra) o la primera disponible
-      const defaultTarget = (!isActive && activeLayer) ? activeLayer : availableLayers[0];
-
-      const hasContent = this.utils?.service?.entities?.some(
-        (ent) => ent.data && String(ent.data.layerId) === String(layer.id)
-      );
-
-      const executeDelete = (targetLayerId) => {
-        if (this.utils?.service?.executeCommand) {
-          const cmd = new DeleteLayerCommand(this.manager, layer.id, targetLayerId, this.utils.service, this);
-          this.utils.service.executeCommand(cmd);
-        }
-      };
-
-      if (hasContent) {
-        this._promptDeleteLayerWithContent(layer, availableLayers, defaultTarget?.id, executeDelete);
-      } else {
-        executeDelete(defaultTarget?.id || null);
-      }
-    });
-
-    dragHandle?.addEventListener('mousedown', () => {
-      row.setAttribute('draggable', 'true');
-    });
-
-    row.addEventListener('dragstart', (e) => {
-      this.draggedLayerId = layer.id;
-      e.dataTransfer.effectAllowed = 'move';
-      row.classList.add('opacity-40');
-    });
-
-    row.addEventListener('dragend', () => {
-      row.setAttribute('draggable', 'false');
-      row.classList.remove('opacity-40');
-      this._clearDragOverStyles();
-    });
-
-    row.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-
-      if (!this.draggedLayerId || String(this.draggedLayerId) === String(layer.id)) return;
-
-      const rect = row.getBoundingClientRect();
-      const offsetY = e.clientY - rect.top;
-      const isBottom = offsetY > rect.height / 2;
-
-      this._clearDragOverStylesExcept(row);
-
-      if (isBottom) {
-        row.classList.remove('border-t-2');
-        row.classList.add('border-b-2', 'border-[#52525B]');
-      } else {
-        row.classList.remove('border-b-2');
-        row.classList.add('border-t-2', 'border-[#52525B]');
-      }
-    });
-
-    row.addEventListener('dragleave', (e) => {
-      if (!row.contains(e.relatedTarget)) {
-        row.classList.remove('border-t-2', 'border-b-2', 'border-[#52525B]');
-      }
-    });
-
-    row.addEventListener('drop', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      if (!this.draggedLayerId || String(this.draggedLayerId) === String(layer.id)) return;
-
-      const rect = row.getBoundingClientRect();
-      const offsetY = e.clientY - rect.top;
-      const placeAfter = offsetY > rect.height / 2;
-
-      this._clearDragOverStyles();
-      this._reorderLayers(this.draggedLayerId, layer.id, placeAfter);
-    });
-
+    this._attachRowOpacityScrub(row, layer);
     return row;
   }
 
-  _reorderLayers(draggedId, targetId, placeAfter = false) {
-    if (!this.manager || !this.manager.layers) return;
+  _attachRowOpacityScrub(row, layer) {
+    const scrubContainer = row.querySelector('[data-role="opacity-scrub"]');
+    const opacityInput = row.querySelector('[data-field="opacity"]');
+    const pctSpan = scrubContainer?.querySelector('span');
+    if (!scrubContainer || !opacityInput) return;
 
-    const oldOrderEntries = Array.from(this.manager.layers.entries());
-    const layerArray = [...oldOrderEntries];
+    let scrubStartOpacity = layer.opacity !== undefined ? Number(layer.opacity) : 1;
 
-    const draggedIdx = layerArray.findIndex(([id]) => String(id) === String(draggedId));
-    if (draggedIdx === -1) return;
+    scrubContainer.addEventListener('pointerdown', () => {
+      scrubStartOpacity = layer.opacity !== undefined ? Number(layer.opacity) : 1;
+    });
 
-    const [draggedItem] = layerArray.splice(draggedIdx, 1);
+    PropertyControls.attachScrubInput(
+      scrubContainer,
+      opacityInput,
+      (pctVal) => {
+        const clampedPct = Math.max(0, Math.min(100, Math.round(pctVal)));
+        const nextOpacity = clampedPct / 100;
 
-    let targetIdx = layerArray.findIndex(([id]) => String(id) === String(targetId));
-    if (targetIdx === -1) return;
+        if (Math.abs(scrubStartOpacity - nextOpacity) > 0.001) {
+          this.service.executeCommand(
+            new UpdateLayerPropertyCommand(this.manager, layer.id, 'opacity', scrubStartOpacity, nextOpacity, this)
+          );
+        } else {
+          opacityInput.value = Math.round(scrubStartOpacity * 100);
+        }
+      },
+      {
+        min: 0,
+        max: 100,
+        step: 1,
+        precision: 0,
+        onLiveChange: (pctVal) => {
+          const nextOpacity = Math.max(0, Math.min(100, pctVal)) / 100;
+          this.manager.previewLayerVisuals(layer.id, { opacity: nextOpacity });
+          this._syncVisuals();
+        }
+      }
+    );
+  }
 
-    if (placeAfter) {
-      targetIdx += 1;
+  _openStrokeDropdown(layer, comboEl, triggerBtn) {
+    const existing = comboEl._strokeDropdown;
+    const isAlreadyOpen = existing && !existing.classList.contains('hidden');
+
+    PropertyControls._onDropdownClose();
+    if (isAlreadyOpen) return;
+
+    let dropdown = existing;
+    if (!dropdown) {
+      dropdown = document.createElement('div');
+      dropdown.className = 'cad-custom-dropdown hidden bg-[#17171c] rounded-b shadow-2xl max-h-48 overflow-y-auto py-1 border border-[#27272a] border-t-0';
+      dropdown._triggerEl = triggerBtn;
+      comboEl._strokeDropdown = dropdown;
+      document.body.appendChild(dropdown);
     }
 
-    layerArray.splice(targetIdx, 0, draggedItem);
+    const currentVal = Number(layer.strokeWidth || 0);
+    dropdown.innerHTML = '';
 
-    this._closeColorPicker();
+    CAD_THEME.properties.strokeWidthPresets.forEach((preset) => {
+      const label = preset === 0 ? '-' : preset.toFixed(1);
+      const active = Math.abs(currentVal - preset) < 0.001;
 
-    if (this.utils?.service?.executeCommand) {
-      const cmd = new ReorderLayersCommand(this.manager, oldOrderEntries, layerArray, this);
-      this.utils.service.executeCommand(cmd);
+      const item = document.createElement('div');
+      item.className = `px-2 py-1 text-[11px] text-right font-sans tabular-nums cursor-pointer ${
+        active ? 'font-bold text-white bg-[#27272a]' : 'font-normal text-zinc-400 hover:text-white hover:bg-[#222226]'
+      }`;
+      item.textContent = label;
+
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dropdown.classList.add('hidden');
+        this._commitStrokeWidth(layer.id, preset);
+      });
+
+      dropdown.appendChild(item);
+    });
+
+    const updatePosition = () => {
+      const rect = comboEl.getBoundingClientRect();
+      dropdown.style.position = 'fixed';
+      dropdown.style.top = `${rect.bottom}px`;
+      dropdown.style.left = `${rect.left}px`;
+      dropdown.style.width = `${rect.width}px`;;
+      dropdown.style.zIndex = '99999';
+    };
+
+    updatePosition();
+    dropdown._updatePos = updatePosition;
+    dropdown.classList.remove('hidden');
+  }
+
+  _commitStrokeWidth(layerId, newVal) {
+    const layer = this.manager.layers.get(String(layerId));
+    if (!layer) return;
+
+    const oldVal = Number(layer.strokeWidth || 0);
+    if (Math.abs(oldVal - newVal) > 0.0001) {
+      this.service.executeCommand(
+        new UpdateLayerPropertyCommand(this.manager, layerId, 'strokeWidth', oldVal, newVal, this)
+      );
     } else {
-      this.manager.layers = new Map(layerArray);
-      this._syncPaperZIndex();
-      this.refresh();
+      const input = this.container?.querySelector(`.layer-row[data-layer-id="${layerId}"] [data-field="strokeWidth"]`);
+      if (input) input.value = this._formatStrokeWidth(oldVal);
     }
   }
 
-  _syncPaperZIndex() {
-    if (!this.manager || !this.manager.layers) return;
+  _handleListClick(e) {
+    const actionBtn = e.target.closest('[data-action]');
+    const row = e.target.closest('.layer-row');
+    if (!actionBtn || !row) return;
 
-    const layerList = Array.from(this.manager.layers.values());
-    const layerOrderMap = new Map();
-    layerList.forEach((l, idx) => layerOrderMap.set(String(l.id), idx));
+    e.stopPropagation();
+    const layerId = row.dataset.layerId;
+    const layer = this.manager.layers.get(String(layerId));
+    if (!layer) return;
 
-    if (this.utils?.service?.entities) {
-      this.utils.service.entities.sort((a, b) => {
-        const orderA = layerOrderMap.get(String(a.data?.layerId)) ?? 999;
-        const orderB = layerOrderMap.get(String(b.data?.layerId)) ?? 999;
-        return orderB - orderA;
-      });
+    const isActive = String(this.manager.activeLayerId) === String(layerId);
 
-      this.utils.service.entities.forEach((ent) => {
-        if (typeof ent.bringToFront === 'function') {
-          ent.bringToFront();
+    switch (actionBtn.dataset.action) {
+      case 'activate':
+        if (!isActive) {
+          this.service.executeCommand(new SetActiveLayerCommand(this.manager, this.manager.activeLayerId, layerId, this));
         }
-      });
+        break;
+
+      case 'color':
+        this.colorHandler.open(layer, actionBtn, this);
+        break;
+
+      case 'stroke-dropdown': {
+        const comboEl = actionBtn.closest('[data-role="stroke-combo"]');
+        if (comboEl) this._openStrokeDropdown(layer, comboEl, actionBtn);
+        break;
+      }
+
+      case 'toggle-visibility':
+        if (!isActive) {
+          this.service.executeCommand(new UpdateLayerPropertyCommand(this.manager, layerId, 'visible', layer.visible, !layer.visible, this));
+        }
+        break;
+
+      case 'toggle-lock':
+        if (!isActive) {
+          this.service.executeCommand(new UpdateLayerPropertyCommand(this.manager, layerId, 'locked', layer.locked, !layer.locked, this));
+        }
+        break;
+
+      case 'delete':
+        this._requestDeleteLayer(layer, isActive);
+        break;
+    }
+  }
+
+  _handleListChange(e) {
+    const fieldEl = e.target.closest('[data-field]');
+    const row = e.target.closest('.layer-row');
+    if (!fieldEl || !row) return;
+
+    const layerId = row.dataset.layerId;
+    const layer = this.manager.layers.get(String(layerId));
+    if (!layer) return;
+
+    if (fieldEl.dataset.field === 'name') {
+      const uniqueName = this._generateUniqueName(fieldEl.value, layerId);
+      if (uniqueName !== layer.name) {
+        this.service.executeCommand(new RenameLayerCommand(this.manager, layerId, layer.name, uniqueName, this));
+      } else {
+        fieldEl.value = layer.name;
+      }
+    } else if (fieldEl.dataset.field === 'strokeWidth') {
+      const parsed = this._parseStrokeWidth(fieldEl.value);
+      if (parsed === null) {
+        fieldEl.value = this._formatStrokeWidth(layer.strokeWidth);
+        return;
+      }
+      this._commitStrokeWidth(layerId, parsed);
+    }
+  }
+
+  _handleListKeyDown(e) {
+    const input = e.target.closest('[data-field="name"], [data-field="strokeWidth"], [data-field="opacity"]');
+    if (!input) return;
+
+    e.stopPropagation();
+    if (e.key === 'Enter') {
+      input.blur();
+    } else if (e.key === 'Escape') {
+      const row = input.closest('.layer-row');
+      const layer = row ? this.manager.layers.get(String(row.dataset.layerId)) : null;
+      if (layer) {
+        if (input.dataset.field === 'name') {
+          input.value = layer.name;
+        } else if (input.dataset.field === 'strokeWidth') {
+          input.value = this._formatStrokeWidth(layer.strokeWidth);
+        } else if (input.dataset.field === 'opacity') {
+          input.value = Math.round((layer.opacity !== undefined ? Number(layer.opacity) : 1) * 100);
+        }
+      }
+      input.blur();
+    }
+  }
+
+  _handleListMouseDown(e) {
+    const handle = e.target.closest('[data-role="drag-handle"]');
+    if (handle) {
+      const row = handle.closest('.layer-row');
+      if (row) row.setAttribute('draggable', 'true');
+      return;
     }
 
-    for (let i = layerList.length - 1; i >= 0; i--) {
-      const layer = layerList[i];
-      if (layer.paperGroup && typeof layer.paperGroup.bringToFront === 'function') {
-        layer.paperGroup.bringToFront();
+    const input = e.target.closest('[data-field="name"], [data-field="strokeWidth"]');
+    if (input) {
+      e.stopPropagation();
+      if (document.activeElement !== input) {
+        setTimeout(() => input.select(), 0);
       }
     }
+  }
 
-    if (window.paper?.view) {
-      window.paper.view.update();
+  _handleDragStart(e) {
+    const row = e.target.closest('.layer-row');
+    if (!row) return;
+    this.draggedLayerId = row.dataset.layerId;
+    e.dataTransfer.effectAllowed = 'move';
+    row.classList.add('opacity-40');
+  }
+
+  _handleDragOver(e) {
+    e.preventDefault();
+    const row = e.target.closest('.layer-row');
+    if (!row || !this.draggedLayerId || String(this.draggedLayerId) === String(row.dataset.layerId)) return;
+
+    e.dataTransfer.dropEffect = 'move';
+    const rect = row.getBoundingClientRect();
+    const isBottom = (e.clientY - rect.top) > rect.height / 2;
+
+    this._clearDragOverStylesExcept(row);
+    if (isBottom) {
+      row.classList.remove('border-t-2');
+      row.classList.add('border-b-2', 'border-[#52525B]');
+    } else {
+      row.classList.remove('border-b-2');
+      row.classList.add('border-t-2', 'border-[#52525B]');
     }
+  }
+
+  _handleDragLeave(e) {
+    const row = e.target.closest('.layer-row');
+    if (row && !row.contains(e.relatedTarget)) {
+      row.classList.remove('border-t-2', 'border-b-2', 'border-[#52525B]');
+    }
+  }
+
+  _handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const row = e.target.closest('.layer-row');
+    if (!row || !this.draggedLayerId || String(this.draggedLayerId) === String(row.dataset.layerId)) return;
+
+    const rect = row.getBoundingClientRect();
+    const placeAfter = (e.clientY - rect.top) > rect.height / 2;
+    this._clearDragOverStyles();
+    this._reorderLayers(this.draggedLayerId, row.dataset.layerId, placeAfter);
+  }
+
+  _handleDragEnd(e) {
+    const row = e.target.closest('.layer-row');
+    if (row) {
+      row.setAttribute('draggable', 'false');
+      row.classList.remove('opacity-40');
+    }
+    this.draggedLayerId = null;
+    this._clearDragOverStyles();
   }
 
   _clearDragOverStylesExcept(targetRow = null) {
-    const list = document.getElementById('layerListContainer');
-    if (!list) return;
-    list.querySelectorAll('.border-t-2, .border-b-2').forEach((el) => {
+    const list = this.container?.querySelector('#layerListContainer');
+    list?.querySelectorAll('.border-t-2, .border-b-2').forEach((el) => {
       if (el !== targetRow) {
         el.classList.remove('border-t-2', 'border-b-2', 'border-[#52525B]');
       }
@@ -590,104 +544,47 @@ export class LayerPanelUI {
     this._clearDragOverStylesExcept(null);
   }
 
-  _openColorPickerPopover(layer, triggerEl) {
-    this._closeColorPicker();
+  _reorderLayers(draggedId, targetId, placeAfter = false) {
+    const oldOrderEntries = Array.from(this.manager.layers.entries());
+    const nextOrder = [...oldOrderEntries];
+    const fromIdx = nextOrder.findIndex(([id]) => String(id) === String(draggedId));
+    if (fromIdx === -1) return;
 
-    // 1. Guardar la foto exacta del estado inicial al abrir el popover
-    const initialColor = layer.color ? layer.color.substring(0, 7).toUpperCase() : '#00E5FF';
-    const initialOpacity = layer.opacity !== undefined ? layer.opacity : 1.0;
+    const [moved] = nextOrder.splice(fromIdx, 1);
+    let toIdx = nextOrder.findIndex(([id]) => String(id) === String(targetId));
+    if (toIdx === -1) return;
+    if (placeAfter) toIdx += 1;
 
-    let hasChanges = false;
-
-    this.activePopover = new ColorPickerPopover({
-      color: initialColor,
-      opacity: initialOpacity,
-      anchorEl: triggerEl,
-      presets: this._getPresetColors(),
-
-      // 2. Durante el arrastre: SOLO actualiza la memoria y el render visual.
-      // NO se registra ningún comando de Undo/Redo aquí.
-      onChange: (hexColor, alphaValue) => {
-        layer.color = hexColor;
-        layer.opacity = alphaValue;
-
-        if (triggerEl) {
-          triggerEl.style.backgroundColor = hexColor;
-        }
-
-        hasChanges = true;
-
-        if (this.utils?.selectionRenderEngine?.updateEntitiesStroke) {
-          this.utils.selectionRenderEngine.updateEntitiesStroke();
-        }
-        if (window.paper?.view) window.paper.view.update();
-
-        // Refresco visual en el panel de propiedades mientras se arrastra
-        if (window.propertyPanelUI) {
-          window.propertyPanelUI.refresh();
-        }
-      },
-
-      // 3. Al soltar el clic (onChangeEnd): Se compara el valor final contra el inicial.
-      // Si hubo un cambio real, se registra UN SOLO comando en el historial.
-      onChangeEnd: (hexColor, alphaValue, flags = {}) => {
-        let hasChangesCommand = false;
-
-        // Registrar comando de Color si cambió respecto al inicio
-        if (flags.colorChanged && initialColor !== hexColor) {
-          if (this.utils?.service?.executeCommand) {
-            const cmd = new UpdateLayerPropertyCommand(this.manager, layer.id, 'color', initialColor, hexColor, this);
-            this.utils.service.executeCommand(cmd);
-          } else {
-            this.manager.updateLayerProperty(layer.id, 'color', hexColor);
-          }
-          hasChangesCommand = true;
-        }
-
-        // Registrar comando de Opacidad si cambió respecto al inicio
-        if (flags.opacityChanged && Math.abs(initialOpacity - alphaValue) > 0.001) {
-          if (this.utils?.service?.executeCommand) {
-            const cmd = new UpdateLayerPropertyCommand(this.manager, layer.id, 'opacity', initialOpacity, alphaValue, this);
-            this.utils.service.executeCommand(cmd);
-          } else {
-            this.manager.updateLayerProperty(layer.id, 'opacity', alphaValue);
-          }
-          hasChangesCommand = true;
-        }
-
-        // Si se ejecutó algún comando, actualizamos la lista
-        if (hasChangesCommand) {
-          this.refresh();
-        }
-      },
-
-      onCancel: () => {
-        if (!hasChanges) return;
-        layer.color = initialColor;
-        layer.opacity = initialOpacity;
-
-        if (triggerEl) {
-          triggerEl.style.backgroundColor = initialColor;
-        }
-
-        this.refresh();
-        if (this.utils?.selectionRenderEngine?.updateEntitiesStroke) {
-          this.utils.selectionRenderEngine.updateEntitiesStroke();
-        }
-        if (window.paper?.view) window.paper.view.update();
-        if (window.propertyPanelUI) window.propertyPanelUI.refresh();
-      },
-
-      onClose: () => {
-        this.activePopover = null;
-      }
-    });
+    nextOrder.splice(toIdx, 0, moved);
+    this.colorHandler.close();
+    this.service.executeCommand(new ReorderLayersCommand(this.manager, oldOrderEntries, nextOrder, this));
   }
 
-  _closeColorPicker() {
-    if (this.activePopover && typeof this.activePopover.close === 'function') {
-      this.activePopover.close();
-      this.activePopover = null;
+  _requestDeleteLayer(layer, isActive) {
+    if (this.manager.layers.size <= 1) return;
+
+    const availableLayers = Array.from(this.manager.layers.values())
+      .filter((l) => String(l.id) !== String(layer.id));
+    const activeLayer = this.manager.getActiveLayer();
+    const defaultTarget = (!isActive && activeLayer) ? activeLayer : availableLayers[0];
+
+    const hasContent = this.service.entities.some(
+      (ent) => ent.data && String(ent.data.layerId) === String(layer.id)
+    );
+
+    const executeDelete = (targetLayerId) => {
+      this.service.executeCommand(new DeleteLayerCommand(this.manager, layer.id, targetLayerId, this.service, this));
+    };
+
+    if (hasContent) {
+      LayerDeleteModal.open({
+        layer,
+        availableLayers,
+        defaultTargetId: defaultTarget?.id,
+        onConfirm: executeDelete
+      });
+    } else {
+      executeDelete(defaultTarget?.id || null);
     }
   }
 
@@ -695,123 +592,86 @@ export class LayerPanelUI {
     const defaultName = this._generateUniqueName(`Capa ${this.manager.layers.size}`, null);
     const layerData = {
       name: defaultName,
-      color: this._getRandomColor(),
+      color: this.colorHandler.generateDistinctColor(),
       strokeWidth: 0
     };
+    this.service.executeCommand(new CreateLayerCommand(this.manager, layerData, this));
+  }
 
-    if (this.utils?.service?.executeCommand) {
-      const cmd = new CreateLayerCommand(this.manager, layerData, this);
-      this.utils.service.executeCommand(cmd);
-    } else {
-      const newLayer = this.manager.createLayer(layerData);
-      if (newLayer) {
-        this.refresh();
+  _generateUniqueName(desiredName, layerId) {
+    const layers = this.manager.layers;
+    const isTaken = (name) => {
+      for (const [id, l] of layers.entries()) {
+        if (String(id) !== String(layerId) && l.name.trim().toLowerCase() === name.trim().toLowerCase()) {
+          return true;
+        }
       }
+      return false;
+    };
+
+    const cleanName = desiredName.trim() || `Capa ${layers.size}`;
+    if (!isTaken(cleanName)) return cleanName;
+
+    const match = cleanName.match(/^(.*?)(?:\s+(\d+))?$/);
+    const base = match?.[2] !== undefined ? match[1] : cleanName;
+    let num = match?.[2] !== undefined ? parseInt(match[2], 10) + 1 : 1;
+
+    let candidate = `${base} ${num}`;
+    while (isTaken(candidate)) {
+      num++;
+      candidate = `${base} ${num}`;
+    }
+    return candidate;
+  }
+
+  _syncVisuals() {
+    this.utils.selectionRenderEngine?.updateEntitiesStroke();
+    if (this.utils.paper?.view) {
+      this.utils.paper.view.update();
     }
   }
 
-  _promptDeleteLayerWithContent(layer, availableLayers, defaultTargetId, onConfirm) {
-    // Evitar duplicados si ya hay un modal abierto
-    document.getElementById('deleteLayerModalOverlay')?.remove();
+  _bindEvents() {
+    const btnAdd = this.container?.querySelector('#btnAddLayerBtn');
+    const list = this.container?.querySelector('#layerListContainer');
+    btnAdd?.addEventListener('click', this._onAddLayerClick);
+    if (!list) return;
 
-    const overlay = document.createElement('div');
-    overlay.id = 'deleteLayerModalOverlay';
-    overlay.className = 'fixed inset-0 z-[99999] bg-black/60 flex items-center justify-center select-none';
+    list.addEventListener('click', this._onListClick);
+    list.addEventListener('change', this._onListChange);
+    list.addEventListener('keydown', this._onListKeyDown);
+    list.addEventListener('mousedown', this._onListMouseDown);
+    list.addEventListener('dragstart', this._onDragStart);
+    list.addEventListener('dragover', this._onDragOver);
+    list.addEventListener('dragleave', this._onDragLeave);
+    list.addEventListener('drop', this._onDrop);
+    list.addEventListener('dragend', this._onDragEnd);
+  }
 
-    const optionsHtml = availableLayers
-      .map((l) => `<option value="${l.id}" ${String(l.id) === String(defaultTargetId) ? 'selected' : ''}>${l.name}</option>`)
-      .join('');
+  _unbindEvents() {
+    const btnAdd = this.container?.querySelector('#btnAddLayerBtn');
+    const list = this.container?.querySelector('#layerListContainer');
+    btnAdd?.removeEventListener('click', this._onAddLayerClick);
+    if (!list) return;
 
-    overlay.innerHTML = `
-      <div class="bg-[#17171c] border border-[#27272a] rounded-md shadow-2xl w-[320px] p-4 text-zinc-300 font-sans text-xs">
-        <div class="flex items-center justify-between mb-2">
-          <span class="font-bold text-zinc-200 uppercase tracking-wider text-[11px]">Eliminar capa "${layer.name}"</span>
-          <button id="dlgDelClose" class="text-zinc-500 hover:text-zinc-200 cursor-pointer"><i class="fa-solid fa-xmark"></i></button>
-        </div>
-        <p class="text-zinc-400 text-[11px] mb-3 leading-relaxed">
-          Esta capa contiene elementos en el dibujo. ¿Qué deseás hacer con ellos?
-        </p>
-
-        <div class="space-y-2 mb-4">
-          <label class="flex items-center gap-2 cursor-pointer text-[11px] text-zinc-200">
-            <input type="radio" name="delLayerAction" value="move" checked class="accent-zinc-300 cursor-pointer">
-            <span>Mover contenido a:</span>
-          </label>
-          <div class="pl-5">
-            <select id="dlgTargetLayerSelect" class="w-full bg-[#121215] border border-[#27272a] text-zinc-200 text-[11px] px-2 py-1.5 rounded outline-none cursor-pointer">
-              ${optionsHtml}
-            </select>
-          </div>
-
-          <label class="flex items-center gap-2 cursor-pointer text-[11px] text-red-400 pt-1">
-            <input type="radio" name="delLayerAction" value="delete" class="accent-red-500 cursor-pointer">
-            <span>Eliminar también el contenido</span>
-          </label>
-        </div>
-
-        <div class="flex justify-end gap-2 pt-2 border-t border-[#27272a]">
-          <button id="dlgDelCancel" class="px-3 py-1 rounded bg-[#27272a] hover:bg-[#323238] text-zinc-300 text-[11px] cursor-pointer transition-colors">
-            Cancelar
-          </button>
-          <button id="dlgDelAccept" class="px-3 py-1 rounded bg-zinc-200 hover:bg-white text-zinc-900 font-semibold text-[11px] cursor-pointer transition-colors">
-            Aceptar
-          </button>
-        </div>
-      </div>
-    `;
-
-    document.body.appendChild(overlay);
-
-    const selectEl = overlay.querySelector('#dlgTargetLayerSelect');
-    const radios = overlay.querySelectorAll('input[name="delLayerAction"]');
-
-    const closeModal = () => {
-      document.removeEventListener('keydown', onKeyDown, true);
-      overlay.remove();
-    };
-
-    const onKeyDown = (ev) => {
-      ev.stopPropagation();
-      if (ev.key === 'Escape') closeModal();
-      if (ev.key === 'Enter') overlay.querySelector('#dlgDelAccept')?.click();
-    };
-    document.addEventListener('keydown', onKeyDown, true);
-
-    radios.forEach((r) => {
-      r.addEventListener('change', () => {
-        const isMove = r.value === 'move' && r.checked;
-        selectEl.disabled = !isMove;
-        selectEl.classList.toggle('opacity-40', !isMove);
-      });
-    });
-
-    overlay.addEventListener('click', (ev) => {
-      if (ev.target === overlay) closeModal();
-    });
-    overlay.querySelector('#dlgDelClose')?.addEventListener('click', closeModal);
-    overlay.querySelector('#dlgDelCancel')?.addEventListener('click', closeModal);
-
-    overlay.querySelector('#dlgDelAccept')?.addEventListener('click', () => {
-      const action = overlay.querySelector('input[name="delLayerAction"]:checked')?.value;
-      const targetId = action === 'move' ? selectEl.value : null;
-      closeModal();
-      onConfirm(targetId);
-    });
+    list.removeEventListener('click', this._onListClick);
+    list.removeEventListener('change', this._onListChange);
+    list.removeEventListener('keydown', this._onListKeyDown);
+    list.removeEventListener('mousedown', this._onListMouseDown);
+    list.removeEventListener('dragstart', this._onDragStart);
+    list.removeEventListener('dragover', this._onDragOver);
+    list.removeEventListener('dragleave', this._onDragLeave);
+    list.removeEventListener('drop', this._onDrop);
+    list.removeEventListener('dragend', this._onDragEnd);
   }
 
   cleanup() {
-    this._closeColorPicker();
-
-    const btnAdd = this.container?.querySelector('#btnAddLayerBtn');
-    if (btnAdd) {
-      btnAdd.removeEventListener('click', this._onAddLayerClick);
-    }
+    this.colorHandler.close();
+    this._unbindEvents();
   }
 
   destroy() {
     this.cleanup();
-    if (this.container) {
-      this.container.innerHTML = '';
-    }
+    if (this.container) this.container.innerHTML = '';
   }
 }

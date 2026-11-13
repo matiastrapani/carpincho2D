@@ -78,10 +78,10 @@ export const CAD_THEME = {
   },
   properties: {
     defaultColor: '#ffffff',
-    customFallbackColor: '#00e5ff',
-    strokeWidthPresets: [0, 1, 1.5, 2, 3],
+    customFallbackColor: '#AAAAAA',
+    strokeWidthPresets: [0, 1, 1.5, 2, 2.5, 3],
     colorPresets: [
-      '#001988', '#4c72fb', '#f35c54', '#ffcc00',
+      '#008800', '#4c72fb', '#f35c54', '#ffcc00',
       '#3bcf1d', '#e148ae', '#93a115', '#7877d5'
     ]
   },

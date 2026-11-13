@@ -2,6 +2,8 @@
  * tools/BaseTool.js - Clase base para todas las herramientas del entorno CAD
  */
 
+import { AddEntityCommand } from '../services/commands/cadCommands.js';
+
 export class BaseTool {
   constructor(cadService, cadUtils) {
     this.service = cadService;
@@ -70,5 +72,41 @@ export class BaseTool {
     if (this.utils?.setTool) {
       this.utils.setTool('select');
     }
+  }
+
+  commitNewEntity(entity, baseName, CommandClass = AddEntityCommand) {
+    if (!entity) return null;
+    if (!this.service || !this.utils) {
+      throw new Error('BaseTool requiere instancias válidas de cadService y cadUtils.');
+    }
+
+    if (!entity.data) {
+      entity.data = {};
+    }
+
+    // 1. Asignar nombre correlativo único
+    if (baseName) {
+      const entityName = typeof this.utils.generateNextEntityName === 'function'
+        ? this.utils.generateNextEntityName(baseName)
+        : baseName;
+      entity.name = entityName;
+      entity.data.name = entityName;
+    }
+
+    // 2. Aplicar propiedades por defecto y capa activa
+    if (this.utils.propertyManager) {
+      this.utils.propertyManager.applyDefaultSettings(entity);
+    }
+
+    // 3. Ejecutar un único comando de historial (inserta en entities, asigna capa y actualiza Z-Order)
+    const cmd = new CommandClass(this.service, entity);
+    this.service.executeCommand(cmd);
+
+    // 4. Sincronizar renderizado
+    if (this.utils.selectionRenderEngine) {
+      this.utils.selectionRenderEngine.updateEntitiesStroke();
+    }
+
+    return entity;
   }
 }

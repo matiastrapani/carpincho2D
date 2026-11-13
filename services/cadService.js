@@ -3,7 +3,6 @@
  */
 
 import { CommandHistory } from './commandHistory.js';
-import { AddEntityCommand } from './commands/cadCommands.js';
 import { OsnapEngine } from './engines/OsnapEngine.js';
 import { GeometryEngine } from './engines/GeometryEngine.js';
 import { SelectionManager } from './SelectionManager.js';
@@ -216,6 +215,11 @@ export class CADService {
   }
 
   createLineEntity(fromPt, toPt, isDynamic = true, baseWidth = 1) {
+    const EPSILON = 0.001;
+    if (!fromPt || !toPt || fromPt.getDistance(toPt) < EPSILON) {
+      return null;
+    }
+
     const zoom = paper.view.zoom;
     const initialWidth = isDynamic ? (baseWidth / zoom) : baseWidth;
     const defaultColor = CAD_THEME.properties.customFallbackColor;
@@ -234,17 +238,23 @@ export class CADService {
       origStrokeWidth: initialWidth
     };
 
-    return this.registerEntity(line) ? line : null;
+    return line;
   }
 
   createCircleEntity(centerPt, radius, isDynamic = true, baseWidth = 1) {
+    const EPSILON = 0.001;
+    if (!centerPt || isNaN(radius) || radius < EPSILON) {
+      return null;
+    }
+
     const zoom = paper.view.zoom;
     const initialWidth = isDynamic ? (baseWidth / zoom) : baseWidth;
+    const defaultColor = CAD_THEME.properties.customFallbackColor;
 
     const circlePath = new paper.Path.Circle({
       center: centerPt,
       radius,
-      strokeColor: '#3b82f6',
+      strokeColor: defaultColor,
       strokeWidth: initialWidth,
       fillColor: null
     });
@@ -256,15 +266,11 @@ export class CADService {
       centerPt: centerPt.clone(),
       radius,
       origStrokeWidth: initialWidth,
-      origStrokeColor: '#3b82f6',
+      origStrokeColor: defaultColor,
       origFillColor: null
     };
 
-    if (this.registerEntity(circlePath)) {
-      this.executeCommand(new AddEntityCommand(this, circlePath));
-      return circlePath;
-    }
-    return null;
+    return circlePath;
   }
 
   registerEntity(entity) {

@@ -271,3 +271,19 @@ canvas.tool-trim { cursor: cell; }
 .has-flyout.active::after {
   border-color: transparent transparent #ffffff transparent;
 }
+
+/* Contenedor responsivo del Panel de Capas */
+#layerPanelContainer {
+  container-type: inline-size;
+  container-name: layer-panel;
+}
+
+@container layer-panel (max-width: 245px) {
+  .layer-col-opacity {
+    display: none !important;
+  }
+  .layer-grid-cols {
+    grid-template-columns: 8px 12px 14px minmax(0, 1fr) 44px 14px 14px 14px !important;
+  }
+}
+
