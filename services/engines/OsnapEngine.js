@@ -225,29 +225,61 @@ export class OsnapEngine {
         });
       }
 
-      // 6. OSNAP PARA INTERSECCIONES
-      const intersectionTargets = Array.from(new Set([...snapTargets, ...circleTargets]))
-        .filter(ent => ent !== activePath);
+      // 6. OSNAP PARA INTERSECCIONES (Auto-intersecciones y cruces entre entidades)
+      if (this.service.snapFilters.intersection) {
+        // 6a. Auto-intersecciones sobre cada curva/polilínea (incluye activePath en dibujo)
+        snapTargets.forEach(path => {
+          if (!path || !path.curves || path.curves.length < 1) return;
+          if (draggedPath && path === draggedPath) return;
 
-      if (this.service.snapFilters.intersection && intersectionTargets.length > 1) {
-        for (let i = 0; i < intersectionTargets.length; i++) {
-          for (let j = i + 1; j < intersectionTargets.length; j++) {
-            const pathA = intersectionTargets[i];
-            const pathB = intersectionTargets[j];
+          const totalLen = path.length || 0;
+          if (totalLen <= EPSILON) return;
 
-            if (!pathA || !pathB || pathA === pathB) continue;
-            if (draggedPath && (pathA === draggedPath || pathB === draggedPath)) continue;
-            if (!pathA.bounds.intersects(pathB.bounds)) continue;
+          const selfCrossings = path.getIntersections();
+          selfCrossings.forEach(cross => {
+            if (!cross || !cross.point || isSelfPoint(cross.point)) return;
 
-            const crossings = pathA.getIntersections(pathB);
-            crossings.forEach(cross => {
-              if (cross && cross.point && !isSelfPoint(cross.point)) {
-                const d = cross.point.getDistance(mousePoint);
-                if (d <= snapRadius) {
-                  candidatePoints.push({ point: cross.point.clone(), type: 'intersection', dist: d, priority: 0 });
+            const off1 = cross.offset;
+            const off2 = cross.intersection?.offset;
+            if (off1 !== undefined && off2 !== undefined) {
+              const rawDiff = Math.abs(off1 - off2);
+              const arcSep = path.closed ? Math.min(rawDiff, totalLen - rawDiff) : rawDiff;
+              if (arcSep < 1e-3) return;
+            } else if (path.segments?.some(seg => seg.point.getDistance(cross.point) < 1e-3)) {
+              return;
+            }
+
+            const d = cross.point.getDistance(mousePoint);
+            if (d <= snapRadius) {
+              candidatePoints.push({ point: cross.point.clone(), type: 'intersection', dist: d, priority: 0 });
+            }
+          });
+        });
+
+        // 6b. Intersecciones entre pares de entidades distintas
+        const intersectionTargets = Array.from(new Set([...snapTargets, ...circleTargets]))
+          .filter(ent => ent !== activePath);
+
+        if (intersectionTargets.length > 1) {
+          for (let i = 0; i < intersectionTargets.length; i++) {
+            for (let j = i + 1; j < intersectionTargets.length; j++) {
+              const pathA = intersectionTargets[i];
+              const pathB = intersectionTargets[j];
+
+              if (!pathA || !pathB || pathA === pathB) continue;
+              if (draggedPath && (pathA === draggedPath || pathB === draggedPath)) continue;
+              if (!pathA.bounds.intersects(pathB.bounds)) continue;
+
+              const crossings = pathA.getIntersections(pathB);
+              crossings.forEach(cross => {
+                if (cross && cross.point && !isSelfPoint(cross.point)) {
+                  const d = cross.point.getDistance(mousePoint);
+                  if (d <= snapRadius) {
+                    candidatePoints.push({ point: cross.point.clone(), type: 'intersection', dist: d, priority: 0 });
+                  }
                 }
-              }
-            });
+              });
+            }
           }
         }
       }

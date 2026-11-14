@@ -389,3 +389,21 @@ export class TransformEntityCommand {
     paper.view.update();
   }
 }
+
+export class BatchTrimCommand {
+  constructor(commands = []) {
+    this.commands = commands;
+  }
+
+  execute() {
+    for (let i = 0; i < this.commands.length; i++) {
+      this.commands[i].execute();
+    }
+  }
+
+  undo() {
+    for (let i = this.commands.length - 1; i >= 0; i--) {
+      this.commands[i].undo();
+    }
+  }
+}
