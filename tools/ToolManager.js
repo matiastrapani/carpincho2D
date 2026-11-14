@@ -34,10 +34,10 @@ export class ToolManager {
     // 1. Limpiar la interfaz (submenús desplegados y botones activos)
     this.updateToolButtonsUI(name);
 
-    // 2. Si la nueva herramienta es Trim y hay una selección activa, 
-    // resguardamos las entidades elegidas para que no se pierdan al cancelar SelectTool.
-    const preservedSelection = (name === 'trim' && this.service.selectedEntities) 
-      ? [...this.service.selectedEntities] 
+    // 2. Resguardar selección activa si la herramienta entrante opera sobre objetos preseleccionados
+    const preserveTools = ['trim', 'divide_count', 'divide_dist'];
+    const preservedSelection = (preserveTools.includes(name) && this.service.selectedEntities)
+      ? [...this.service.selectedEntities]
       : null;
 
     // 3. Limpieza de la herramienta saliente (invocación automática de cleanup)
@@ -49,12 +49,12 @@ export class ToolManager {
       }
     }
 
-    // 4. Restauramos la selección resguardada en el servicio si íbamos hacia TRIM
+    // 4. Restaurar la selección resguardada en el servicio
     if (preservedSelection && preservedSelection.length > 0) {
       this.service.selectedEntities = preservedSelection;
     }
 
-    // 5. Cambiamos a la nueva herramienta y ejecutamos su onActivate
+    // 5. Cambiar a la nueva herramienta y ejecutar su onActivate
     this.activeToolName = name;
     this.activeTool = this.tools[name] || null;
 

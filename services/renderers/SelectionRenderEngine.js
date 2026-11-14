@@ -14,17 +14,63 @@ export class SelectionRenderEngine {
     return this._cadService || window.cadService;
   }
 
+  _getOrCreatePointsLayer() {
+    if (!paper || !paper.project) return null;
+
+    const cadUtils = this.service?.utils || window.cadUtils;
+    const viewportManager = cadUtils?.viewportManager;
+
+    let pointsLayer = viewportManager?.pointsLayer
+      || paper.project.layers.find((l) => l.name === 'pointsLayer');
+
+    if (!pointsLayer) {
+      const prevActive = paper.project.activeLayer;
+      pointsLayer = new paper.Layer();
+      pointsLayer.name = 'pointsLayer';
+      if (prevActive && prevActive !== pointsLayer) {
+        prevActive.activate();
+      }
+    }
+
+    if (viewportManager && !viewportManager.pointsLayer) {
+      viewportManager.pointsLayer = pointsLayer;
+    }
+
+    const drawLayer = viewportManager?.drawLayer || paper.project.layers.find((l) => l.name === 'drawLayer');
+    const nodesLayer = viewportManager?.nodesLayer || paper.project.layers.find((l) => l.name === 'nodesLayer');
+    const hudLayer = viewportManager?.hudLayer || paper.project.layers.find((l) => l.name === 'hudLayer');
+
+    if (drawLayer) drawLayer.sendToBack();
+    if (nodesLayer && drawLayer) nodesLayer.insertAbove(drawLayer);
+    if (nodesLayer) {
+      pointsLayer.insertAbove(nodesLayer);
+    } else if (drawLayer) {
+      pointsLayer.insertAbove(drawLayer);
+    }
+    if (hudLayer) hudLayer.bringToFront();
+
+    return pointsLayer;
+  }
+
   updatePointEntitiesScale() {
     if (!paper || !paper.view) return;
     const zoom = paper.view.zoom;
+    const pointsLayer = this._getOrCreatePointsLayer();
 
     const nodeTheme = (typeof CAD_THEME !== 'undefined' && CAD_THEME?.node) ? CAD_THEME.node : {};
     const nodeSelectionTheme = (typeof CAD_THEME !== 'undefined' && CAD_THEME?.selection?.node) ? CAD_THEME.selection.node : {};
 
     const entities = this.service?.entities || [];
+    const hoveredPoints = [];
+    const selectedPoints = [];
+
     entities.forEach(ent => {
       if (ent && ent.data && ent.data.isPointEntity && ent.bounds) {
-        const isSelected = this.service.selectedEntities?.includes(ent);
+        if (pointsLayer && ent.parent !== pointsLayer) {
+          pointsLayer.addChild(ent);
+        }
+
+        const isSelected = Boolean(this.service.selectedEntities?.includes(ent));
         const isHovered = this.service.hoveredEntity === ent;
 
         let radiusPx = isSelected 
@@ -50,8 +96,18 @@ export class SelectionRenderEngine {
         }
 
         ent.strokeWidth = strokeWidthPx / zoom;
+
+        if (isSelected) {
+          selectedPoints.push(ent);
+        } else if (isHovered) {
+          hoveredPoints.push(ent);
+        }
       }
     });
+
+    hoveredPoints.forEach(ent => ent.bringToFront());
+    selectedPoints.forEach(ent => ent.bringToFront());
+
     if (paper.view) paper.view.update();
   }
 
@@ -131,8 +187,6 @@ export class SelectionRenderEngine {
         const strokeColorObj = new paper.Color(strokeHex);
         strokeColorObj.alpha = isSelected ? 1.0 : resolvedOpacity;
         ent.strokeColor = strokeColorObj;
-
-        this.updatePointEntitiesScale();
         return;
       }
 
@@ -190,6 +244,8 @@ export class SelectionRenderEngine {
         ent.strokeWidth = this._getResolvedStrokeWidth(ent, mult, zoom);
       }
     });
+
+    this.updatePointEntitiesScale();
   }
 
   renderBezierHandles() {
@@ -197,14 +253,13 @@ export class SelectionRenderEngine {
     this.controlHandlesGroup = new paper.Group({ insert: false });
 
     const cadUtils = this.service?.utils || window.cadUtils || {};
-    const nodesLayer = cadUtils.nodesLayer || paper.project?.layers?.['nodesLayer'];
+    const nodesLayer = cadUtils.nodesLayer || paper.project?.layers.find((l) => l.name === 'nodesLayer');
     if (nodesLayer) {
       nodesLayer.addChild(this.controlHandlesGroup);
     } else if (paper.project?.activeLayer) {
       paper.project.activeLayer.addChild(this.controlHandlesGroup);
     }
 
-    // Sincronizar inmediatamente la referencia con window.cadUtils para que SelectTool y HandleSelectionHandler la encuentren
     if (window.cadUtils) {
       window.cadUtils.controlHandlesGroup = this.controlHandlesGroup;
     }
@@ -219,7 +274,6 @@ export class SelectionRenderEngine {
     const hoveredParametricGrip = cadUtils.hoveredParametricGrip;
     const activeParametricGrip = cadUtils.activeParametricGrip;
 
-    // Purga de edición para elementos huérfanos o eliminados
     if (service.editingEntities && service.editingEntities.length > 0) {
       service.editingEntities = service.editingEntities.filter(
         ent => ent && ent.parent && service.entities?.includes(ent)
@@ -254,7 +308,7 @@ export class SelectionRenderEngine {
       return !layer || !layer.locked;
     });
 
-    // 1. OVERLAY BASE DE ENTIDADES EN MODO EDICIÓN (respeta si la entidad completa sigue seleccionada)
+    // 1. OVERLAY BASE DE ENTIDADES EN MODO EDICIÓN
     activeEntities.forEach(entity => {
       if (!entity.visible) return;
 
@@ -502,14 +556,9 @@ export class SelectionRenderEngine {
     selectableEntities.forEach(entity => {
       if (!entity.visible) return;
 
-      // Proyección visual de la entidad seleccionada por encima de todas las capas
-      if (!activeEntities.includes(entity)) {
-        if (entity.data?.isPointEntity) {
-          const pointOverlay = entity.clone({ insert: false });
-          pointOverlay.data = {};
-          pointOverlay.guide = true;
-          this.controlHandlesGroup.addChild(pointOverlay);
-        } else if (entity instanceof paper.Path || entity instanceof paper.CompoundPath) {
+      // Los puntos viven en pointsLayer (por encima de nodesLayer), así que solo proyectamos curvas/rasters
+      if (!activeEntities.includes(entity) && !entity.data?.isPointEntity) {
+        if (entity instanceof paper.Path || entity instanceof paper.CompoundPath) {
           const styleConfig = entity.data?.isCircleEntity
             ? (typeof CAD_THEME !== 'undefined' && CAD_THEME?.selection?.circle ? CAD_THEME.selection.circle : {})
             : (typeof CAD_THEME !== 'undefined' && CAD_THEME?.selection?.line ? CAD_THEME.selection.line : {});
@@ -619,5 +668,8 @@ export class SelectionRenderEngine {
         });
       }
     });
+
+    // Garantizar al final del render que pointsLayer (y los puntos seleccionados) quede siempre por encima de nodesLayer
+    this._getOrCreatePointsLayer();
   }
 }

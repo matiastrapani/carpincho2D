@@ -185,7 +185,8 @@ export class CADService {
     const fillColor = opts.fillColor || nodeTheme.defaultFillColor || CAD_THEME.canvas.backgroundColor;
     const strokeWidth = (nodeTheme.strokeWidthPx || 1.0) / zoom;
 
-    this.utils?.nodesLayer?.activate();
+    const targetLayer = this.utils?.pointsLayer || this.utils?.nodesLayer;
+    targetLayer?.activate();
 
     const pointMarker = new paper.Path.Circle({
       center: pt,
@@ -281,6 +282,13 @@ export class CADService {
       if (entity.length < EPSILON) {
         entity.remove();
         return false;
+      }
+    }
+
+    if (entity.data?.isPointEntity) {
+      const pointsLayer = this.utils?.pointsLayer || (typeof paper !== 'undefined' ? paper.project?.layers?.['pointsLayer'] : null);
+      if (pointsLayer && entity.parent !== pointsLayer) {
+        pointsLayer.addChild(entity);
       }
     }
 

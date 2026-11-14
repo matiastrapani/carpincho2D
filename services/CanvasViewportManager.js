@@ -18,11 +18,17 @@ export class CanvasViewportManager {
     // Estado para la función Toggle de Zoom Extents
     this.previousViewState = null;
 
+    // Estado de puntero para sincronizar arrastres activos durante pan/zoom
+    this._isPrimaryDragActive = false;
+    this._lastClientX = null;
+    this._lastClientY = null;
+
     // Referencias guardadas para cleanup
     this._resizeObserver = null;
     this._wheelHandler = this.handleMagicMouseWheel.bind(this);
     this._contextMenuHandler = this._handleContextMenu.bind(this);
     this._cmdInputKeydownHandler = this._handleCmdInputKeydown.bind(this);
+    this._windowMouseUpHandler = this._handleWindowMouseUp.bind(this);
   }
 
   // --- INICIALIZACIÓN DE PAPER.JS Y EVENTOS DEL CANVAS ---
@@ -45,11 +51,15 @@ export class CanvasViewportManager {
     this.nodesLayer = new paper.Layer();
     this.nodesLayer.name = 'nodesLayer';
 
+    this.pointsLayer = new paper.Layer();
+    this.pointsLayer.name = 'pointsLayer';
+
     this.hudLayer = new paper.Layer();
     this.hudLayer.name = 'hudLayer';
 
     this.drawLayer.sendToBack();
     this.nodesLayer.insertAbove(this.drawLayer);
+    this.pointsLayer.insertAbove(this.nodesLayer);
     this.hudLayer.bringToFront();
 
     this.drawLayer.activate();
@@ -69,6 +79,7 @@ export class CanvasViewportManager {
     // Eventos guardados para poder limpiarlos después
     canvas.addEventListener('wheel', this._wheelHandler, { passive: false });
     canvas.addEventListener('contextmenu', this._contextMenuHandler);
+    window.addEventListener('mouseup', this._windowMouseUpHandler);
 
     const cmdInput = document.getElementById('cmdInput');
     if (cmdInput) {
@@ -88,10 +99,22 @@ export class CanvasViewportManager {
     const tool = new paper.Tool();
 
     tool.onMouseDown = (event) => {
+      if (event.event) {
+        this._lastClientX = event.event.clientX;
+        this._lastClientY = event.event.clientY;
+      }
+
       if (event.event.button === 1 || this.utils.currentToolMode === 'pan') {
         this.isPanning = true;
         this.panStartPoint = event.event;
         return;
+      }
+
+      if (event.event.button === 0) {
+        this._isPrimaryDragActive = true;
+        this.utils.isPointerDown = true;
+        this.lastMousePoint = event.point.clone();
+        this.utils.lastMousePoint = event.point.clone();
       }
 
       if (this.utils.toolManager.activeTool) {
@@ -100,6 +123,11 @@ export class CanvasViewportManager {
     };
 
     tool.onMouseDrag = (event) => {
+      if (event.event) {
+        this._lastClientX = event.event.clientX;
+        this._lastClientY = event.event.clientY;
+      }
+
       if (this.isPanning) {
         this.previousViewState = null;
         const delta = paper.view.center.subtract(
@@ -108,8 +136,15 @@ export class CanvasViewportManager {
         paper.view.center = delta;
         this.panStartPoint = event.event;
         this.drawGrid();
+
+        if (this._isPrimaryDragActive || ((event.event?.buttons & 1) === 1)) {
+          this._syncActiveDragAfterViewportChange(event.event);
+        }
         return;
       }
+
+      this.lastMousePoint = event.point.clone();
+      this.utils.lastMousePoint = event.point.clone();
 
       if (this.utils.toolManager.activeTool) {
         this.utils.toolManager.onMouseDrag(event);
@@ -117,8 +152,23 @@ export class CanvasViewportManager {
     };
 
     tool.onMouseUp = (event) => {
+      if (event.event) {
+        this._lastClientX = event.event.clientX;
+        this._lastClientY = event.event.clientY;
+      }
+
       if (event.event.button === 1 || event.event.button === 2 || this.utils.currentToolMode === 'pan') {
         this.isPanning = false;
+      }
+
+      if (event.event.button === 0) {
+        this._isPrimaryDragActive = false;
+        this.utils.isPointerDown = false;
+      }
+
+      // Evitar cerrar un arrastre primario activo si se soltó el botón central/secundario del pan
+      if ((event.event.button === 1 || event.event.button === 2) && this._isPrimaryDragActive) {
+        return;
       }
 
       if (this.utils.toolManager.activeTool) {
@@ -127,7 +177,13 @@ export class CanvasViewportManager {
     };
 
     tool.onMouseMove = (event) => {
+      if (event.event) {
+        this._lastClientX = event.event.clientX;
+        this._lastClientY = event.event.clientY;
+      }
+
       this.lastMousePoint = event.point.clone();
+      this.utils.lastMousePoint = event.point.clone();
       this.utils.hud.updateHUD(event.point);
 
       if (this.utils.toolManager.activeTool) {
@@ -135,6 +191,51 @@ export class CanvasViewportManager {
       }
     };
   }
+
+
+
+  _clientToProject(clientX, clientY) {
+    if (!paper?.view || clientX === null || clientY === null) return null;
+
+    const canvas = this.utils?.canvasElement || document.getElementById('cadCanvas');
+    const rect = canvas ? canvas.getBoundingClientRect() : { left: 0, top: 0 };
+    const viewPt = new paper.Point(clientX - rect.left, clientY - rect.top);
+    return paper.view.viewToProject(viewPt);
+  }
+
+  _syncActiveDragAfterViewportChange(nativeEvent = null) {
+    const clientX = nativeEvent?.clientX ?? this._lastClientX;
+    const clientY = nativeEvent?.clientY ?? this._lastClientY;
+    const projectPt = this._clientToProject(clientX, clientY);
+    if (!projectPt) return;
+
+    this.lastMousePoint = projectPt.clone();
+    this.utils.lastMousePoint = projectPt.clone();
+
+    const activeTool = this.utils.toolManager?.activeTool;
+    if (activeTool && typeof activeTool.onMouseDrag === 'function') {
+      const shiftKey = nativeEvent?.shiftKey !== undefined
+        ? Boolean(nativeEvent.shiftKey)
+        : Boolean(this.utils.isShiftPressed);
+
+      activeTool.onMouseDrag({
+        point: projectPt,
+        event: {
+          shiftKey,
+          ctrlKey: Boolean(nativeEvent?.ctrlKey),
+          metaKey: Boolean(nativeEvent?.metaKey),
+          altKey: Boolean(nativeEvent?.altKey),
+          button: 0,
+          buttons: 1
+        }
+      });
+    }
+
+    if (paper?.view) {
+      paper.view.update();
+    }
+  }
+
 
   drawGrid(forceRedraw = false) {
     if (!this.isGridVisible) {
@@ -268,8 +369,11 @@ export class CanvasViewportManager {
     this.previousViewState = null;
     e.preventDefault();
 
+    this._lastClientX = e.clientX;
+    this._lastClientY = e.clientY;
+
     const view = paper.view;
-    const mousePosition = view.viewToProject(new paper.Point(e.clientX, e.clientY));
+    const mousePosition = this._clientToProject(e.clientX, e.clientY) || view.viewToProject(new paper.Point(e.clientX, e.clientY));
     if (typeof this.utils.hud?.updateHUD === 'function') {
       this.utils.hud.updateHUD(mousePosition);
     }
@@ -284,7 +388,7 @@ export class CanvasViewportManager {
 
       view.zoom = newZoom;
 
-      const newMousePosition = view.viewToProject(new paper.Point(e.clientX, e.clientY));
+      const newMousePosition = this._clientToProject(e.clientX, e.clientY) || view.viewToProject(new paper.Point(e.clientX, e.clientY));
       view.center = view.center.add(mousePosition.subtract(newMousePosition));
     } else {
       const panSensitivity = 1 / view.zoom;
@@ -317,8 +421,29 @@ export class CanvasViewportManager {
       this.utils.rubberBandLine.strokeWidth = activeWidth === 0 ? (1 / view.zoom) : activeWidth;
       this.utils.rubberBandLine.dashArray = dashPattern.map(val => val / view.zoom);
     }
-    if (typeof this.utils.hud?.updateHUD === 'function') {
-      this.utils.hud.updateHUD(view.viewToProject(new paper.Point(e.clientX, e.clientY)));
+
+    const isDraggingPrimary = this._isPrimaryDragActive || ((e.buttons & 1) === 1);
+    if (isDraggingPrimary) {
+      this._syncActiveDragAfterViewportChange(e);
+    } else {
+      const updatedProjectPt = this._clientToProject(e.clientX, e.clientY) || view.viewToProject(new paper.Point(e.clientX, e.clientY));
+      this.lastMousePoint = updatedProjectPt.clone();
+      this.utils.lastMousePoint = updatedProjectPt.clone();
+      if (typeof this.utils.hud?.updateHUD === 'function') {
+        this.utils.hud.updateHUD(updatedProjectPt);
+      }
+      if (view) {
+        view.update();
+      }
+    }
+  }
+
+  _handleWindowMouseUp(e) {
+    if (e.button === 0) {
+      this._isPrimaryDragActive = false;
+      if (this.utils) {
+        this.utils.isPointerDown = false;
+      }
     }
   }
 
@@ -628,6 +753,8 @@ export class CanvasViewportManager {
       canvas.removeEventListener('contextmenu', this._contextMenuHandler);
     }
 
+    window.removeEventListener('mouseup', this._windowMouseUpHandler);
+
     const cmdInput = document.getElementById('cmdInput');
     if (cmdInput) {
       cmdInput.removeEventListener('keydown', this._cmdInputKeydownHandler);
@@ -638,6 +765,7 @@ export class CanvasViewportManager {
       this.gridGroup = null;
     }
 
+    this._isPrimaryDragActive = false;
     this._gridCache = null;
   }
 }

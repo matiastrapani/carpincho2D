@@ -104,6 +104,7 @@ export class CADUtils {
 
   get drawLayer() { return this.viewportManager?.drawLayer || paper.project?.layers['drawLayer']; }
   get nodesLayer() { return this.viewportManager?.nodesLayer || paper.project?.layers['nodesLayer']; }
+  get pointsLayer() { return this.viewportManager?.pointsLayer || paper.project?.layers['pointsLayer']; }
   get hudLayer() { return this.viewportManager?.hudLayer || paper.project?.layers['hudLayer']; }
   
   /**
@@ -373,15 +374,16 @@ export class CADUtils {
     this.currentToolMode = toolName;
     this.closeAllMenus();
 
-    const isDivisionTool = (toolName === 'divide_count' || toolName === 'divide_dist');
-    const preservedEntities = isDivisionTool
+    const preserveSelectionTools = ['divide_count', 'divide_dist', 'trim'];
+    const shouldPreserveSelection = preserveSelectionTools.includes(toolName);
+    const preservedEntities = shouldPreserveSelection
       ? this.service.selectedEntities.filter(ent => ent && !ent.data?.isPointEntity)
       : [];
 
     if (toolName !== 'select' && toolName !== 'pan') {
       this.service.editingEntities = [];
       this.service.deselectAllSegments();
-      if (!isDivisionTool) {
+      if (!shouldPreserveSelection) {
         this.service.deselectAllEntities();
       }
     }
@@ -403,13 +405,15 @@ export class CADUtils {
 
     this.toolManager.setTool(toolName);
 
-    if (isDivisionTool && preservedEntities.length > 0) {
+    if (shouldPreserveSelection && preservedEntities.length > 0) {
       this.service.selectedEntities = [...preservedEntities];
-      this.divisionSelectedEntities = [...preservedEntities];
 
-      const activeTool = this.toolManager.activeTool;
-      if (activeTool && typeof activeTool.askForDivisionValue === 'function') {
-        activeTool.askForDivisionValue();
+      if (toolName === 'divide_count' || toolName === 'divide_dist') {
+        this.divisionSelectedEntities = [...preservedEntities];
+        const activeTool = this.toolManager.activeTool;
+        if (activeTool && typeof activeTool.askForDivisionValue === 'function') {
+          activeTool.askForDivisionValue();
+        }
       }
     }
 

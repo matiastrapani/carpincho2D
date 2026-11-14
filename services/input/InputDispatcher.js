@@ -102,12 +102,18 @@ export class InputDispatcher {
       return;
     }
 
-    // 3. Seleccionar todo (Ctrl+A / Cmd+A) en el lienzo
-    if (isCtrlOrCmd && e.key.toLowerCase() === 'a') {
+    // 3. Seleccionar todo (Ctrl+A / Cmd+A)
+    if (isCtrlOrCmd && (e.key.toLowerCase() === 'a' || e.code === 'KeyA')) {
       // Si la consola tiene texto escrito, permitir seleccionar el texto normalmente
       if (isConsoleInput && activeElement.value.length > 0) {
         return;
       }
+
+      // Delegar primero a la herramienta activa (ej. modo edición de nodos en SelectTool)
+      if (activeTool && typeof activeTool.onKeyDown === 'function' && activeTool.onKeyDown(e)) {
+        return;
+      }
+
       e.preventDefault();
 
       if (cadUtils?.currentToolMode !== 'select' && typeof cadUtils?.setTool === 'function') {

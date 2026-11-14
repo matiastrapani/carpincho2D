@@ -100,8 +100,17 @@ export class LayerManager {
     const layerOrderMap = new Map();
     layerList.forEach((layer, idx) => layerOrderMap.set(String(layer.id), idx));
 
+    const pointsLayer = this.utils?.pointsLayer || (typeof paper !== 'undefined' ? paper.project?.layers?.['pointsLayer'] : null);
+
     if (Array.isArray(this.service?.entities)) {
       this.service.entities.forEach((ent) => {
+        if (!ent) return;
+        if (ent.data?.isPointEntity) {
+          if (pointsLayer && ent.parent !== pointsLayer) {
+            pointsLayer.addChild(ent);
+          }
+          return;
+        }
         const targetLayer = this.layers.get(String(ent.data?.layerId || '0'));
         if (targetLayer?.paperGroup && ent.parent !== targetLayer.paperGroup) {
           targetLayer.paperGroup.addChild(ent);
@@ -189,6 +198,20 @@ export class LayerManager {
 
     layer[property] = value;
 
+    if (property === 'visible') {
+      const isVisible = value !== false;
+      if (layer.paperGroup) {
+        layer.paperGroup.visible = isVisible;
+      }
+      if (Array.isArray(this.service?.entities)) {
+        this.service.entities.forEach((ent) => {
+          if (ent?.data && String(ent.data.layerId || '0') === layerId) {
+            ent.visible = isVisible;
+          }
+        });
+      }
+    }
+
     if (this.service && ((property === 'locked' && value === true) || (property === 'visible' && value === false))) {
       this._purgeLockedLayerState(layerId);
 
@@ -212,14 +235,15 @@ export class LayerManager {
   }
 
   toggleVisibility(layerId) {
-    const layer = this.layers.get(layerId);
+    const key = String(layerId);
+    const layer = this.layers.get(key);
     if (!layer) return;
 
     layer.visible = !layer.visible;
     
-    // Ocultar/Mostrar entidades vinculadas en Paper.js
+    // Ocultar/Mostrar entidades vinculadas en Paper.js (incluyendo puntos en pointsLayer)
     this.service.entities.forEach(ent => {
-      if (ent.data && ent.data.layerId === layerId) {
+      if (ent.data && String(ent.data.layerId || '0') === key) {
         ent.visible = layer.visible;
       }
     });
@@ -285,7 +309,12 @@ export class LayerManager {
       entity.data.origStrokeColor = layer.color;
     }
 
-    if (layer.paperGroup && entity.parent !== layer.paperGroup) {
+    if (entity.data.isPointEntity) {
+      const pointsLayer = this.utils?.pointsLayer || (typeof paper !== 'undefined' ? paper.project?.layers?.['pointsLayer'] : null);
+      if (pointsLayer && entity.parent !== pointsLayer) {
+        pointsLayer.addChild(entity);
+      }
+    } else if (layer.paperGroup && entity.parent !== layer.paperGroup) {
       layer.paperGroup.addChild(entity);
     }
 
