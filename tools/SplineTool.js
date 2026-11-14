@@ -3,6 +3,7 @@
  */
 
 import { BaseTool } from './BaseTool.js';
+import { CAD_THEME } from '../config/cadTheme.js';
 
 export class SplineTool extends BaseTool {
   constructor(cadService, cadUtils) {
@@ -18,8 +19,9 @@ export class SplineTool extends BaseTool {
     let pt = event.point;
 
     const osnap = this.service.calculateOsnap(
-      event.point, 
-      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type)
+      event.point,
+      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type),
+      this.utils.activePath
     );
 
     if (osnap && osnap.type) {
@@ -50,6 +52,18 @@ export class SplineTool extends BaseTool {
       this.utils.selectionRenderEngine.updateEntitiesStroke();
       this.setPrompt('Especifique el siguiente punto de la curva o [ENTER / Clic derecho para finalizar]:');
     } else {
+      const firstPt = this.utils.activePath.firstSegment.point;
+      const snapTolerance = 10 / paper.view.zoom;
+
+      // Auto-Cierre suavizado al volver al primer vértice de la spline
+      if (this.utils.activePath.segments.length >= 2 && pt.getDistance(firstPt) < snapTolerance) {
+        this.utils.activePath.closed = true;
+        this.utils.activePath.smooth({ type: 'catmull-rom' });
+        this.utils.finishCurrentDrawing();
+        this.setPrompt(this.promptText);
+        return;
+      }
+
       // Validación para evitar puntos duplicados consecutivos
       if (this.utils.activePath.lastSegment) {
         const lastPt = this.utils.activePath.lastSegment.point;
@@ -69,8 +83,9 @@ export class SplineTool extends BaseTool {
     let pt = event.point;
 
     const osnap = this.service.calculateOsnap(
-      event.point, 
-      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type)
+      event.point,
+      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type),
+      this.utils.activePath
     );
 
     if (osnap && osnap.type) {
@@ -90,6 +105,7 @@ export class SplineTool extends BaseTool {
       const activeOpacity = propMgr && typeof propMgr.getResolvedOpacity === 'function'
         ? propMgr.getResolvedOpacity(this.utils.activePath)
         : (this.utils.activePath.opacity !== undefined ? this.utils.activePath.opacity : 1);
+      const dashPattern = CAD_THEME?.rubberBand?.dashArrayPx || [2, 2];
 
       if (!this.utils.rubberBandLine) {
         this.utils.rubberBandLine = new paper.Path.Line({
@@ -97,7 +113,7 @@ export class SplineTool extends BaseTool {
           to: pt,
           strokeColor: activeColor,
           strokeWidth: 1 / paper.view.zoom,
-          dashArray: [2 / paper.view.zoom, 2 / paper.view.zoom],
+          dashArray: dashPattern.map((val) => val / paper.view.zoom),
           opacity: activeOpacity
         });
       } else {

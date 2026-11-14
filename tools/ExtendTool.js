@@ -12,11 +12,47 @@ export class ExtendTool extends BaseTool {
     super(cadService, cadUtils);
     this.promptText = 'EXTEND: Selecciona un extremo. [S] Smooth / [L] Line';
     this.extendData = null;
+    this.lastMouseEvent = null;
     this.mode = 'smooth'; // 'smooth' o 'line'
-
-    // Vinculamos el listener de teclado global para no depender únicamente de Paper.js
-    this.boundKeyDown = this.handleGlobalKeyDown.bind(this);
   }
+
+  onActivate() {
+    this.extendData = null;
+    this.lastMouseEvent = null;
+    this.setPrompt(`EXTEND [Modo: ${this.mode.toUpperCase()}]: Selecciona un extremo. [S] Smooth / [L] Line`);
+  }
+
+  onKeyDown(event) {
+    const key = (event.key || '').toLowerCase();
+
+    if (key === 's') {
+      this.setMode('smooth');
+      return true;
+    }
+    if (key === 'l') {
+      this.setMode('line');
+      return true;
+    }
+    if (key === 'escape') {
+      if (this.extendData) {
+        this.cancel();
+      } else {
+        this.exitToSelect();
+      }
+      return true;
+    }
+    return false;
+  }
+
+  onContextMenu(event) {
+    if (this.extendData) {
+      this.cancel();
+    } else {
+      this.exitToSelect();
+    }
+    return true;
+  }
+
 
   activate() {
     this.active = true;
@@ -54,31 +90,31 @@ export class ExtendTool extends BaseTool {
   }
 
   onMouseDown(event) {
-    // Clic derecho -> Cancelar
-    if (event.event.button === 2) {
-      if (this.extendData) this.cancel();
+    if (event.event && event.event.button !== 0) return;
+
+    if (this.extendData) {
+      this.confirm();
       return;
     }
 
-    // Clic izquierdo -> Seleccionar / Confirmar
-    if (event.event.button === 0) {
-      if (this.extendData) {
-        this.confirm();
-        return;
+    const hitEntity = paper.project.hitTest(event.point, {
+      stroke: true,
+      fill: true,
+      tolerance: 12 / paper.view.zoom,
+      match: (res) => {
+        if (!this.service.entities.includes(res.item) || res.item.closed) return false;
+        const layerId = String(res.item.data?.layerId || '0');
+        const layer = this.utils.layerManager?.layers?.get(layerId);
+        return !(layer && (layer.locked || layer.visible === false));
       }
+    });
 
-      const hitEntity = paper.project.hitTest(event.point, {
-        stroke: true, fill: true, tolerance: 12 / paper.view.zoom,
-        match: (res) => this.service.entities.includes(res.item) && !res.item.closed
-      });
-
-      if (hitEntity && hitEntity.item) {
-        const extendInfo = this.getExtendInfo(hitEntity.item, event.point);
-        if (extendInfo) {
-          this.extendData = extendInfo;
-          this.service.selectEntity(hitEntity.item, false);
-          this.setPrompt(`EXTEND [Modo: ${this.mode.toUpperCase()}]: Arrastra para extender. Presiona [S] o [L] para alternar.`);
-        }
+    if (hitEntity && hitEntity.item) {
+      const extendInfo = this.getExtendInfo(hitEntity.item, event.point);
+      if (extendInfo) {
+        this.extendData = extendInfo;
+        this.service.selectEntity(hitEntity.item, false);
+        this.setPrompt(`EXTEND [Modo: ${this.mode.toUpperCase()}]: Arrastra para extender. Presiona [S] o [L] para alternar.`);
       }
     }
   }
@@ -340,12 +376,13 @@ export class ExtendTool extends BaseTool {
   }
 
   cleanup() {
-    this.deactivate();
+    if (this.extendData) {
+      this.cancel();
+    }
     this.lastMouseEvent = null;
   }
 
   destroy() {
     this.cleanup();
   }
-
 }

@@ -3,6 +3,7 @@
  */
 
 import { BaseTool } from './BaseTool.js';
+import { CAD_THEME } from '../config/cadTheme.js';
 
 export class PolylineTool extends BaseTool {
   constructor(cadService, cadUtils) {
@@ -17,14 +18,14 @@ export class PolylineTool extends BaseTool {
     const isShift = event.event ? event.event.shiftKey : false;
     let pt = event.point;
 
-    // 1. Evaluar OSNAP sobre el punto REAL del cursor del ratón
+    // 1. Evaluar OSNAP incluyendo el trazo activo (this.utils.activePath)
     const osnap = this.service.calculateOsnap(
-      event.point, 
-      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type)
+      event.point,
+      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type),
+      this.utils.activePath
     );
 
     if (osnap && osnap.type) {
-      // Si hay atracción magnética, toma el punto OSNAP exacto
       pt = osnap.point;
     } else if (this.utils.activePath && this.utils.activePath.lastSegment) {
       // 2. Si no hay OSNAP, aplica restricción ORTHO (F8/botón XOR Shift) respecto al último vértice
@@ -57,7 +58,7 @@ export class PolylineTool extends BaseTool {
       const snapTolerance = 10 / paper.view.zoom;
 
       // Auto-Cierre: Si hace clic/OSNAP en el primer punto de la polilínea
-      if (osnap.type === 'endpoint' && pt.getDistance(firstPt) < snapTolerance) {
+      if (this.utils.activePath.segments.length >= 2 && pt.getDistance(firstPt) < snapTolerance) {
         this.utils.activePath.closed = true;
         this.utils.finishCurrentDrawing();
         this.setPrompt(this.promptText);
@@ -81,10 +82,11 @@ export class PolylineTool extends BaseTool {
     const isShift = event.event ? event.event.shiftKey : false;
     let pt = event.point;
 
-    // 1. Evaluar OSNAP directamente en el cursor real del ratón
+    // 1. Evaluar OSNAP incluyendo el trazo activo (this.utils.activePath)
     const osnap = this.service.calculateOsnap(
-      event.point, 
-      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type)
+      event.point,
+      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type),
+      this.utils.activePath
     );
 
     if (osnap && osnap.type) {
@@ -105,6 +107,7 @@ export class PolylineTool extends BaseTool {
       const activeOpacity = propMgr && typeof propMgr.getResolvedOpacity === 'function'
         ? propMgr.getResolvedOpacity(this.utils.activePath)
         : (this.utils.activePath.opacity !== undefined ? this.utils.activePath.opacity : 1);
+      const dashPattern = CAD_THEME?.rubberBand?.dashArrayPx || [2, 2];
 
       if (!this.utils.rubberBandLine) {
         this.utils.rubberBandLine = new paper.Path.Line({
@@ -112,7 +115,7 @@ export class PolylineTool extends BaseTool {
           to: pt,
           strokeColor: activeColor,
           strokeWidth: 1 / paper.view.zoom,
-          dashArray: [2 / paper.view.zoom, 2 / paper.view.zoom],
+          dashArray: dashPattern.map((val) => val / paper.view.zoom),
           opacity: activeOpacity
         });
       } else {

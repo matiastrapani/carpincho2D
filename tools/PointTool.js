@@ -5,18 +5,13 @@
 
 import { BaseTool } from './BaseTool.js';
 import { AddPointCommand, DivideCommand } from '../services/commands/cadCommands.js';
+import { DivisionSelectionHandler } from './point/DivisionSelectionHandler.js';
 
 export class PointTool extends BaseTool {
   constructor(cadService, cadUtils) {
     super(cadService, cadUtils);
     this.promptText = 'POINT. Haz clic en el lienzo para colocar un punto o ingresa coordenadas (X,Y).';
-    this.isSelectingBox = false;
-    this.boxStartPoint = null;
-    this.selectionBoxPath = null;
-    
-    // Control de puntos de inicio personalizados por entidad
-    this.customStartPoints = new Map();
-    this.startPointMarkersGroup = null;
+    this.divisionSelector = new DivisionSelectionHandler(cadService, cadUtils);
     this.divisionDistance = null;
     this.divisionCount = null;
   }
@@ -54,12 +49,9 @@ export class PointTool extends BaseTool {
     }
 
     if (mode === 'divide_count' || mode === 'divide_dist') {
-      const validSelected = this.service.selectedEntities.filter(
-        ent => ent && !ent.data?.isPointEntity
-      );
+      const validSelected = this.divisionSelector.syncTargetsCache();
 
       if (validSelected.length > 0) {
-        this.utils.divisionSelectedEntities = [...validSelected];
         this.askForDivisionValue();
       } else {
         this.utils.divisionStep = 'select';
@@ -75,20 +67,16 @@ export class PointTool extends BaseTool {
   }
 
   askForDivisionValue() {
-    const targets = (this.utils.divisionSelectedEntities && this.utils.divisionSelectedEntities.length > 0)
-      ? this.utils.divisionSelectedEntities
-      : this.service.selectedEntities.filter(ent => ent && !ent.data?.isPointEntity);
-
-    this.utils.divisionSelectedEntities = [...targets];
+    const targets = this.divisionSelector.syncTargetsCache();
     this.utils.divisionStep = 'input';
 
     this.service.editingEntities = [];
     this.service.deselectAllSegments();
-    if (this.utils.selectionRenderEngine.renderBezierHandles) this.utils.selectionRenderEngine.renderBezierHandles();
-    if (this.utils.selectionRenderEngine.updateEntitiesStroke) this.utils.selectionRenderEngine.updateEntitiesStroke();
-    if (window.paper?.view) window.paper.view.update();
+    this.utils.selectionRenderEngine?.renderBezierHandles?.();
+    this.utils.selectionRenderEngine?.updateEntitiesStroke?.();
+    if (paper?.view) paper.view.update();
 
-    const count = this.utils.divisionSelectedEntities.length;
+    const count = targets.length;
     const mode = this.utils.currentToolMode;
 
     if (mode === 'divide_count') {
@@ -140,7 +128,7 @@ export class PointTool extends BaseTool {
 
     if (mode === 'point') {
       const osnap = this.service.calculateOsnap(
-        event.point, 
+        event.point,
         (pt, type) => this.utils.hud.renderSnapMarker(pt, type)
       );
       this.createPointAt(osnap.point);
@@ -149,15 +137,18 @@ export class PointTool extends BaseTool {
 
     // PASO: Selección del punto de inicio en División por Distancia
     if (mode === 'divide_dist' && this.utils.divisionStep === 'start_point') {
+      const targets = this.divisionSelector.getTargets();
       const hitEntity = paper.project.hitTest(event.point, {
-        stroke: true, fill: true, tolerance: 10 / paper.view.zoom,
-        match: (res) => this.utils.divisionSelectedEntities.includes(res.item)
+        stroke: true,
+        fill: true,
+        tolerance: 10 / paper.view.zoom,
+        match: (res) => targets.includes(res.item)
       });
 
-      if (hitEntity && hitEntity.item && hitEntity.item.getNearestPoint) {
+      if (hitEntity?.item?.getNearestPoint) {
         const nearestPt = hitEntity.item.getNearestPoint(event.point);
-        this.customStartPoints.set(hitEntity.item, nearestPt);
-        this.renderStartPointMarkers();
+        this.divisionSelector.customStartPoints.set(hitEntity.item, nearestPt);
+        this.divisionSelector.renderStartPointMarkers();
         this.setPrompt('Punto de inicio actualizado. Haz clic en otra entidad o presiona ENTER / Clic Derecho para ejecutar:');
         return;
       }
@@ -166,233 +157,58 @@ export class PointTool extends BaseTool {
     // PASO: Selección de Entidades
     if ((mode === 'divide_count' || mode === 'divide_dist') && this.utils.divisionStep === 'select') {
       const hitEntity = paper.project.hitTest(event.point, {
-        stroke: true, fill: true, tolerance: 8 / paper.view.zoom,
+        stroke: true,
+        fill: true,
+        tolerance: 8 / paper.view.zoom,
         match: (res) => this.service.entities.includes(res.item) && !res.item.data?.isPointEntity
       });
 
-      if (hitEntity && hitEntity.item) {
-        const item = hitEntity.item;
-        const existingIdx = this.utils.divisionSelectedEntities.indexOf(item);
-
-        if (existingIdx !== -1) {
-          this.utils.divisionSelectedEntities.splice(existingIdx, 1);
-          const selIdx = this.service.selectedEntities.indexOf(item);
-          if (selIdx !== -1) this.service.selectedEntities.splice(selIdx, 1);
-        } else {
-          this.utils.divisionSelectedEntities.push(item);
-          if (!this.service.selectedEntities.includes(item)) {
-            this.service.selectedEntities.push(item);
-          }
-        }
-
-        this.service.editingEntities = [];
-        this.service.deselectAllSegments();
-        if (this.utils.selectionRenderEngine.renderBezierHandles) this.utils.selectionRenderEngine.renderBezierHandles();
-        if (this.utils.selectionRenderEngine.updateEntitiesStroke) this.utils.selectionRenderEngine.updateEntitiesStroke();
-        if (window.paper?.view) window.paper.view.update();
-
-        const count = this.utils.divisionSelectedEntities.length;
+      if (hitEntity?.item && this.divisionSelector.toggleEntitySelection(hitEntity.item)) {
+        const count = this.divisionSelector.getTargets().length;
         this.setPrompt(`Objetivos seleccionados: ${count}. Presiona ENTER o Clic Derecho para continuar...`);
         return;
       }
 
-      this.isSelectingBox = true;
-      this.boxStartPoint = event.point;
+      this.divisionSelector.startBox(event.point);
     }
   }
 
   onMouseDrag(event) {
-    if (!this.isSelectingBox || !this.boxStartPoint) return;
-
-    if (this.selectionBoxPath) {
-      this.selectionBoxPath.remove();
-    }
-
-    const currPt = event.point;
-    const isWindowSelection = currPt.x >= this.boxStartPoint.x;
-
-    this.selectionBoxPath = new paper.Path.Rectangle({
-      from: this.boxStartPoint,
-      to: currPt,
-      strokeColor: '#008800',
-      fillColor: new paper.Color(0, 0.53, 0, 0.15),
-      strokeWidth: 1 / paper.view.zoom,
-      dashArray: isWindowSelection ? null : [2 / paper.view.zoom, 2 / paper.view.zoom]
-    });
-
-    if (window.paper?.view) {
-      window.paper.view.update();
-    }
+    this.divisionSelector.updateBox(event.point);
   }
 
   onMouseUp(event) {
-    if (this.isSelectingBox) {
-      if (this.selectionBoxPath) {
-        const startPt = this.boxStartPoint;
-        const endPt = event.point;
-        const dragDistance = startPt.getDistance(endPt);
-
-        if (dragDistance >= 3 / paper.view.zoom) {
-          const boxBounds = this.selectionBoxPath.bounds;
-          const isWindowSelection = endPt.x >= startPt.x;
-
-          const lineIntersectsBox = (p1, p2, rect) => {
-            const minX = Math.min(p1.x, p2.x), maxX = Math.max(p1.x, p2.x);
-            const minY = Math.min(p1.y, p2.y), maxY = Math.max(p1.y, p2.y);
-            if (maxX < rect.left || minX > rect.right || maxY < rect.top || minY > rect.bottom) return false;
-            if (rect.contains(p1) || rect.contains(p2)) return true;
-
-            const ccw = (a, b, c) => (c.y - a.y) * (b.x - a.x) > (b.y - a.y) * (c.x - a.x);
-            const intersectLines = (a, b, c, d) => (ccw(a, c, d) !== ccw(b, c, d)) && (ccw(a, b, c) !== ccw(a, b, d));
-
-            return intersectLines(p1, p2, rect.topLeft, rect.topRight) ||
-                   intersectLines(p1, p2, rect.topRight, rect.bottomRight) ||
-                   intersectLines(p1, p2, rect.bottomRight, rect.bottomLeft) ||
-                   intersectLines(p1, p2, rect.bottomLeft, rect.topLeft);
-          };
-
-          const isPathSelectedByBox = (path) => {
-            if (!path || !path.bounds) return false;
-            if (!boxBounds.intersects(path.bounds) && !boxBounds.contains(path.bounds)) return false;
-            if (isWindowSelection) return boxBounds.contains(path.bounds);
-            if (boxBounds.contains(path.bounds)) return true;
-
-            const segments = path.segments || [];
-            for (let i = 0; i < segments.length; i++) {
-              if (boxBounds.contains(segments[i].point)) return true;
-            }
-
-            const curves = path.curves || [];
-            for (let i = 0; i < curves.length; i++) {
-              const c = curves[i];
-              if (!boxBounds.intersects(c.bounds)) continue;
-
-              const p0 = c.segment1.point;
-              const p1 = c.segment2.point;
-              const h1 = c.segment1.handleOut;
-              const h2 = c.segment2.handleIn;
-
-              if (h1.isZero() && h2.isZero()) {
-                if (lineIntersectsBox(p0, p1, boxBounds)) return true;
-              } else {
-                const c1 = p0.add(h1);
-                const c2 = p1.add(h2);
-
-                const getBezierPt = (t) => {
-                  const mt = 1 - t;
-                  return p0.multiply(mt * mt * mt)
-                    .add(c1.multiply(3 * mt * mt * t))
-                    .add(c2.multiply(3 * mt * t * t))
-                    .add(p1.multiply(t * t * t));
-                };
-
-                let prevPt = p0;
-                const steps = 4;
-                for (let k = 1; k <= steps; k++) {
-                  const currPt = (k === steps) ? p1 : getBezierPt(k / steps);
-                  if (boxBounds.contains(currPt) || lineIntersectsBox(prevPt, currPt, boxBounds)) return true;
-                  prevPt = currPt;
-                }
-              }
-            }
-            return false;
-          };
-
-          const candidates = this.service.entities.filter(
-            ent => ent && !ent.data?.isPointEntity && ent.bounds
-          );
-
-          candidates.forEach(entity => {
-            let shouldSelect = false;
-
-            if (entity instanceof paper.Path) {
-              shouldSelect = isPathSelectedByBox(entity);
-            } else if (entity instanceof paper.CompoundPath) {
-              if (entity.children) {
-                shouldSelect = entity.children.some(child => isPathSelectedByBox(child));
-              }
-            } else {
-              shouldSelect = isWindowSelection 
-                ? boxBounds.contains(entity.bounds) 
-                : (boxBounds.contains(entity.bounds) || boxBounds.intersects(entity.bounds));
-            }
-
-            if (shouldSelect) {
-              const layerId = String(entity.data?.layerId || '0');
-              const layerManager = this.utils?.layerManager || window.cadUtils?.layerManager;
-              const layer = layerManager?.layers?.get(layerId);
-
-              if (!layer || !layer.locked) {
-                if (!this.utils.divisionSelectedEntities.includes(entity)) {
-                  this.utils.divisionSelectedEntities.push(entity);
-                }
-                if (!this.service.selectedEntities.includes(entity)) {
-                  this.service.selectedEntities.push(entity);
-                }
-              }
-            }
-          });
-
-          this.service.editingEntities = [];
-          this.service.deselectAllSegments();
-          if (this.utils.selectionRenderEngine.renderBezierHandles) this.utils.selectionRenderEngine.renderBezierHandles();
-          if (this.utils.selectionRenderEngine.updateEntitiesStroke) this.utils.selectionRenderEngine.updateEntitiesStroke();
-
-          const count = this.utils.divisionSelectedEntities.length;
-          this.setPrompt(`Objetivos seleccionados: ${count}. Presiona ENTER o Clic Derecho para continuar...`);
-        }
-
-        this.selectionBoxPath.remove();
-        this.selectionBoxPath = null;
-      }
-
-      this.isSelectingBox = false;
-      if (window.paper?.view) {
-        window.paper.view.update();
-      }
+    if (this.divisionSelector.isSelectingBox) {
+      this.divisionSelector.finishBox(event.point);
+      const count = this.divisionSelector.getTargets().length;
+      this.setPrompt(`Objetivos seleccionados: ${count}. Presiona ENTER o Clic Derecho para continuar...`);
     }
   }
 
   createPointAt(pt, coordsLabel = null) {
     const opts = this.getPointDefaultOpts();
     const pointEntity = this.service.createPointEntity(pt, opts);
+    if (!pointEntity) return null;
 
-    if (pointEntity) {
-      if (!pointEntity.data) pointEntity.data = {};
+    this.commitNewEntity(pointEntity, 'Punto', AddPointCommand);
 
-      // Asegura la capa activa seleccionada
-      pointEntity.data.layerId = opts.layerId;
+    this.service.editingEntities = [];
+    this.service.deselectAllSegments();
+    this.utils.selectionRenderEngine?.renderBezierHandles?.();
+    this.utils.selectionRenderEngine?.updateEntitiesStroke?.();
+    if (paper?.view) paper.view.update();
 
-      // Nombre secuencial ('Punto 1', 'Punto 2', ...)
-      const pointName = this.utils.generateNextEntityName ? this.utils.generateNextEntityName('Punto') : 'Punto';
-      pointEntity.name = pointName;
-      pointEntity.data.name = pointName;
+    const cadX = pt.x.toFixed(2);
+    const cadY = (-pt.y).toFixed(2);
+    const label = coordsLabel || `${cadX}, ${cadY}`;
+    this.setPrompt(`Punto insertado en (${label}). Haz clic o ingresa coordenadas (X,Y):`);
 
-      // Sincronizar propiedades por defecto
-      if (this.utils.propertyManager) {
-        this.utils.propertyManager.applyDefaultSettings(pointEntity);
-      }
-
-      const cmd = new AddPointCommand(this.service, pointEntity);
-      this.service.executeCommand(cmd);
-
-      this.service.editingEntities = [];
-      this.service.deselectAllSegments();
-      if (this.utils.selectionRenderEngine.renderBezierHandles) this.utils.selectionRenderEngine.renderBezierHandles();
-      if (this.utils.selectionRenderEngine.updateEntitiesStroke) this.utils.selectionRenderEngine.updateEntitiesStroke();
-      if (window.paper?.view) window.paper.view.update();
-
-      const cadX = pt.x.toFixed(2);
-      const cadY = (-pt.y).toFixed(2);
-      const label = coordsLabel || `${cadX}, ${cadY}`;
-
-      this.setPrompt(`Punto insertado en (${label}). Haz clic o ingresa coordenadas (X,Y):`);
-    }
+    return pointEntity;
   }
 
   onContextMenu(event) {
     const mode = this.utils.currentToolMode;
-    
+
     if (mode === 'point') {
       this.exitToSelect();
       return true;
@@ -404,7 +220,7 @@ export class PointTool extends BaseTool {
     }
 
     if ((mode === 'divide_count' || mode === 'divide_dist') && this.utils.divisionStep === 'select') {
-      if (this.utils.divisionSelectedEntities.length > 0) {
+      if (this.divisionSelector.getTargets().length > 0) {
         this.askForDivisionValue();
         return true;
       }
@@ -416,27 +232,32 @@ export class PointTool extends BaseTool {
     const key = event.key || event.code;
     const mode = this.utils.currentToolMode;
 
-    if (mode === 'point' && (key === 'Enter' || key === 'NumpadEnter' || key === 'Space' || key === 'Escape')) {
+    if (key === 'Escape') {
+      this.exitToSelect();
+      return true;
+    }
+
+    if (mode === 'point' && (key === 'Enter' || key === 'NumpadEnter' || key === ' ' || key === 'Space')) {
       this.exitToSelect();
       return true;
     }
 
     if (mode === 'divide_dist' && this.utils.divisionStep === 'start_point') {
-      if (key === 'Enter' || key === 'NumpadEnter' || key === 'Space') {
+      if (key === 'Enter' || key === 'NumpadEnter' || key === ' ' || key === 'Space') {
         this.executeDivision();
         return true;
       }
     }
 
     if ((mode === 'divide_count' || mode === 'divide_dist') && this.utils.divisionStep === 'select') {
-      if (key === 'Enter' || key === 'NumpadEnter' || key === 'Space') {
-        if (this.utils.divisionSelectedEntities.length > 0) {
+      if (key === 'Enter' || key === 'NumpadEnter' || key === ' ' || key === 'Space') {
+        if (this.divisionSelector.getTargets().length > 0) {
           this.askForDivisionValue();
           return true;
         }
       }
     }
-    return false;
+    return super.onKeyDown(event);
   }
 
   onCommandInput(input) {
@@ -450,8 +271,7 @@ export class PointTool extends BaseTool {
         const cadY = parseFloat(parts[1]);
 
         if (!isNaN(x) && !isNaN(cadY)) {
-          const canvasY = -cadY;
-          const pt = new paper.Point(x, canvasY);
+          const pt = new paper.Point(x, -cadY);
           this.createPointAt(pt, `${x}, ${cadY}`);
           return;
         }
@@ -466,12 +286,11 @@ export class PointTool extends BaseTool {
       return;
     }
 
-    if (this.utils.divisionStep === 'input' && this.utils.divisionSelectedEntities?.length > 0) {
+    if (this.utils.divisionStep === 'input' && this.divisionSelector.getTargets().length > 0) {
       const val = parseFloat(input);
 
       if (isNaN(val)) {
-        this.resetToolState();
-        this.finishDivisionAndTransition();
+        this.exitToSelect();
         return;
       }
 
@@ -480,9 +299,7 @@ export class PointTool extends BaseTool {
         this.executeDivision();
       } else if (mode === 'divide_dist') {
         this.divisionDistance = val;
-        this.utils.divisionStep = 'start_point';
-        this.customStartPoints.clear();
-        this.renderStartPointMarkers();
+        this.divisionSelector.beginStartPointStep();
         this.setPrompt('Haz clic en una entidad para cambiar su punto de inicio, o presiona ENTER / Clic Derecho para ejecutar:');
       }
     }
@@ -490,32 +307,31 @@ export class PointTool extends BaseTool {
 
   executeDivision() {
     const mode = this.utils.currentToolMode;
-    const targets = [...this.utils.divisionSelectedEntities];
+    const targets = this.divisionSelector.getTargets();
     const val = mode === 'divide_count' ? this.divisionCount : this.divisionDistance;
 
     const opts = this.getPointDefaultOpts();
     const allCreatedPoints = [];
 
-    targets.forEach(entity => {
+    targets.forEach((entity) => {
       let created = [];
       if (mode === 'divide_count' && val >= 2) {
         created = this.service.divideEntityByCount(entity, val, null, opts);
       } else if (mode === 'divide_dist' && val > 0) {
-        const customPt = this.customStartPoints.get(entity);
+        const customPt = this.divisionSelector.customStartPoints.get(entity);
         created = this.service.divideEntityByDistance(entity, val, null, opts, customPt);
       }
 
       if (created && created.length > 0) {
-        created.forEach(ptEnt => {
+        created.forEach((ptEnt) => {
           if (ptEnt) {
             if (!ptEnt.data) ptEnt.data = {};
-            
-            // Asignar nombre correlativo a cada punto creado en la división
-            const ptName = this.utils.generateNextEntityName ? this.utils.generateNextEntityName('Punto') : 'Punto';
+            const ptName = typeof this.utils.generateNextEntityName === 'function'
+              ? this.utils.generateNextEntityName('Punto')
+              : 'Punto';
             ptEnt.name = ptName;
             ptEnt.data.name = ptName;
 
-            // Sincronizar propiedades por defecto y opacidad
             if (this.utils.propertyManager) {
               this.utils.propertyManager.applyDefaultSettings(ptEnt);
             }
@@ -530,18 +346,7 @@ export class PointTool extends BaseTool {
       this.service.executeCommand(divideCmd);
     }
 
-    this.resetToolState();
     this.exitToSelect();
-  }
-
-  finishDivisionAndTransition() {
-    const cmdInput = document.getElementById('cmdInput');
-    if (cmdInput) cmdInput.blur();
-
-    const canvas = document.getElementById('cadCanvas');
-    if (canvas) canvas.focus();
-
-    this.utils.setTool('select');
   }
 
   onMouseMove(event) {
@@ -561,29 +366,16 @@ export class PointTool extends BaseTool {
   }
 
   resetToolState() {
-    if (this.selectionBoxPath) {
-      this.selectionBoxPath.remove();
-      this.selectionBoxPath = null;
-    }
-    if (this.startPointMarkersGroup) {
-      this.startPointMarkersGroup.remove();
-      this.startPointMarkersGroup = null;
-    }
-    if (this.customStartPoints) {
-      this.customStartPoints.clear();
-    }
-
-    this.isSelectingBox = false;
+    this.divisionSelector.reset();
     this.divisionDistance = null;
     this.divisionCount = null;
 
-    this.utils.divisionSelectedEntities = [];
     this.utils.divisionStep = 'select';
     this.service.deselectAllEntities();
     this.service.editingEntities = [];
     this.service.deselectAllSegments();
-    if (this.utils.selectionRenderEngine.renderBezierHandles) this.utils.selectionRenderEngine.renderBezierHandles();
-    if (this.utils.selectionRenderEngine.updateEntitiesStroke) this.utils.selectionRenderEngine.updateEntitiesStroke();
+    this.utils.selectionRenderEngine?.renderBezierHandles?.();
+    this.utils.selectionRenderEngine?.updateEntitiesStroke?.();
     this.utils.hud.clear();
   }
 
@@ -592,13 +384,7 @@ export class PointTool extends BaseTool {
   }
 
   exitToSelect() {
-    const cmdInput = document.getElementById('cmdInput');
-    if (cmdInput) cmdInput.blur();
-
-    const canvas = document.getElementById('cadCanvas');
-    if (canvas) canvas.focus();
-
     this.resetToolState();
-    this.utils.setTool('select');
+    super.exitToSelect();
   }
 }

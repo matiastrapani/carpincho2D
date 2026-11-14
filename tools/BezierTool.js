@@ -3,6 +3,7 @@
  */
 
 import { BaseTool } from './BaseTool.js';
+import { CAD_THEME } from '../config/cadTheme.js';
 
 export class BezierTool extends BaseTool {
   constructor(cadService, cadUtils) {
@@ -18,10 +19,11 @@ export class BezierTool extends BaseTool {
     const isShift = event.event ? event.event.shiftKey : false;
     let pt = event.point;
 
-    // 1. Evaluar OSNAP sobre el punto REAL del cursor
+    // 1. Evaluar OSNAP incluyendo la curva activa en dibujo
     const osnap = this.service.calculateOsnap(
-      event.point, 
-      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type)
+      event.point,
+      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type),
+      this.utils.activePath
     );
 
     if (osnap && osnap.type) {
@@ -73,7 +75,8 @@ export class BezierTool extends BaseTool {
 
       const osnap = this.service.calculateOsnap(
         event.point,
-        (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type)
+        (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type),
+        this.utils.activePath
       );
 
       if (osnap && osnap.type) {
@@ -100,8 +103,9 @@ export class BezierTool extends BaseTool {
     let currentPt = event.point;
 
     const osnap = this.service.calculateOsnap(
-      event.point, 
-      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type)
+      event.point,
+      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type),
+      this.utils.activePath
     );
 
     if (osnap && osnap.type) {
@@ -121,6 +125,7 @@ export class BezierTool extends BaseTool {
       const activeOpacity = propMgr && typeof propMgr.getResolvedOpacity === 'function'
         ? propMgr.getResolvedOpacity(this.utils.activePath)
         : (this.utils.activePath.opacity !== undefined ? this.utils.activePath.opacity : 1);
+      const dashPattern = CAD_THEME?.rubberBand?.dashArrayPx || [2, 2];
 
       // Previsualización elástica sincronizada en color y opacidad
       if (!this.utils.rubberBandLine) {
@@ -129,7 +134,7 @@ export class BezierTool extends BaseTool {
           to: currentPt,
           strokeColor: activeColor,
           strokeWidth: 1 / paper.view.zoom,
-          dashArray: [2 / paper.view.zoom, 2 / paper.view.zoom],
+          dashArray: dashPattern.map((val) => val / paper.view.zoom),
           opacity: activeOpacity
         });
       } else {
@@ -149,7 +154,6 @@ export class BezierTool extends BaseTool {
 
   renderBezierPreview() {
     this.clearPreview();
-    this.previewGroup = new paper.Group();
 
     const seg = this.utils.activePath?.lastSegment;
     if (!seg || seg.handleOut.isZero()) return;
@@ -161,12 +165,22 @@ export class BezierTool extends BaseTool {
     const propMgr = this.utils.propertyManager;
     const activeColor = propMgr ? propMgr.getResolvedColor(this.utils.activePath) : '#ec4899';
 
-    const l1 = new paper.Path.Line({ from: seg.point, to: outPt, strokeColor: activeColor, strokeWidth: 1 / zoom, dashArray: [2 / zoom, 2 / zoom] });
-    const l2 = new paper.Path.Line({ from: seg.point, to: inPt, strokeColor: activeColor, strokeWidth: 1 / zoom, dashArray: [2 / zoom, 2 / zoom] });
-    const c1 = new paper.Path.Circle({ center: outPt, radius: 3.5 / zoom, fillColor: activeColor });
-    const c2 = new paper.Path.Circle({ center: inPt, radius: 3.5 / zoom, fillColor: activeColor });
+    this.previewGroup = new paper.Group({ insert: false });
+    this.previewGroup.guide = true;
+
+    const l1 = new paper.Path.Line({ from: seg.point, to: outPt, strokeColor: activeColor, strokeWidth: 1 / zoom, dashArray: [2 / zoom, 2 / zoom], insert: false });
+    const l2 = new paper.Path.Line({ from: seg.point, to: inPt, strokeColor: activeColor, strokeWidth: 1 / zoom, dashArray: [2 / zoom, 2 / zoom], insert: false });
+    const c1 = new paper.Path.Circle({ center: outPt, radius: 3.5 / zoom, fillColor: activeColor, insert: false });
+    const c2 = new paper.Path.Circle({ center: inPt, radius: 3.5 / zoom, fillColor: activeColor, insert: false });
 
     this.previewGroup.addChildren([l1, l2, c1, c2]);
+
+    const hudLayer = this.utils.hudLayer || paper.project?.layers?.find((l) => l.name === 'hudLayer');
+    if (hudLayer) {
+      hudLayer.addChild(this.previewGroup);
+    } else if (paper.project?.activeLayer) {
+      paper.project.activeLayer.addChild(this.previewGroup);
+    }
   }
 
   clearPreview() {
