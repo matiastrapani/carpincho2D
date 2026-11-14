@@ -18,3 +18,16 @@ el export svg exporta los colores de la seleccion, y los puntos escalados por zo
 usar data-tooltips en capas?
 poner ... en nombre de capas largos
 nombre entidades con #
+resolver el punto de incio con estilo punto en division por distancia
+en modo orto o con shift el snap a grid debe respetar la jerarquia de ortogonal
+autointerseccion de entidades en osnap
+
+resolver la barra de desplazamiento horizontal en el panel de propiedades al reducir el tamaño sin overflow
+data-tooltip para undo redo y export en el cabezal
+resolver que hacer con la opacidad en capa
+trim de varias entidades con selection box para performtrim
+osnap y autointersecciones falla
+autointersecciones y trim falla
+seleccion y bezier con zoom falla
+autocompletado en consola
+revisar datatooltips en barra de herramientas

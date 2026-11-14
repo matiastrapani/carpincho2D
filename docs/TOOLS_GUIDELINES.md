@@ -15,13 +15,17 @@ BaseTool (Orquestación transaccional): Toda herramienta que confirma una entida
     Sincronizar el renderizado (selectionRenderEngine.updateEntitiesStroke()).
 
 2. Reglas Estrictas de Capas en Paper.js
-    
-    Prohibido cambiar paper.project.activeLayer sin restaurarlo ni llamar a bringToFront() sobre entidades del documento.
-    
-    drawLayer: Únicamente geometría confirmada del documento (organizada dentro de cada layer_group_*) y trazados en curso (activePath, rubberBandLine).
-    
-    nodesLayer: Proyecciones visuales de selección/edición (controlHandlesGroup) y entidades de tipo punto.
-    
+
+    Orden jerárquico inviolable (de abajo hacia arriba): drawLayer -> nodesLayer -> pointsLayer -> hudLayer.
+
+    Prohibido cambiar paper.project.activeLayer sin restaurarlo ni llamar a bringToFront() sobre trazos o curvas del documento (solo permitido dentro de SelectionRenderEngine para ordenar puntos seleccionados dentro de pointsLayer).
+
+    drawLayer: Únicamente geometría de trazos/curvas/rasters confirmados del documento (organizada dentro de cada layer_group_*) y trazados en curso (activePath, rubberBandLine).
+
+    nodesLayer: Proyecciones visuales de selección de trazos, overlays de edición y nodos/tiradores de control (controlHandlesGroup). Nunca debe alojar entidades punto ni clonarlas.
+
+    pointsLayer: Contenedor visual exclusivo para todas las entidades punto (data.isPointEntity = true). Al ubicarse por encima de nodesLayer, garantiza que el relleno de los puntos tape siempre tanto a las curvas seleccionadas como a los nodos de edición.
+
     hudLayer: Exclusivamente marcadores efímeros de OSNAP y etiquetas dinámicas de cotas/ángulos.
 
 3. Previsualización Dinámica y Estilos en Vivo

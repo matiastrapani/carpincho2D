@@ -7,8 +7,10 @@
 - **Prohibido en UI:** Ningún panel (`PropertyPanelUI`, `LayerPanelUI`, etc.) puede guardar copias propias de arrays de entidades o selección. Deben leer en vivo mediante getters y suscribirse a cambios (`subscribe` / `refresh`).
 
 ## 2. Reglas de Capas y Selección
+- **Separación Capa Lógica vs. Capa Visual:** La pertenencia lógica de cualquier entidad (visibilidad, bloqueo, color `BYLAYER` y exportación) se rige exclusivamente por `entity.data.layerId` en `LayerManager`. Las entidades punto (`data.isPointEntity`) residen visualmente en `pointsLayer` (por encima de `nodesLayer`) sin importar su capa lógica; ningún comando (`AddEntityCommand`, `ChangeLayerCommand`, etc.) debe moverlas dentro de `layer.paperGroup`.
 - Ninguna entidad perteneciente a una capa **bloqueada** (`locked: true`) u **oculta** (`visible: false`) puede ser seleccionada, editada ni incluida en selección por recuadro.
 - Si una capa se oculta o bloquea, el panel de propiedades debe filtrar automáticamente esas entidades sin borrarlas del lienzo.
+
 
 ## 3. Historial Undo / Redo (Patrón Command)
 - Toda acción que cree, modifique, mueva, recorte o borre entidades o propiedades debe ejecutarse a través de una clase `Command` (`cadService.executeCommand(cmd)`).
