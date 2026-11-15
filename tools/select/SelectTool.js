@@ -1,6 +1,8 @@
 /**
  * tools/SelectTool.js - Herramienta de Selección con Estado Encapsulado y Submódulos Delegados
  */
+
+import { CAD_THEME } from '../../config/cadTheme.js';
 import { BaseTool } from '../BaseTool.js';
 import { MoveCommand, TransformEntityCommand } from '../../services/commands/cadCommands.js';
 import { HandleSelectionHandler } from './HandleSelectionHandler.js';
@@ -8,6 +10,7 @@ import { BoxSelectHandler } from './BoxSelectHandler.js';
 import { ParametricGripHandler } from './ParametricGripHandler.js';
 import { SegmentEditHandler } from './SegmentEditHandler.js';
 import { SelectionMenuHandler } from './SelectionMenuHandler.js';
+
 
 export class SelectTool extends BaseTool {
   constructor(cadService, cadUtils) {
@@ -36,11 +39,38 @@ export class SelectTool extends BaseTool {
       selectionBoxRect: null,
       pivotPoint: null,
       isPivotFromPoint: false,
+      dragRubberBand: null,
       pendingMenuHits: null,
       pendingMenuEvent: null,
       pendingMenuPoint: null,
       pendingMenuShift: false
     };
+  }
+
+  _updateDragRubberBand(fromPt, toPt) {
+    if (!fromPt || !toPt) return;
+
+    const hudLayer = this.utils.hudLayer || paper.project?.layers?.['hudLayer'];
+    if (!hudLayer) return;
+
+    const strokeWidth = 1 / paper.view.zoom;
+    if (!this.dragState.dragRubberBand) {
+      const line = new paper.Path.Line({
+        from: fromPt,
+        to: toPt,
+        strokeColor: CAD_THEME.selection.line.strokeColor,
+        strokeWidth,
+        dashArray: CAD_THEME.rubberBand.dashArrayPx,
+        data: { isAuxiliary: true },
+        insert: false
+      });
+      hudLayer.addChild(line);
+      this.dragState.dragRubberBand = line;
+    } else {
+      this.dragState.dragRubberBand.segments[0].point = fromPt;
+      this.dragState.dragRubberBand.segments[1].point = toPt;
+      this.dragState.dragRubberBand.strokeWidth = strokeWidth;
+    }
   }
 
   _applyEntitySelection(targetItem, point, isShift, enableDrag = true) {
@@ -216,15 +246,11 @@ export class SelectTool extends BaseTool {
   }
 
   onMouseDrag(event) {
-    if (this.selectionMenuHandler.isOpen()) {
-      return;
-    }
-
+    if (this.selectionMenuHandler.isOpen()) return;
     if (this.activeModule) {
       this.activeModule.onMouseDrag(event);
       return;
     }
-
     if (!this.dragState.selectionStartPoint && this.segmentEditHandler.onMouseDrag(event)) {
       return;
     }
@@ -238,18 +264,35 @@ export class SelectTool extends BaseTool {
       }
 
       const pivotPoint = this.dragState.pivotPoint || this.dragState.mouseStartPt;
-      const grabOffset = pivotPoint.subtract(this.dragState.mouseStartPt);
-      const projectedPivot = targetMousePt.add(grabOffset);
+      const projectedPivot = targetMousePt.add(pivotPoint.subtract(this.dragState.mouseStartPt));
+      const effectiveOrtho = Boolean(this.service?.isOrthoEnabled) !== Boolean(isShift);
+      const isHorizontal = Math.abs(event.point.x - this.dragState.mouseStartPt.x) >
+                           Math.abs(event.point.y - this.dragState.mouseStartPt.y);
 
       const osnap = this.service.calculateOsnap(
         projectedPivot,
-        (pt, type) => this.utils.hud.renderSnapMarker(pt, type),
+        (pt, type) => {
+          const markerPt = (type === 'grid' && effectiveOrtho)
+            ? (isHorizontal ? new paper.Point(pt.x, pivotPoint.y) : new paper.Point(pivotPoint.x, pt.y))
+            : pt;
+          this.utils.hud.renderSnapMarker(markerPt, type);
+        },
         null,
-        { ignoreEntities: this.service.selectedEntities }
+        {
+          fromPoint: pivotPoint,
+          ignoreEntities: this.service.selectedEntities
+        }
       );
 
-      const finalTargetPivot = (osnap && osnap.type) ? osnap.point : projectedPivot;
+      let finalTargetPivot = projectedPivot;
+      if (osnap && osnap.type) {
+        finalTargetPivot = (osnap.type === 'grid' && effectiveOrtho)
+          ? (isHorizontal ? new paper.Point(osnap.point.x, pivotPoint.y) : new paper.Point(pivotPoint.x, osnap.point.y))
+          : osnap.point;
+      }
+
       this.utils.hud.updateHUD(finalTargetPivot);
+      this._updateDragRubberBand(pivotPoint, finalTargetPivot);
       const globalDelta = finalTargetPivot.subtract(pivotPoint);
 
       this.dragState.entityStartPositions.forEach((item) => {
@@ -499,6 +542,10 @@ export class SelectTool extends BaseTool {
     if (this.dragState.selectionBoxRect) {
       this.dragState.selectionBoxRect.remove();
     }
+    if (this.dragState.dragRubberBand) {
+      this.dragState.dragRubberBand.remove();
+    }
+    this.handleModule.reset();
     this.parametricHandler.reset();
     this.segmentEditHandler.reset();
     this.utils.selectedHandle = null;
@@ -526,6 +573,156 @@ export class SelectTool extends BaseTool {
     }
 
     // Retornar false para repetir la última herramienta activa conservando la selección vigente
+    return false;
+  }
+
+  onKeyDown(event) {
+    const key = event.key || event.code;
+    const targetTag = event.target?.tagName;
+    const targetId = event.target?.id;
+    const isConsoleInput = targetId === 'cmdInput' || targetId === 'cmdInputFloating';
+    const isOtherInputFocused = !isConsoleInput && (
+      targetTag === 'INPUT' || targetTag === 'TEXTAREA' || targetTag === 'SELECT' || event.target?.isContentEditable
+    );
+
+    if (!isOtherInputFocused && (event.ctrlKey || event.metaKey) && (key.toLowerCase() === 'a' || event.code === 'KeyA')) {
+      if (isConsoleInput && event.target.value.length > 0) {
+        return false;
+      }
+      return this._handleSelectAll(event);
+    }
+
+    if (key === 'Escape') {
+      if (this.selectionMenuHandler.isOpen()) {
+        this.selectionMenuHandler.close();
+        return true;
+      }
+
+      if (this._cancelActiveDrag()) {
+        return true;
+      }
+
+      if (this.service.editingEntities && this.service.editingEntities.length > 0) {
+        const hasSelectedSegments = this.service.selectedSegments && this.service.selectedSegments.length > 0;
+        const hasSelectedHandles = this.service.selectedHandles && this.service.selectedHandles.length > 0;
+
+        if (hasSelectedSegments || hasSelectedHandles) {
+          this.service.deselectAllSegments();
+          this.service.deselectAllHandles();
+        } else {
+          this.service.editingEntities = [];
+          this.service.deselectAllSegments();
+          this.service.deselectAllHandles();
+          this.utils.hoveredHandle = null;
+          this.utils.hoveredCurve = null;
+          this.utils.setPrompt('Herramienta Selección: selecciona objetos o haz doble clic en un trazo para editar sus nodos.');
+        }
+
+        this.utils.selectionRenderEngine.renderBezierHandles();
+        this.utils.selectionRenderEngine.updateEntitiesStroke();
+        if (paper.view) paper.view.update();
+        return true;
+      }
+
+      if (this.service.selectedEntities && this.service.selectedEntities.length > 0) {
+        this.service.deselectAllEntities();
+        this.service.deselectAllSegments();
+        this.cleanBox();
+        return true;
+      }
+
+      return super.onKeyDown(event);
+    }
+
+    return false;
+  }
+
+  _handleSelectAll(event) {
+    if (!this.service.editingEntities || this.service.editingEntities.length === 0) {
+      return false;
+    }
+
+    event.preventDefault();
+    this.service.deselectAllHandles();
+    this.service.deselectAllSegments();
+
+    this.service.editingEntities.forEach((entity) => {
+      if (!entity || entity.visible === false) return;
+
+      const layerId = String(entity.data?.layerId || '0');
+      const layer = this.utils.layerManager?.layers?.get(layerId);
+      if (layer && (layer.locked || layer.visible === false)) return;
+
+      if (entity instanceof paper.Path && !entity.data?.isPointEntity) {
+        entity.segments.forEach((seg) => this.service.selectSegment(seg, true));
+      } else if (entity instanceof paper.CompoundPath && entity.children) {
+        entity.children.forEach((child) => {
+          if (child instanceof paper.Path && child.segments) {
+            child.segments.forEach((seg) => this.service.selectSegment(seg, true));
+          }
+        });
+      }
+    });
+
+    this.utils.selectionRenderEngine.renderBezierHandles();
+    this.utils.selectionRenderEngine.updateEntitiesStroke();
+    if (paper.view) paper.view.update();
+    return true;
+  }
+
+  _cancelActiveDrag() {
+    if (this.activeModule) {
+      if (typeof this.activeModule.cancelDrag === 'function') {
+        this.activeModule.cancelDrag();
+      } else {
+        this.activeModule.reset();
+      }
+      this.activeModule = null;
+      this.utils.hud.clear();
+      this.utils.selectionRenderEngine.renderBezierHandles();
+      this.utils.selectionRenderEngine.updateEntitiesStroke();
+      if (paper.view) paper.view.update();
+      return true;
+    }
+
+    if (this.segmentEditHandler.isDragging()) {
+      this.segmentEditHandler.cancelDrag();
+      this.utils.hud.clear();
+      this.utils.selectionRenderEngine.renderBezierHandles();
+      this.utils.selectionRenderEngine.updateEntitiesStroke();
+      if (paper.view) paper.view.update();
+      return true;
+    }
+
+    if (this.dragState.mouseStartPt || this.dragState.entityStartPositions) {
+      if (this.dragState.entityStartPositions) {
+        this.dragState.entityStartPositions.forEach((item) => {
+          if (!item.entity) return;
+          if (item.isPath && item.initialSegments) {
+            item.entity.segments.forEach((seg, idx) => {
+              const initSeg = item.initialSegments[idx];
+              if (initSeg) {
+                seg.point = initSeg.point.clone();
+                seg.handleIn = initSeg.handleIn.clone();
+                seg.handleOut = initSeg.handleOut.clone();
+              }
+            });
+          } else if (item.initialPos) {
+            item.entity.position = item.initialPos.clone();
+          }
+        });
+      }
+      this.utils.hud.clear();
+      this.cleanBox();
+      return true;
+    }
+
+    if (this.dragState.selectionStartPoint) {
+      this.utils.hud.clear();
+      this.cleanBox();
+      return true;
+    }
+
     return false;
   }
 

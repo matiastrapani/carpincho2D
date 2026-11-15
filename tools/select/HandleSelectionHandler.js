@@ -1,6 +1,8 @@
 /**
  * tools/submodules/HandleSelectionHandler.js
  */
+
+import { CAD_THEME } from '../../config/cadTheme.js';
 import { MoveCommand } from '../../services/commands/cadCommands.js';
 
 export class HandleSelectionHandler {
@@ -11,12 +13,42 @@ export class HandleSelectionHandler {
   }
 
   reset() {
+    if (this.dragRubberBand) {
+      this.dragRubberBand.remove();
+    }
+    this.dragRubberBand = null;
     this.activeHandleData = null;
     this.mouseStartPt = null;
     this.handleDragStartPt = null;
     this.grabOffset = null;
     this.selectedSegmentsStartData = null;
     this.selectedEntitiesStartData = null;
+  }
+
+  _updateDragRubberBand(fromPt, toPt) {
+    if (!fromPt || !toPt) return;
+
+    const hudLayer = this.utils.hudLayer || paper.project?.layers?.['hudLayer'];
+    if (!hudLayer) return;
+
+    const strokeWidth = 1 / paper.view.zoom;
+    if (!this.dragRubberBand) {
+      const line = new paper.Path.Line({
+        from: fromPt,
+        to: toPt,
+        strokeColor: CAD_THEME.selection.line.strokeColor,
+        strokeWidth,
+        dashArray: CAD_THEME.rubberBand.dashArrayPx,
+        data: { isAuxiliary: true },
+        insert: false
+      });
+      hudLayer.addChild(line);
+      this.dragRubberBand = line;
+    } else {
+      this.dragRubberBand.segments[0].point = fromPt;
+      this.dragRubberBand.segments[1].point = toPt;
+      this.dragRubberBand.strokeWidth = strokeWidth;
+    }
   }
 
   hitTest(point) {
@@ -152,10 +184,7 @@ export class HandleSelectionHandler {
   onMouseDrag(event) {
     if (!this.activeHandleData) return;
 
-    const handleData = this.activeHandleData;
-    const activeSeg = handleData.segment;
-    const handleType = handleData.type;
-
+    const { segment: activeSeg, type: handleType } = this.activeHandleData;
     if (!activeSeg) {
       this.reset();
       return;
@@ -163,31 +192,49 @@ export class HandleSelectionHandler {
 
     const isShift = event.event ? event.event.shiftKey : false;
     const rawTargetPoint = event.point.add(this.grabOffset);
+    const startPt = this.handleDragStartPt;
+    const constrainedTarget = startPt
+      ? this.utils.applyOrthoConstraint(startPt, rawTargetPoint, isShift)
+      : rawTargetPoint;
+
+    const effectiveOrtho = Boolean(this.service?.isOrthoEnabled) !== Boolean(isShift);
+    const isHorizontal = startPt
+      ? Math.abs(rawTargetPoint.x - startPt.x) > Math.abs(rawTargetPoint.y - startPt.y)
+      : false;
+    const projectOrthoGrid = (pt) => (isHorizontal
+      ? new paper.Point(pt.x, startPt.y)
+      : new paper.Point(startPt.x, pt.y));
 
     const activePaths = Array.from(new Set(
-      (this.selectedSegmentsStartData || []).map(item => item.path).filter(Boolean)
+      (this.selectedSegmentsStartData || []).map((item) => item.path).filter(Boolean)
     ));
-    const activeSegments = (this.selectedSegmentsStartData || []).map(item => item.segment).filter(Boolean);
+    const activeSegments = (this.selectedSegmentsStartData || []).map((item) => item.segment).filter(Boolean);
 
     const osnap = this.service.calculateOsnap(
-      rawTargetPoint,
-      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type),
+      constrainedTarget,
+      (snapPt, type) => {
+        const markerPt = (type === 'grid' && effectiveOrtho && startPt) ? projectOrthoGrid(snapPt) : snapPt;
+        this.utils.hud.renderSnapMarker(markerPt, type);
+      },
       null,
-      { 
-        path: activeSeg.path, 
+      {
+        fromPoint: startPt,
+        path: activeSeg.path,
         segment: activeSeg,
         ignoreEntities: activePaths,
         ignoreSegments: activeSegments
       }
     );
 
-    const finalPoint = (osnap && osnap.type)
-      ? osnap.point
-      : (this.handleDragStartPt
-          ? this.utils.applyOrthoConstraint(this.handleDragStartPt, rawTargetPoint, isShift)
-          : rawTargetPoint);
+    let finalPoint = constrainedTarget;
+    if (osnap && osnap.type) {
+      finalPoint = (osnap.type === 'grid' && effectiveOrtho && startPt)
+        ? projectOrthoGrid(osnap.point)
+        : osnap.point;
+    }
 
     this.utils.hud.updateHUD(finalPoint);
+    this._updateDragRubberBand(startPt, finalPoint);
 
     const currentHandlePt = handleType === 'anchor'
       ? activeSeg.point
@@ -195,45 +242,7 @@ export class HandleSelectionHandler {
           ? activeSeg.point.add(activeSeg.handleIn)
           : activeSeg.point.add(activeSeg.handleOut));
 
-    const delta = finalPoint.subtract(currentHandlePt);
-
-    if (this.service.selectedSegments.length > 0) {
-      this.service.selectedSegments.forEach(s => {
-        s.point = s.point.add(delta);
-      });
-    } else if (handleType === 'anchor') {
-      activeSeg.point = activeSeg.point.add(delta);
-    }
-
-    if (this.service.selectedHandles.length > 0) {
-      this.service.selectedHandles.forEach(h => {
-        if (!this.service.selectedSegments.includes(h.segment)) {
-          if (h.type === 'handleIn') {
-            h.segment.handleIn = h.segment.handleIn.add(delta);
-          } else if (h.type === 'handleOut') {
-            h.segment.handleOut = h.segment.handleOut.add(delta);
-          }
-        }
-      });
-    } else if (handleType === 'handleIn' || handleType === 'handleOut') {
-      const isAnchorSelected = this.service.selectedSegments.includes(activeSeg);
-      if (!isAnchorSelected) {
-        if (handleType === 'handleIn') {
-          activeSeg.handleIn = activeSeg.handleIn.add(delta);
-        } else if (handleType === 'handleOut') {
-          activeSeg.handleOut = activeSeg.handleOut.add(delta);
-        }
-      }
-    }
-
-    if (this.service.selectedEntities.length > 0) {
-      this.service.selectedEntities.forEach(ent => {
-        if (!this.service.editingEntities.includes(ent)) {
-          ent.position = ent.position.add(delta);
-        }
-      });
-    }
-
+    this._applyDeltaToSelection(finalPoint.subtract(currentHandlePt), handleType, activeSeg);
     this.utils.selectionRenderEngine.renderBezierHandles();
   }
 
@@ -309,6 +318,70 @@ export class HandleSelectionHandler {
         finalPt: finalPt
       });
       this.service.executeCommand(moveCmd);
+    }
+
+    this.reset();
+  }
+
+  _applyDeltaToSelection(delta, handleType, activeSeg) {
+    if (this.service.selectedSegments.length > 0) {
+      this.service.selectedSegments.forEach((s) => { s.point = s.point.add(delta); });
+    } else if (handleType === 'anchor') {
+      activeSeg.point = activeSeg.point.add(delta);
+    }
+
+    if (this.service.selectedHandles.length > 0) {
+      this.service.selectedHandles.forEach((h) => {
+        if (!this.service.selectedSegments.includes(h.segment)) {
+          if (h.type === 'handleIn') h.segment.handleIn = h.segment.handleIn.add(delta);
+          else if (h.type === 'handleOut') h.segment.handleOut = h.segment.handleOut.add(delta);
+        }
+      });
+    } else if ((handleType === 'handleIn' || handleType === 'handleOut') && !this.service.selectedSegments.includes(activeSeg)) {
+      if (handleType === 'handleIn') activeSeg.handleIn = activeSeg.handleIn.add(delta);
+      else if (handleType === 'handleOut') activeSeg.handleOut = activeSeg.handleOut.add(delta);
+    }
+
+    if (this.service.selectedEntities.length > 0) {
+      this.service.selectedEntities.forEach((ent) => {
+        if (!this.service.editingEntities.includes(ent)) {
+          ent.position = ent.position.add(delta);
+        }
+      });
+    }
+  }
+
+  cancelDrag() {
+    if (!this.activeHandleData) {
+      this.reset();
+      return;
+    }
+
+    if (this.selectedSegmentsStartData && this.selectedSegmentsStartData.length > 0) {
+      this.selectedSegmentsStartData.forEach((item) => {
+        if (!item.segment) return;
+        item.segment.point = item.initialPt.clone();
+        item.segment.handleIn = item.initialHandleIn.clone();
+        item.segment.handleOut = item.initialHandleOut.clone();
+      });
+    } else if (this.handleDragStartPt && this.activeHandleData.segment) {
+      const { segment: seg, type } = this.activeHandleData;
+      if (type === 'anchor') {
+        seg.point = this.handleDragStartPt.clone();
+      } else if (type === 'handleIn') {
+        seg.handleIn = this.handleDragStartPt.subtract(seg.point);
+      } else if (type === 'handleOut') {
+        seg.handleOut = this.handleDragStartPt.subtract(seg.point);
+      }
+    }
+
+    if (this.selectedEntitiesStartData && this.selectedEntitiesStartData.length > 0) {
+      this.selectedEntitiesStartData.forEach((item) => {
+        if (!item.entity || this.service.editingEntities.includes(item.entity)) return;
+        if (item.initialPos) {
+          item.entity.position = item.initialPos.clone();
+        }
+      });
     }
 
     this.reset();

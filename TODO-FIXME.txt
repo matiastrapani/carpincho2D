@@ -24,14 +24,20 @@ unificar estilo para data-tooltips en capas y properties
 poner "..." en nombre de capas largos
 nombre entidades con #
 resolver el punto de incio con estilo punto en division por distancia
+
 en modo orto o con shift el snap a grid debe respetar la jerarquia de ortogonal
 
 resolver la barra de desplazamiento horizontal en el panel de propiedades al reducir el tamaño sin overflow
 resolver que hacer con la opacidad en capa
 seleccion y bezier con zoom falla
-autocompletado en consola
-agregar los osnaps que faltan tangente, perpendicular, cercano
+
 espesores y zoom, escalar bordes?
+
+autocompletado en consola
 agregar teclas rapidas a cadtheme
+la tangente en circulos no es con la linea del radio sino que es con la curva
+movimiento y osnap perpendicular
+- [x] **QW-01 | Rubber band en Move con Select:** Dibujar guía discontinua (`CAD_THEME.rubberBand`) en `hudLayer` entre el *pivot point* inicial y la posición actual durante el arrastre de entidades/vértices en `HandleSelectionHandler` / `SelectTool`, limpiándola en `onMouseUp` y `reset()`.
+- [x] **QW-02 | OSNAP Perpendicular en Selección y Movimiento:** Pasar el *pivot point* como `fromPoint` e incluir las entidades arrastradas en `ignoreEntities` al invocar `OsnapEngine.calculateOsnap()` desde `HandleSelectionHandler` / `SegmentEditHandler`.
 
-
+modo edicion con tecla rapida y con multiples entidades

@@ -69,56 +69,40 @@ export class ParametricGripHandler {
   }
 
   onMouseDrag(event) {
-    if (!this.service.selectedSegments.length || !this.mouseStartPt || !this.selectedSegmentsStartData) {
+    if (!this.activeGripEntity || !this.activeGripId || !this.gripStartPoint) {
       return false;
     }
 
-    const isShift = event.event ? event.event.shiftKey : false;
-    const targetMousePt = this.utils.applyOrthoConstraint(this.mouseStartPt, event.point, isShift);
-
-    const pivotSegData = this.selectedSegmentsStartData.find((s) => s.segment === this.dragAnchorSegment)
-      || this.selectedSegmentsStartData[0];
-
-    let globalDelta = targetMousePt.subtract(this.mouseStartPt);
-
-    if (pivotSegData && pivotSegData.initialPt) {
-      let currentPivotPos = pivotSegData.initialPt.add(globalDelta);
-
-      const activePaths = Array.from(new Set(
-        this.selectedSegmentsStartData.map((item) => item.path).filter(Boolean)
-      ));
-      const activeSegments = this.selectedSegmentsStartData.map((item) => item.segment).filter(Boolean);
-      const selectedPointsCoords = this.selectedSegmentsStartData.map((item) => item.initialPt);
-
-      const osnap = this.service.calculateOsnap(
-        currentPivotPos,
-        (pt, type) => this.utils.hud.renderSnapMarker(pt, type),
-        null,
-        {
-          path: pivotSegData.path,
-          segment: pivotSegData.segment,
-          ignoreEntities: activePaths,
-          ignoreSegments: activeSegments,
-          selectedPointsCoords
-        }
-      );
-
-      if (osnap && osnap.type) {
-        globalDelta = osnap.point.subtract(pivotSegData.initialPt);
-      }
-
-      currentPivotPos = pivotSegData.initialPt.add(globalDelta);
-      this.utils.hud.updateHUD(currentPivotPos);
-      this.utils.renderPivotMarker(currentPivotPos);
+    const controller = this.activeGripEntity.data?.controller;
+    if (!controller || typeof controller.onGripDrag !== 'function') {
+      return false;
     }
 
-    this.selectedSegmentsStartData.forEach((item) => {
-      if (item.segment) {
-        item.segment.point = item.initialPt.add(globalDelta);
-      }
+    this.utils.hud.clear();
+    const isShift = event.event ? event.event.shiftKey : false;
+    const isCenterGrip = this.activeGripId === 'center';
+
+    // En el grip central se aplica Ortogonal con F8/Shift; en esquinas y bordes Shift queda libre para escalado simétrico
+    const targetPt = this.utils.resolveConstrainedPoint(event.point, {
+      fromPoint: isCenterGrip ? this.gripStartPoint : null,
+      isShift: isCenterGrip ? isShift : false,
+      excludeEntity: this.activeGripEntity,
+      ignoreEntities: [this.activeGripEntity]
     });
 
-    this.utils.selectionRenderEngine.renderBezierHandles();
+    this.utils.hud.updateHUD(targetPt);
+
+    controller.onGripDrag(this.activeGripId, targetPt, this.gripStartPoint, {
+      isShiftPressed: isShift
+    });
+
+    if (this.utils.selectionRenderEngine?.renderBezierHandles) {
+      this.utils.selectionRenderEngine.renderBezierHandles();
+    }
+    if (window.paper?.view) {
+      paper.view.update();
+    }
+
     return true;
   }
 

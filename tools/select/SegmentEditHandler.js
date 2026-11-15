@@ -1,6 +1,8 @@
 /**
  * tools/select/SegmentEditHandler.js - Submódulo para edición, selección y arrastre de nodos/tramos
  */
+
+import { CAD_THEME } from '../../config/cadTheme.js';
 import { MoveCommand } from '../../services/commands/cadCommands.js';
 
 export class SegmentEditHandler {
@@ -11,10 +13,40 @@ export class SegmentEditHandler {
   }
 
   reset() {
+    if (this.dragRubberBand) {
+      this.dragRubberBand.remove();
+    }
+    this.dragRubberBand = null;
     this.dragAnchorSegment = null;
     this.pivotPoint = null;
     this.mouseStartPt = null;
     this.selectedSegmentsStartData = null;
+  }
+
+  _updateDragRubberBand(fromPt, toPt) {
+    if (!fromPt || !toPt) return;
+
+    const hudLayer = this.utils.hudLayer || paper.project?.layers?.['hudLayer'];
+    if (!hudLayer) return;
+
+    const strokeWidth = 1 / paper.view.zoom;
+    if (!this.dragRubberBand) {
+      const line = new paper.Path.Line({
+        from: fromPt,
+        to: toPt,
+        strokeColor: CAD_THEME.selection.line.strokeColor,
+        strokeWidth,
+        dashArray: CAD_THEME.rubberBand.dashArrayPx,
+        data: { isAuxiliary: true },
+        insert: false
+      });
+      hudLayer.addChild(line);
+      this.dragRubberBand = line;
+    } else {
+      this.dragRubberBand.segments[0].point = fromPt;
+      this.dragRubberBand.segments[1].point = toPt;
+      this.dragRubberBand.strokeWidth = strokeWidth;
+    }
   }
 
   enterEditMode(targetItem) {
@@ -115,7 +147,14 @@ export class SegmentEditHandler {
     let globalDelta = targetMousePt.subtract(this.mouseStartPt);
 
     if (pivotSegData && pivotSegData.initialPt) {
-      let currentPivotPos = pivotSegData.initialPt.add(globalDelta);
+      const startPt = pivotSegData.initialPt;
+      const projectedPivot = startPt.add(globalDelta);
+      const effectiveOrtho = Boolean(this.service?.isOrthoEnabled) !== Boolean(isShift);
+      const isHorizontal = Math.abs(event.point.x - this.mouseStartPt.x) >
+                           Math.abs(event.point.y - this.mouseStartPt.y);
+      const projectOrthoGrid = (pt) => (isHorizontal
+        ? new paper.Point(pt.x, startPt.y)
+        : new paper.Point(startPt.x, pt.y));
 
       const activePaths = Array.from(new Set(
         this.selectedSegmentsStartData.map((item) => item.path).filter(Boolean)
@@ -124,10 +163,14 @@ export class SegmentEditHandler {
       const selectedPointsCoords = this.selectedSegmentsStartData.map((item) => item.initialPt);
 
       const osnap = this.service.calculateOsnap(
-        currentPivotPos,
-        (pt, type) => this.utils.hud.renderSnapMarker(pt, type),
+        projectedPivot,
+        (pt, type) => {
+          const markerPt = (type === 'grid' && effectiveOrtho) ? projectOrthoGrid(pt) : pt;
+          this.utils.hud.renderSnapMarker(markerPt, type);
+        },
         null,
         {
+          fromPoint: startPt,
           path: pivotSegData.path,
           segment: pivotSegData.segment,
           ignoreEntities: activePaths,
@@ -137,11 +180,15 @@ export class SegmentEditHandler {
       );
 
       if (osnap && osnap.type) {
-        globalDelta = osnap.point.subtract(pivotSegData.initialPt);
+        const snappedPt = (osnap.type === 'grid' && effectiveOrtho)
+          ? projectOrthoGrid(osnap.point)
+          : osnap.point;
+        globalDelta = snappedPt.subtract(startPt);
       }
 
-      currentPivotPos = pivotSegData.initialPt.add(globalDelta);
+      const currentPivotPos = startPt.add(globalDelta);
       this.utils.hud.updateHUD(currentPivotPos);
+      this._updateDragRubberBand(startPt, currentPivotPos);
       this.utils.renderPivotMarker(currentPivotPos);
     }
 
@@ -196,6 +243,27 @@ export class SegmentEditHandler {
 
     this.reset();
     return true;
+  }
+
+  isDragging() {
+    return Boolean(
+      this.mouseStartPt &&
+      this.selectedSegmentsStartData &&
+      this.selectedSegmentsStartData.length > 0
+    );
+  }
+
+  cancelDrag() {
+    if (this.selectedSegmentsStartData && this.selectedSegmentsStartData.length > 0) {
+      this.selectedSegmentsStartData.forEach((item) => {
+        if (!item.segment) return;
+        item.segment.point = item.initialPt.clone();
+        item.segment.handleIn = item.initialHandleIn.clone();
+        item.segment.handleOut = item.initialHandleOut.clone();
+      });
+    }
+
+    this.reset();
   }
 
   handleHover(point, zoom) {
