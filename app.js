@@ -8,6 +8,7 @@ import { LayerPanelUI } from './ui/LayerPanelUI.js';
 import { PropertyPanelUI } from './ui/PropertyPanelUI.js';
 import { CAD_THEME, applyThemeToDocument } from './config/cadTheme.js';
 import { populateentities } from './services/demoScene.js';
+import { TooltipManager } from './ui/components/TooltipManager.js';
 
 const onLoadHandler = () => {
   window.removeEventListener('load', onLoadHandler);
@@ -20,13 +21,10 @@ const onLoadHandler = () => {
   window.fixedConsoleUI = window.consoleManager.fixedUI;
   window.floatingConsoleUI = window.consoleManager.floatingUI;
 
-  if (window.Iconify) {
-    window.Iconify.scan(document.getElementById('fixedConsoleContainer'));
-  }
-
   // 2. Inicializar Servicios CAD y vincular consola
   window.cadService = new CADService();
   window.cadUtils = new CADUtils('cadCanvas', window.cadService);
+  window.cadUtils.tooltipManager = new TooltipManager(document.body);
   window.consoleManager.setUtils(window.cadUtils);
   window.cadIO = window.cadUtils.ioService;
   window.canvasViewportManager = window.cadUtils.viewportManager;

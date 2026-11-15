@@ -473,7 +473,7 @@ export class CADUtils {
       'line': { btn: 'btnLineGroup', icon: 'currentLineIcon', name: 'custom:line' },
       'polyline': { btn: 'btnLineGroup', icon: 'currentLineIcon', name: 'custom:polyline' },
       'spline': { btn: 'btnCurveGroup', icon: 'currentCurveIcon', name: 'custom:spline' },
-      'bezier': { btn: 'btnCurveGroup', icon: 'currentCurveIcon', name: 'fa-solid:bezier-curve' },
+      'bezier': { btn: 'btnCurveGroup', icon: 'currentCurveIcon', name: 'custom:bezier' },
       'trim': { btn: 'btnTrim', icon: 'currentModifyIcon', name: 'custom:trim' },
       'extend': { btn: 'btnExtend', icon: 'currentModifyIcon', name: 'custom:extend' }
     };
@@ -502,7 +502,17 @@ export class CADUtils {
     const btnSnap = document.getElementById('btnSnap');
     if (btnSnap) btnSnap.classList.toggle('active', isEnabled);
 
-    const osnapFilters = ['endpoint', 'midpoint', 'center', 'quadrant', 'node', 'intersection'];
+    const osnapFilters = [
+      'endpoint',
+      'nearest',
+      'node',
+      'midpoint',
+      'center',
+      'intersection',
+      'perpendicular',
+      'tangent',
+      'quadrant'
+    ];
     osnapFilters.forEach(filter => {
       const chip = document.getElementById(`chip${filter.charAt(0).toUpperCase() + filter.slice(1)}`);
       if (!chip) return;

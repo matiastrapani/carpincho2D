@@ -7,12 +7,10 @@
 
   <!-- Librerías de Estilos e Iconos -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/paper.js/0.12.17/paper-full.min.js"></script>
 
   <link rel="stylesheet" href="css/styles.css" />
   <link rel="stylesheet" href="css/ui-controls.css" />
-  <script src="https://code.iconify.design/3/3.1.1/iconify.min.js"></script>
   
   <link rel="icon" href="assets/favicon.ico" sizes="any">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
@@ -39,18 +37,18 @@
 
     <!-- Botones ubicados a la izquierda, inmediatamente después del fondo del logo -->
     <div class="flex items-center px-3">
-      <button id="btnHeaderUndo" class="cad-button cad-button-square h-8 w-8" title="Deshacer (Ctrl+Z)">
-        <span class="iconify text-xl" data-icon="carbon:undo"></span>
+      <button id="btnHeaderUndo" class="cad-button cad-button-square h-8 w-8 tooltip-bottom" data-tooltip="Deshacer (Ctrl+Z)">
+        <span class="iconify text-xl" data-icon="lucide:undo-2"></span>
       </button>
 
-      <button id="btnHeaderRedo" class="cad-button cad-button-square h-8 w-8" title="Rehacer (Ctrl+Y)">
-        <span class="iconify text-xl" data-icon="carbon:redo"></span>
+      <button id="btnHeaderRedo" class="cad-button cad-button-square h-8 w-8 tooltip-bottom" data-tooltip="Rehacer (Ctrl+Y)">
+        <span class="iconify text-xl" data-icon="lucide:redo-2"></span>
       </button>
 
       <div class="flat-divider h-4 mx-1"></div>
 
-      <button id="btnHeaderExportSVG" class="cad-button cad-button-square h-8 w-8 flex items-center text-xs " title="Exportar Dibujo a SVG">
-        <span class="iconify text-lg" data-icon="carbon:cloud-download"></span>
+      <button id="btnHeaderExportSVG" class="cad-button cad-button-square h-8 w-8 flex items-center text-xs tooltip-bottom" data-tooltip="Exportar dibujo a SVG">
+        <span class="iconify text-lg" data-icon="lucide:cloud-download"></span>
       </button>
     </div>
 
@@ -74,8 +72,7 @@
       </div>
 
       <!-- Contenedor reservado para la Consola Fija -->
-      <div id="fixedConsoleContainer" class="shrink-0 w-full min-h-0 z-40"></div>
-
+      <div id="fixedConsoleContainer" class="shrink-0 w-full min-h-0 z-20"></div>
     </div>
 
     <!-- Contenedor de acople a la izquierda del panel de control -->
@@ -91,19 +88,19 @@
     </div>
 
     <!-- Botón flotante minimalista sin fondo para desplegar cuando el panel está colapsado -->
-    <button id="btnExpandSidebar" type="button" class="hidden absolute top-1.5 right-1.5 z-50 h-7 w-7 flex items-center justify-center bg-transparent text-zinc-400 hover:text-white cursor-pointer tooltip-bottom-right" data-tooltip="Expandir Panel">
-      <i class="fa-solid fa-chevron-left text-xs"></i>
+    <button id="btnExpandSidebar" type="button" class="hidden absolute top-1.5 right-1.5 z-50 h-7 w-7 flex items-center justify-center bg-transparent text-zinc-400 hover:text-white cursor-pointer tooltip-bottom-right" data-tooltip="Expandir panel">
+      <span class="iconify text-md shrink-0" data-icon="lucide:chevron-left"></span>
     </button>
 
     <!-- Sidebar Derecho de Control -->
-    <aside id="rightSidebar" class="w-72 min-w-0 h-full bg-[#1e1e24] flex flex-col z-20 relative transition-[width] duration-[180ms] ease-out shrink-0">
+    <aside id="rightSidebar" class="w-72 min-w-0 h-full bg-[#1e1e24] flex flex-col z-40 relative transition-[width] duration-[180ms] ease-out shrink-0">
       <div id="sidebarHeader" class="p-1 bg-[#17171c] flex items-center justify-between min-h-[40px] shrink-0">
         <div id="sidebarTitleGroup" class="flex items-center gap-2 pl-2 overflow-hidden">
-          <i class="fa-solid fa-gear text-zinc-200 text-xs shrink-0"></i>
+          <span class="iconify text-zinc-200 text-sm shrink-0" data-icon="lucide:settings-2"></span>
           <span class="text-xs font-semibold text-zinc-200 tracking-wide whitespace-nowrap">PANEL DE CONTROL</span>
         </div>
-        <button id="btnToggleSidebar" type="button" class="cad-button cad-button-square h-8 w-8 hover:bg-[#2a2a32] text-zinc-400 hover:text-white shrink-0 tooltip-bottom-right" data-tooltip="Colapsar Panel">
-          <i id="sidebarIcon" class="fa-solid fa-chevron-right text-xs"></i>
+        <button id="btnToggleSidebar" type="button" class="cad-button cad-button-square h-8 w-8 hover:bg-[#2a2a32] text-zinc-400 hover:text-white shrink-0 tooltip-bottom-right" data-tooltip="Colapsar panel">
+          <span id="sidebarIcon" class="iconify text-md shrink-0" data-icon="lucide:chevron-right"></span> 
         </button>
       </div>
 
@@ -112,7 +109,7 @@
         <div id="propertyPanelContainer" class="p-3.5 flex flex-col gap-3 shrink-0" style="height: 50%; min-height: 90px;"></div>
 
         <!-- Divisor Vertical Arrastrable (1px pixel-perfect con margen lateral) -->
-        <div id="sidebarVerticalResizer" class="group relative h-[1px] bg-[#2a2a32] cursor-row-resize shrink-0 z-30 mx-3.5 my-1">
+        <div id="sidebarVerticalResizer" class="group relative h-[1.5px] bg-[#2a2a32] cursor-row-resize shrink-0 z-30 mx-3.5 my-1">
           <!-- Hitbox invisible de 9px (expande 4px arriba/abajo y a los bordes para agarre fácil) -->
           <div class="absolute -top-1 -bottom-1 -left-3.5 -right-3.5"></div>
           
@@ -132,7 +129,7 @@
 
   </div>
 
-  <script src="icons/icons.js" defer></script>
+  <script type="module" src="ui/components/IconRenderer.js"></script>
   <script type="module" src="app.js"></script>
 </body>
 </html>
