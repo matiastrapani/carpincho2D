@@ -2,6 +2,11 @@
  * services/engines/OsnapEngine.js - Motor de atracción magnética (OSNAP)
  */
 
+import {
+  resolveFromPoint,
+  collectExtendedOsnapCandidates
+} from './OsnapGeometryMath.js';
+
 export class OsnapEngine {
   constructor(cadService) {
     this.service = cadService;
@@ -284,6 +289,23 @@ export class OsnapEngine {
         }
       }
 
+      // 7. OSNAP EXTENDIDOS (Perpendicular, Tangente y Cercano)
+      const extendedCandidates = collectExtendedOsnapCandidates({
+        snapFilters: this.service.snapFilters,
+        circleTargets,
+        snapTargets,
+        rasterTargets,
+        mousePoint,
+        snapRadius,
+        fromPoint: resolveFromPoint(activePath, ignoreContext),
+        draggedPath,
+        isSelfPoint,
+        getRasterContourPath: (raster) => this.getRasterContourPath(raster)
+      });
+      if (extendedCandidates.length > 0) {
+        candidatePoints.push(...extendedCandidates);
+      }
+
       if (candidatePoints.length > 0) {
         candidatePoints.sort((a, b) => a.priority - b.priority || a.dist - b.dist);
         const best = candidatePoints[0];
@@ -292,7 +314,7 @@ export class OsnapEngine {
       }
     }
 
-    // 7. SNAP A GRILLA (Independiente de F3 / OSNAP)
+    // 8. SNAP A GRILLA (Independiente de F3 / OSNAP)
     if (this.service.snapFilters.grid === true) {
       let subStep = zoom > 3 ? 4 : (zoom < 0.3 ? 100 : 20);
       const gridSnappedX = Math.round(mousePoint.x / subStep) * subStep;

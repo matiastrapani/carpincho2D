@@ -31,6 +31,9 @@ export class CADService {
       intersection: true,
       center: true,
       quadrant: true,
+      perpendicular: true,
+      tangent: false,
+      nearest: false,
       grid: false
     };
 

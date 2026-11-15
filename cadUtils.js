@@ -606,6 +606,55 @@ export class CADUtils {
     }
   }
 
+  resolveConstrainedPoint(rawPoint, { fromPoint = null, isShift = false, excludeEntity = null, ignoreEntities = null } = {}) {
+    const effectiveOrtho = Boolean(this.service?.isOrthoEnabled) !== Boolean(isShift);
+    const hasOrigin = Boolean(fromPoint);
+
+    const osnapOptions = {};
+    if (fromPoint) osnapOptions.fromPoint = fromPoint;
+    if (ignoreEntities) osnapOptions.ignoreEntities = ignoreEntities;
+
+    const osnap = this.service.calculateOsnap(
+      rawPoint,
+      (snapPt, type) => {
+        if (type === 'grid' && effectiveOrtho && hasOrigin) {
+          const isHorizontal = Math.abs(rawPoint.x - fromPoint.x) > Math.abs(rawPoint.y - fromPoint.y);
+          const orthoGridPt = isHorizontal
+            ? new paper.Point(snapPt.x, fromPoint.y)
+            : new paper.Point(fromPoint.x, snapPt.y);
+          this.hud.renderSnapMarker(orthoGridPt, type);
+        } else {
+          this.hud.renderSnapMarker(snapPt, type);
+        }
+      },
+      excludeEntity,
+      Object.keys(osnapOptions).length > 0 ? osnapOptions : null
+    );
+
+    // 1. Máxima prioridad: OSNAP de entidad (Fin, Medio, Centro, Int, Perp, Tan, Cuad, Punto, Cerca)
+    if (osnap && osnap.type && osnap.type !== 'grid') {
+      return osnap.point;
+    }
+
+    // 2. Segunda prioridad: Ortogonal (F8 o Shift), proyectando el snap a grilla sobre el eje activo
+    if (effectiveOrtho && hasOrigin) {
+      const isHorizontal = Math.abs(rawPoint.x - fromPoint.x) > Math.abs(rawPoint.y - fromPoint.y);
+      if (osnap && osnap.type === 'grid') {
+        return isHorizontal
+          ? new paper.Point(osnap.point.x, fromPoint.y)
+          : new paper.Point(fromPoint.x, osnap.point.y);
+      }
+      return this.applyOrthoConstraint(fromPoint, rawPoint, isShift);
+    }
+
+    // 3. Tercera prioridad: Snap a grilla libre o punto del cursor
+    if (osnap && osnap.type === 'grid') {
+      return osnap.point;
+    }
+
+    return rawPoint;
+  }
+
   renderPivotMarker(point) {
     if (!point) return;
 

@@ -299,7 +299,20 @@ export class CADUIManager {
 
   // 4. Modos OSNAP
   bindOsnapChips() {
-      const filters = ['endpoint', 'midpoint', 'center', 'quadrant', 'node', 'intersection', 'grid'];    filters.forEach(filter => {
+    const filters = [
+      'endpoint',
+      'nearest',
+      'node',
+      'midpoint',
+      'center',
+      'intersection',
+      'perpendicular',
+      'tangent',
+      'quadrant',
+      'grid'
+    ];
+
+    filters.forEach(filter => {
       const chip = document.getElementById(`chip${filter.charAt(0).toUpperCase() + filter.slice(1)}`);
       if (chip) {
         chip.addEventListener('click', () => this.cadUtils.toggleSnapFilter(filter));

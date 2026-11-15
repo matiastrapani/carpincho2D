@@ -21,19 +21,10 @@ export class CircleTool extends BaseTool {
     if (event.event && event.event.button !== 0) return;
 
     const isShift = event.event ? event.event.shiftKey : false;
-    let pt = event.point.clone();
-
-    // 1. Evaluar OSNAP sobre la posición REAL del cursor
-    const osnap = this.service.calculateOsnap(
-      event.point, 
-      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type)
-    );
-
-    if (osnap && osnap.type) {
-      pt = osnap.point;
-    } else if (this.centerPoint) {
-      pt = this.utils.applyOrthoConstraint(this.centerPoint, event.point, isShift);
-    }
+    const pt = this.utils.resolveConstrainedPoint(event.point, {
+      fromPoint: this.centerPoint,
+      isShift
+    });
 
     // PASO 1: Fijar el Punto Central
     if (!this.centerPoint) {
@@ -61,19 +52,10 @@ export class CircleTool extends BaseTool {
   onMouseMove(event) {
     this.utils.hud.clear();
     const isShift = event.event ? event.event.shiftKey : false;
-    let pt = event.point.clone();
-
-    // 1. Evaluar OSNAP directamente en el cursor real del ratón
-    const osnap = this.service.calculateOsnap(
-      event.point, 
-      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type)
-    );
-
-    if (osnap && osnap.type) {
-      pt = osnap.point;
-    } else if (this.centerPoint) {
-      pt = this.utils.applyOrthoConstraint(this.centerPoint, event.point, isShift);
-    }
+    const pt = this.utils.resolveConstrainedPoint(event.point, {
+      fromPoint: this.centerPoint,
+      isShift
+    });
 
     this.utils.hud.updateHUD(pt);
 

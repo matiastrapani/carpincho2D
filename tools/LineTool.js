@@ -17,19 +17,11 @@ export class LineTool extends BaseTool {
     }
 
     const isShift = event.event ? event.event.shiftKey : false;
-    let pt = event.point;
-
-    const osnap = this.service.calculateOsnap(
-      event.point, 
-      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type)
-    );
-
-    if (osnap && osnap.type) {
-      pt = osnap.point;
-    } else if (this.utils.activePath) {
-      const startPt = this.utils.activePath.firstSegment.point;
-      pt = this.utils.applyOrthoConstraint(startPt, event.point, isShift);
-    }
+    const fromPoint = this.utils.activePath ? this.utils.activePath.firstSegment.point : null;
+    const pt = this.utils.resolveConstrainedPoint(event.point, {
+      fromPoint,
+      isShift
+    });
 
     const propMgr = this.utils.propertyManager;
 
@@ -93,19 +85,11 @@ export class LineTool extends BaseTool {
 
   onMouseMove(event) {
     const isShift = event.event ? event.event.shiftKey : false;
-    let pt = event.point;
-
-    const osnap = this.service.calculateOsnap(
-      event.point, 
-      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type)
-    );
-
-    if (osnap.type) {
-      pt = osnap.point;
-    } else if (this.utils.activePath) {
-      const lastConfirmedPt = this.utils.activePath.firstSegment.point;
-      pt = this.utils.applyOrthoConstraint(lastConfirmedPt, event.point, isShift);
-    }
+    const fromPoint = this.utils.activePath ? this.utils.activePath.firstSegment.point : null;
+    const pt = this.utils.resolveConstrainedPoint(event.point, {
+      fromPoint,
+      isShift
+    });
 
     this.utils.hud.updateHUD(pt);
 

@@ -17,21 +17,15 @@ export class BezierTool extends BaseTool {
     if (event.event && event.event.button !== 0) return;
 
     const isShift = event.event ? event.event.shiftKey : false;
-    let pt = event.point;
+    const fromPoint = (this.utils.activePath && this.utils.activePath.lastSegment)
+      ? this.utils.activePath.lastSegment.point
+      : null;
 
-    // 1. Evaluar OSNAP incluyendo la curva activa en dibujo
-    const osnap = this.service.calculateOsnap(
-      event.point,
-      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type),
-      this.utils.activePath
-    );
-
-    if (osnap && osnap.type) {
-      pt = osnap.point;
-    } else if (this.utils.activePath && this.utils.activePath.lastSegment) {
-      const lastPt = this.utils.activePath.lastSegment.point;
-      pt = this.utils.applyOrthoConstraint(lastPt, event.point, isShift);
-    }
+    const pt = this.utils.resolveConstrainedPoint(event.point, {
+      fromPoint,
+      isShift,
+      excludeEntity: this.utils.activePath
+    });
 
     if (!this.utils.activePath) {
       // Iniciar trazo de curva Bézier
@@ -71,19 +65,12 @@ export class BezierTool extends BaseTool {
     if (this.utils.activePath && this.utils.activePath.lastSegment) {
       const isShift = event.event ? event.event.shiftKey : false;
       const lastSeg = this.utils.activePath.lastSegment;
-      let dragPt = event.point;
 
-      const osnap = this.service.calculateOsnap(
-        event.point,
-        (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type),
-        this.utils.activePath
-      );
-
-      if (osnap && osnap.type) {
-        dragPt = osnap.point;
-      } else {
-        dragPt = this.utils.applyOrthoConstraint(lastSeg.point, event.point, isShift);
-      }
+      const dragPt = this.utils.resolveConstrainedPoint(event.point, {
+        fromPoint: lastSeg.point,
+        isShift,
+        excludeEntity: this.utils.activePath
+      });
 
       this.utils.hud.updateHUD(dragPt);
 
@@ -100,20 +87,15 @@ export class BezierTool extends BaseTool {
 
   onMouseMove(event) {
     const isShift = event.event ? event.event.shiftKey : false;
-    let currentPt = event.point;
+    const fromPoint = (this.utils.activePath && this.utils.activePath.lastSegment)
+      ? this.utils.activePath.lastSegment.point
+      : null;
 
-    const osnap = this.service.calculateOsnap(
-      event.point,
-      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type),
-      this.utils.activePath
-    );
-
-    if (osnap && osnap.type) {
-      currentPt = osnap.point;
-    } else if (this.utils.activePath && this.utils.activePath.lastSegment) {
-      const lastConfirmedPt = this.utils.activePath.lastSegment.point;
-      currentPt = this.utils.applyOrthoConstraint(lastConfirmedPt, event.point, isShift);
-    }
+    const currentPt = this.utils.resolveConstrainedPoint(event.point, {
+      fromPoint,
+      isShift,
+      excludeEntity: this.utils.activePath
+    });
 
     this.utils.hud.updateHUD(currentPt);
 

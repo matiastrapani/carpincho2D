@@ -16,20 +16,15 @@ export class SplineTool extends BaseTool {
     if (event.event && event.event.button !== 0) return;
 
     const isShift = event.event ? event.event.shiftKey : false;
-    let pt = event.point;
+    const fromPoint = (this.utils.activePath && this.utils.activePath.lastSegment)
+      ? this.utils.activePath.lastSegment.point
+      : null;
 
-    const osnap = this.service.calculateOsnap(
-      event.point,
-      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type),
-      this.utils.activePath
-    );
-
-    if (osnap && osnap.type) {
-      pt = osnap.point;
-    } else if (this.utils.activePath && this.utils.activePath.lastSegment) {
-      const lastPt = this.utils.activePath.lastSegment.point;
-      pt = this.utils.applyOrthoConstraint(lastPt, event.point, isShift);
-    }
+    const pt = this.utils.resolveConstrainedPoint(event.point, {
+      fromPoint,
+      isShift,
+      excludeEntity: this.utils.activePath
+    });
 
     if (!this.utils.activePath) {
       this.utils.activePath = new paper.Path({
@@ -80,20 +75,15 @@ export class SplineTool extends BaseTool {
 
   onMouseMove(event) {
     const isShift = event.event ? event.event.shiftKey : false;
-    let pt = event.point;
+    const fromPoint = (this.utils.activePath && this.utils.activePath.lastSegment)
+      ? this.utils.activePath.lastSegment.point
+      : null;
 
-    const osnap = this.service.calculateOsnap(
-      event.point,
-      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type),
-      this.utils.activePath
-    );
-
-    if (osnap && osnap.type) {
-      pt = osnap.point;
-    } else if (this.utils.activePath && this.utils.activePath.lastSegment) {
-      const lastPt = this.utils.activePath.lastSegment.point;
-      pt = this.utils.applyOrthoConstraint(lastPt, event.point, isShift);
-    }
+    const pt = this.utils.resolveConstrainedPoint(event.point, {
+      fromPoint,
+      isShift,
+      excludeEntity: this.utils.activePath
+    });
 
     this.utils.hud.updateHUD(pt);
 

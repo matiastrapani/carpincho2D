@@ -245,6 +245,63 @@ export class HUDManager {
       // Rotamos 45 grados para transformarlo en un diamante
       diamond.rotate(45, point);
       this.snapMarkersGroup.addChild(diamond);
+    } else if (type === 'perpendicular') {
+      // Marcador de Perpendicular (Escuadra de ángulo recto ∟)
+      const half = size * 0.5;
+      const outerCorner = new paper.Path({
+        segments: [
+          point.add(new paper.Point(-half, -half)),
+          point.add(new paper.Point(-half, half)),
+          point.add(new paper.Point(half, half))
+        ],
+        strokeColor: strokeColor,
+        strokeWidth: strokeWidth
+      });
+      const innerCorner = new paper.Path({
+        segments: [
+          point.add(new paper.Point(-half, 0)),
+          point,
+          point.add(new paper.Point(0, half))
+        ],
+        strokeColor: strokeColor,
+        strokeWidth: strokeWidth
+      });
+      this.snapMarkersGroup.addChild(outerCorner);
+      this.snapMarkersGroup.addChild(innerCorner);
+    } else if (type === 'tangent') {
+      // Marcador de Tangente (Círculo con línea tangente superior)
+      const radius = size * 0.45;
+      const circle = new paper.Path.Circle({
+        center: point,
+        radius: radius,
+        strokeColor: strokeColor,
+        strokeWidth: strokeWidth,
+        fillColor: fillColor
+      });
+      const tangentLine = new paper.Path.Line({
+        from: point.add(new paper.Point(-size * 0.55, -radius)),
+        to: point.add(new paper.Point(size * 0.55, -radius)),
+        strokeColor: strokeColor,
+        strokeWidth: strokeWidth
+      });
+      this.snapMarkersGroup.addChild(circle);
+      this.snapMarkersGroup.addChild(tangentLine);
+    } else if (type === 'nearest') {
+      // Marcador de Cercano (Reloj de arena / doble triángulo opuesto)
+      const half = size * 0.5;
+      const hourglass = new paper.Path({
+        segments: [
+          point.add(new paper.Point(-half, -half)),
+          point.add(new paper.Point(half, -half)),
+          point.add(new paper.Point(-half, half)),
+          point.add(new paper.Point(half, half))
+        ],
+        closed: true,
+        strokeColor: strokeColor,
+        strokeWidth: strokeWidth,
+        fillColor: fillColor
+      });
+      this.snapMarkersGroup.addChild(hourglass);
     }
 
     // Traer la capa entera al frente y restaurar capa de dibujo

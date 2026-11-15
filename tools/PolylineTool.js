@@ -16,22 +16,15 @@ export class PolylineTool extends BaseTool {
     if (event.event && event.event.button !== 0) return;
 
     const isShift = event.event ? event.event.shiftKey : false;
-    let pt = event.point;
+    const fromPoint = (this.utils.activePath && this.utils.activePath.lastSegment)
+      ? this.utils.activePath.lastSegment.point
+      : null;
 
-    // 1. Evaluar OSNAP incluyendo el trazo activo (this.utils.activePath)
-    const osnap = this.service.calculateOsnap(
-      event.point,
-      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type),
-      this.utils.activePath
-    );
-
-    if (osnap && osnap.type) {
-      pt = osnap.point;
-    } else if (this.utils.activePath && this.utils.activePath.lastSegment) {
-      // 2. Si no hay OSNAP, aplica restricción ORTHO (F8/botón XOR Shift) respecto al último vértice
-      const lastPt = this.utils.activePath.lastSegment.point;
-      pt = this.utils.applyOrthoConstraint(lastPt, event.point, isShift);
-    }
+    const pt = this.utils.resolveConstrainedPoint(event.point, {
+      fromPoint,
+      isShift,
+      excludeEntity: this.utils.activePath
+    });
 
     if (!this.utils.activePath) {
       // Crear polilínea nueva en el primer clic
@@ -80,22 +73,15 @@ export class PolylineTool extends BaseTool {
 
   onMouseMove(event) {
     const isShift = event.event ? event.event.shiftKey : false;
-    let pt = event.point;
+    const fromPoint = (this.utils.activePath && this.utils.activePath.lastSegment)
+      ? this.utils.activePath.lastSegment.point
+      : null;
 
-    // 1. Evaluar OSNAP incluyendo el trazo activo (this.utils.activePath)
-    const osnap = this.service.calculateOsnap(
-      event.point,
-      (snapPt, type) => this.utils.hud.renderSnapMarker(snapPt, type),
-      this.utils.activePath
-    );
-
-    if (osnap && osnap.type) {
-      pt = osnap.point;
-    } else if (this.utils.activePath && this.utils.activePath.lastSegment) {
-      // 2. Si no hay enganche OSNAP, aplicar restricción ORTHO (F8/botón XOR Shift) respecto al último vértice
-      const lastPt = this.utils.activePath.lastSegment.point;
-      pt = this.utils.applyOrthoConstraint(lastPt, event.point, isShift);
-    }
+    const pt = this.utils.resolveConstrainedPoint(event.point, {
+      fromPoint,
+      isShift,
+      excludeEntity: this.utils.activePath
+    });
 
     this.utils.hud.updateHUD(pt);
 
