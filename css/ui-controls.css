@@ -4,7 +4,7 @@
 .tool-grid {
   display: grid;
   grid-template-columns: repeat(var(--tool-cols, 1), 32px);
-  gap: 4px;
+  gap: 2px;
   align-content: start;
 }
 

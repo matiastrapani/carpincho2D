@@ -42,7 +42,7 @@ export class FloatingConsoleUI {
           <div id="cmdConsoleHeader" class="bg-[#1e1e24] px-3.5 py-2 flex items-center justify-between cursor-grab active:cursor-grabbing border-b border-[#2a2a32] shrink-0 select-none touch-none">
             <span class="text-xs font-semibold text-zinc-200 tracking-wide uppercase pointer-events-none">Registro de comandos</span>
             <button id="btnCloseConsoleModal" class="text-zinc-400 hover:text-white text-xs w-6 h-6 flex items-center justify-center rounded hover:bg-[#2a2a32] transition-colors pointer-events-auto">
-              <i class="fa-solid fa-xmark"></i>
+              <span class="iconify text-xs shrink-0" data-icon="lucide:x"></span> 
             </button>
           </div>
 

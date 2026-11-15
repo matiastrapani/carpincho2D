@@ -53,10 +53,10 @@ export class PropertyControls {
 
     const wrapper = selectEl.nextElementSibling;
     if (wrapper && wrapper.classList.contains('custom-select-wrapper')) {
-      const trigger = wrapper.querySelector('button');
+      const label = wrapper.querySelector('.select-label');
       const opt = selectEl.options[selectEl.selectedIndex];
-      if (trigger && opt) {
-        trigger.innerHTML = `<span class="truncate pr-1 text-left">${opt.text}</span><i class="fa-solid fa-chevron-down text-[8px] text-zinc-500 shrink-0"></i>`;
+      if (label && opt && label.textContent !== opt.text) {
+        label.textContent = opt.text;
       }
     }
   }
@@ -76,15 +76,15 @@ export class PropertyControls {
       select.dataset.customized = 'true';
       select.style.display = 'none';
 
-      const originalIcon = select.parentNode ? select.parentNode.querySelector('i.fa-chevron-down') : null;
-      if (originalIcon) originalIcon.style.display = 'none';
-
       const wrapper = document.createElement('div');
       wrapper.className = 'custom-select-wrapper flex-1 min-w-0';
 
       const trigger = document.createElement('button');
       trigger.type = 'button';
       trigger.className = 'w-full flex items-center justify-between bg-[#17171c] hover:bg-[#27272a] text-zinc-200 text-[11px] px-2.5 py-1 rounded border-none cursor-pointer outline-none';
+      trigger.innerHTML = `<span class="select-label truncate pr-1 text-left"></span><span class="iconify text-xs text-zinc-500 icon-crisp shrink-0" data-icon="lucide:chevron-down"></span>`;
+
+      const labelSpan = trigger.querySelector('.select-label');
 
       const dropdown = document.createElement('div');
       dropdown.className = 'cad-custom-dropdown hidden bg-[#17171c] rounded-b shadow-2xl max-h-48 overflow-y-auto py-1 border border-[#27272a] border-t-0';
@@ -92,7 +92,10 @@ export class PropertyControls {
 
       const syncTrigger = () => {
         const opt = select.options[select.selectedIndex];
-        trigger.innerHTML = `<span class="truncate pr-1 text-left">${opt ? opt.text : ''}</span><i class="fa-solid fa-chevron-down text-[8px] text-zinc-500 shrink-0"></i>`;
+        const nextText = opt ? opt.text : '';
+        if (labelSpan && labelSpan.textContent !== nextText) {
+          labelSpan.textContent = nextText;
+        }
       };
 
       const updatePosition = () => {

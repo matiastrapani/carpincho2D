@@ -85,7 +85,6 @@ export class PropertyDefaultsView {
             <select id="defLayerSelect" class="w-full bg-[#17171c] hover:bg-[#27272a] text-zinc-200 text-[11px] px-2 py-1 rounded outline-none cursor-pointer appearance-none pr-5">
               ${layers.map((l) => `<option value="${l.id}" ${String(l.id) === String(activeLayerId) ? 'selected' : ''}>${l.name}</option>`).join('')}
             </select>
-            <i class="fa-solid fa-chevron-down text-[8px] text-zinc-500 absolute right-2 pointer-events-none"></i>
           </div>
         </div>
 
@@ -101,7 +100,6 @@ export class PropertyDefaultsView {
                 <option value="BYLAYER" ${isColorByLayer ? 'selected' : ''}>Por Capa</option>
                 <option value="CUSTOM" ${!isColorByLayer ? 'selected' : ''}>Personalizado</option>
               </select>
-              <i class="fa-solid fa-chevron-down text-[8px] text-zinc-500 absolute right-2 pointer-events-none"></i>
             </div>
           </div>
         </div>
@@ -119,7 +117,6 @@ export class PropertyDefaultsView {
                 <option value="BYLAYER" ${isOpacityByLayer ? 'selected' : ''}>Por Capa</option>
                 <option value="CUSTOM" ${!isOpacityByLayer ? 'selected' : ''}>Personalizado</option>
               </select>
-              <i class="fa-solid fa-chevron-down text-[8px] text-zinc-500 absolute right-2 pointer-events-none"></i>
             </div>
           </div>
         </div>
@@ -137,7 +134,6 @@ export class PropertyDefaultsView {
                 ${widthPresetOptions}
                 <option value="CUSTOM" ${!isWidthByLayer && !strokeWidthPresets.includes(resolvedWidth) ? 'selected' : ''}>Personalizado</option>
               </select>
-              <i class="fa-solid fa-chevron-down text-[8px] text-zinc-500 absolute right-2 pointer-events-none"></i>
             </div>
           </div>
         </div>

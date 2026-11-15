@@ -36,8 +36,9 @@ export class FixedConsoleUI {
         <!-- CONTENEDOR DEL LOG: overflow-y-auto + overflow-x-hidden min-h-0 flex-1 para EVITAR desbordamientos -->
         <div id="fixedConsoleLogArea" class="flex-1 flex flex-col justify-start overflow-y-auto overflow-x-hidden font-mono text-[11px] text-zinc-300 min-h-0 p-1.5 gap-1 select-text">
           <div class="flex items-center gap-1.5 text-zinc-400 font-sans text-[11px] shrink-0">
-            <i class="fa-solid fa-terminal text-[10px] text-zinc-500"></i>
+            <span class="iconify text-sm text-zinc-500 shrink-0" data-icon="lucide:terminal"></span>
             <span id="fixedCommandPrompt" class="text-zinc-300 leading-none">Command:</span>
+            
           </div>
         </div>
 
@@ -47,10 +48,10 @@ export class FixedConsoleUI {
           
           <div class="flex items-center gap-1 shrink-0">
             <button id="btnToggleConsole" class="cad-button cad-button-square h-6 w-6 rounded bg-[#27272a] hover:bg-[#3f3f46] text-zinc-300 tooltip-top" data-tooltip="Registro de comandos [F2]">
-              <i class="fa-solid fa-list-ul text-[10px]"></i>
+              <span class="iconify text-sm icon-crisp shrink-0" data-icon="lucide:logs"></span> 
             </button>
             <button id="btnCollapseFixedConsole" class="cad-button cad-button-square h-6 w-6 rounded bg-[#27272a] hover:bg-[#3f3f46] text-zinc-300 tooltip-top" data-tooltip="Colapsar / Desplegar Consola">
-              <i id="fixedConsoleCollapseIcon" class="fa-solid fa-chevron-down text-[10px]"></i>
+              <span class="iconify text-sm icon-crisp shrink-0" data-icon="lucide:chevron-down"></span>
             </button>
           </div>
         </div>
@@ -126,7 +127,7 @@ export class FixedConsoleUI {
     if (!this.logArea) return;
     this.logArea.innerHTML = `
       <div class="flex items-center gap-1.5 text-zinc-400 font-sans text-[11px] shrink-0">
-        <i class="fa-solid fa-terminal text-[10px] text-zinc-500"></i>
+        <span class="iconify text-sm text-zinc-500 shrink-0" data-icon="lucide:terminal"></span>
         <span id="fixedCommandPrompt" class="text-zinc-300 leading-none">${this.promptEl?.innerHTML || 'Command:'}</span>
       </div>
     `;
@@ -146,13 +147,20 @@ export class FixedConsoleUI {
       this.previousHeight = Math.max(this.height, 76);
       this.box.style.height = `${this.minHeight}px`;
       if (this.logArea) this.logArea.style.display = 'none';
-      if (this.collapseIcon) this.collapseIcon.className = 'fa-solid fa-chevron-up text-[10px]';
     } else {
       this.height = Math.max(this.previousHeight, 76);
       this.box.style.height = `${this.height}px`;
       if (this.logArea) this.logArea.style.display = 'flex';
-      if (this.collapseIcon) this.collapseIcon.className = 'fa-solid fa-chevron-down text-[10px]';
       this.scrollToBottom();
+    }
+
+    this._updateCollapseIcon(this.isCollapsed);
+  }
+
+  _updateCollapseIcon(collapsed) {
+    const iconEl = this.btnCollapse?.querySelector('[data-icon]');
+    if (iconEl) {
+      iconEl.setAttribute('data-icon', collapsed ? 'lucide:chevron-up' : 'lucide:chevron-down');
     }
   }
 
@@ -163,13 +171,13 @@ export class FixedConsoleUI {
     if (this.isCollapsed && newHeight > this.minHeight + 4) {
       this.isCollapsed = false;
       if (this.logArea) this.logArea.style.display = 'flex';
-      if (this.collapseIcon) this.collapseIcon.className = 'fa-solid fa-chevron-down text-[10px]';
+      this._updateCollapseIcon(false);
     }
 
     if (!this.isCollapsed && newHeight <= this.minHeight + 2) {
       this.isCollapsed = true;
       if (this.logArea) this.logArea.style.display = 'none';
-      if (this.collapseIcon) this.collapseIcon.className = 'fa-solid fa-chevron-up text-[10px]';
+      this._updateCollapseIcon(true);
     }
 
     this.height = newHeight;

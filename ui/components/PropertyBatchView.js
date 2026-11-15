@@ -169,7 +169,6 @@ export class PropertyBatchView {
               ${!s.allSameLayer ? '<option value="" disabled selected>-- Varias --</option>' : ''}
               ${layers.map((l) => `<option value="${l.id}" ${s.allSameLayer && String(l.id) === String(s.sharedLayerId) ? 'selected' : ''}>${l.name}</option>`).join('')}
             </select>
-            <i class="fa-solid fa-chevron-down text-[8px] text-zinc-500 absolute right-2 pointer-events-none"></i>
           </div>
         </div>
 
@@ -192,7 +191,6 @@ export class PropertyBatchView {
                 <option value="BYLAYER" ${s.allColorByLayer ? 'selected' : ''}>Por Capa</option>
                 <option value="CUSTOM" ${isColorCustomMode ? 'selected' : ''}>Personalizado</option>
               </select>
-              <i class="fa-solid fa-chevron-down text-[8px] text-zinc-500 absolute right-2 pointer-events-none"></i>
             </div>
           </div>
         </div>
@@ -211,7 +209,6 @@ export class PropertyBatchView {
                 <option value="BYLAYER" ${s.allOpacityByLayer ? 'selected' : ''}>Por Capa</option>
                 <option value="CUSTOM" ${isOpacityCustomMode ? 'selected' : ''}>Personalizado</option>
               </select>
-              <i class="fa-solid fa-chevron-down text-[8px] text-zinc-500 absolute right-2 pointer-events-none"></i>
             </div>
           </div>
         </div>
@@ -230,7 +227,6 @@ export class PropertyBatchView {
                 ${widthPresetOptions}
                 <option value="CUSTOM" ${isWidthCustomMode && !strokeWidthPresets.includes(s.sharedWidth) ? 'selected' : ''}>Personalizado</option>
               </select>
-              <i class="fa-solid fa-chevron-down text-[8px] text-zinc-500 absolute right-2 pointer-events-none"></i>
             </div>
           </div>
         </div>

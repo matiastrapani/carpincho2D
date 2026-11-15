@@ -62,8 +62,8 @@ export class LayerPanelUI {
         <!-- Encabezado Sobrio -->
         <div class="flex items-center justify-between mb-2 shrink-0">
           <span class="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Capas</span>
-          <button type="button" id="btnAddLayerBtn" data-tooltip="Nueva capa" class="tooltip-top-right text-zinc-400 hover:text-zinc-100 transition-colors p-1 rounded hover:bg-[#27272a] text-xs flex items-center justify-center w-5 h-5 cursor-pointer">
-            <i class="fa-solid fa-plus"></i>
+          <button type="button" id="btnAddLayerBtn" data-tooltip="Nueva capa" class="tooltip-top-right text-zinc-400 hover:text-zinc-100 transition-colors p-0 rounded hover:bg-[#27272a] text-xs flex items-center justify-center w-5 h-5 cursor-pointer">
+            <span class="iconify text-[13px] shrink-0 justify-center" data-icon="lucide:plus"></span> 
           </button>
         </div>
 
@@ -75,8 +75,12 @@ export class LayerPanelUI {
           <span class="truncate min-w-0">Nombre</span>
           <span class="layer-col-opacity text-center truncate tooltip-top" data-tooltip="Opacidad">Opac.</span>
           <span class="text-center truncate tooltip-top" data-tooltip="Grosor de línea">Grosor</span>
-          <span class="flex items-center justify-center tooltip-top" data-tooltip="Visibilidad"><i class="fa-solid fa-eye text-[9px]"></i></span>
-          <span class="flex items-center justify-center tooltip-top-right" data-tooltip="Bloqueo"><i class="fa-solid fa-lock text-[9px]"></i></span>
+          <span class="flex items-center justify-center tooltip-top-right" data-tooltip="Visibilidad">
+            <span class="iconify text-xs icon-crisp shrink-0 justify-center tooltip-top" data-icon="lucide:eye"></span> 
+          </span>
+          <span class="flex items-center justify-center tooltip-top-right" data-tooltip="Bloqueo">
+            <span class="iconify text-[10px] icon-crisp shrink-0 justify-center tooltip-top" data-icon="lucide:lock"></span> 
+          </span>
           <span></span>
         </div>
 
@@ -178,7 +182,7 @@ export class LayerPanelUI {
 
     row.innerHTML = `
       <!-- 0. Tirador de Arrastre Compacto -->
-      <div data-role="drag-handle" class="drag-handle h-full flex items-center justify-center cursor-grab active:cursor-grabbing text-zinc-600 hover:text-zinc-300 text-[9px] tracking-tighter leading-none select-none -translate-y-[1px]">
+      <div data-role="drag-handle" class="drag-handle h-full flex items-center justify-center cursor-grab active:cursor-grabbing text-zinc-600 hover:text-zinc-300 text-[9px] tracking-wider font-bold leading-none select-none -translate-y-[1px]">
         ::
       </div>
 
@@ -221,7 +225,7 @@ export class LayerPanelUI {
             class="layer-stroke-input w-full min-w-0 bg-transparent text-right outline-none border-0 ring-0 shadow-none ${strokeTextColor} text-[11px] font-sans tabular-nums p-0 pr-0.5">
           <button type="button" data-action="stroke-dropdown" aria-label="Opciones de grosor"
             class="flex items-center justify-center text-zinc-500 hover:text-zinc-200 cursor-pointer shrink-0 pl-0.5">
-            <i class="fa-solid fa-chevron-down text-[8px]"></i>
+            <span class="iconify text-xs icon-crisp shrink-0" data-icon="lucide:chevron-down"></span> 
           </button>
         </div>
       </div>
@@ -229,14 +233,16 @@ export class LayerPanelUI {
       <!-- 6. Visibilidad -->
       <div class="flex items-center justify-center">
         <button type="button" data-action="toggle-visibility" data-tooltip="${isActive ? 'La capa activa no se puede ocultar' : layer.visible ? 'Ocultar' : 'Mostrar'}" class="tooltip-top-right ${actionBtnBase} text-[9px] ${visBtnStyle}">
-          <i class="fa-solid ${layer.visible ? 'fa-eye' : 'fa-eye-slash'}"></i>
+          <span class="iconify text-xs icon-crisp shrink-0" data-icon="${layer.visible ? 'lucide:eye' : 'lucide:eye-closed'}"></span> 
+
         </button>
       </div>
 
       <!-- 7. Bloqueo -->
       <div class="flex items-center justify-center">
         <button type="button" data-action="toggle-lock" data-tooltip="${isActive ? 'La capa activa no se puede bloquear' : layer.locked ? 'Desbloquear' : 'Bloquear'}" class="tooltip-top-right ${actionBtnBase} text-[9px] ${lockBtnStyle}">
-          <i class="fa-solid ${layer.locked ? 'fa-lock' : 'fa-lock-open'}"></i>
+          <span class="iconify text-[10px] icon-crisp shrink-0" data-icon="${layer.locked ? 'lucide:lock' : 'lucide:lock-open'}"></span> 
+
         </button>
       </div>
 
@@ -244,7 +250,9 @@ export class LayerPanelUI {
       <div class="flex items-center justify-center">
         ${
           canDelete
-            ? `<button type="button" data-action="delete" data-tooltip="Eliminar capa" class="tooltip-top-right ${actionBtnBase} text-[10px] text-zinc-600 hover:text-zinc-200 cursor-pointer"><i class="fa-solid fa-xmark"></i></button>`
+            ? `<button type="button" data-action="delete" data-tooltip="Eliminar capa" class="tooltip-top-right ${actionBtnBase} text-[10px] text-zinc-600 hover:text-zinc-200 cursor-pointer">
+            <span class="iconify text-xs shrink-0" data-icon="lucide:x"></span>
+            </button>`
             : `<span data-tooltip="Debe existir al menos una capa" class="tooltip-top-right text-zinc-700 text-[10px] cursor-not-allowed">-</span>`
         }
       </div>

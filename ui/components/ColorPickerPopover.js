@@ -69,7 +69,7 @@ export class ColorPickerPopover {
       <div id="cpHeader" class="flex items-center justify-between pb-1 border-b border-[#2a2a32] cursor-grab active:cursor-grabbing select-none" title="Arrastrar ventana">
         <span class="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">SELECCIONAR COLOR</span>
         <button id="cpCloseBtn" class="text-zinc-500 hover:text-zinc-200 transition-colors p-0.5 text-xs rounded hover:bg-[#27272a] cursor-pointer">
-          <i class="fa-solid fa-xmark"></i>
+          <span class="iconify text-xs icon-crisp shrink-0" data-icon="lucide:x"></span>
         </button>
       </div>
 
@@ -101,7 +101,9 @@ export class ColorPickerPopover {
 
       <div class="flex items-center gap-1.5">
         <button id="cpEyedropperBtn" class="cad-button cad-button-square h-6 w-6 text-zinc-400 hover:text-zinc-100 shrink-0" title="Cuentagotas">
-          <i class="fa-solid fa-eye-dropper text-xs"></i>
+
+          <span class="iconify text-xs icon-crisp shrink-0" data-icon="lucide:pipette"></span> 
+
         </button>
 
         <div id="cpInputsContainer" class="flex-1 flex items-center bg-[#17171c] hover:bg-[#27272a] text-[11px] px-2 py-1 rounded transition-colors"></div>
