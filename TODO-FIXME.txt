@@ -42,7 +42,7 @@ movimiento y osnap perpendicular
 
 - [ ] **Refactor de arrastre unificado (`MixedDragHelper`):** Extraer la lógica duplicada de captura de estado inicial, aplicación de desplazamiento, registro en `MoveCommand` (`type: 'mixed'`) y cancelación de arrastre compartida entre `SelectTool`, `HandleSelectionHandler` y `SegmentEditHandler`.
 
-modo edicion con tecla rapida y con multiples entidades
+- [x] modo edicion con tecla rapida y con multiples entidades
 modo edicion y osnap sobre referencias a la propia entidad
 seleccion sobre elementos superpuestos en modo edicion
 agregar el movetool

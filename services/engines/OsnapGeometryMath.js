@@ -15,8 +15,29 @@ export function resolveFromPoint(activePath, ignoreContext) {
   return null;
 }
 
-export function getNearestCandidate(target, mousePoint, snapRadius, isSelfPoint) {
-  if (!target || typeof target.getNearestLocation !== 'function') return null;
+export function getNearestCandidate(target, mousePoint, snapRadius, isSelfPoint, isDynamicCurve = null) {
+  if (!target) return null;
+
+  if (target instanceof paper.Path && Array.isArray(target.curves) && typeof isDynamicCurve === 'function') {
+    let bestLoc = null;
+    let minDist = snapRadius;
+
+    target.curves.forEach((curve) => {
+      if (!curve || curve.length <= GEOM_EPSILON || isDynamicCurve(curve)) return;
+      const loc = curve.getNearestLocation(mousePoint);
+      if (!loc?.point || isSelfPoint(loc.point)) return;
+
+      const dist = loc.point.getDistance(mousePoint);
+      if (dist <= minDist) {
+        minDist = dist;
+        bestLoc = loc.point;
+      }
+    });
+
+    return bestLoc ? { point: bestLoc.clone(), type: 'nearest', dist: minDist, priority: 4 } : null;
+  }
+
+  if (typeof target.getNearestLocation !== 'function') return null;
 
   const loc = target.getNearestLocation(mousePoint);
   if (!loc || !loc.point || isSelfPoint(loc.point)) return null;
@@ -32,7 +53,7 @@ export function getNearestCandidate(target, mousePoint, snapRadius, isSelfPoint)
   };
 }
 
-export function getPerpendicularCandidates(target, fromPoint, mousePoint, snapRadius, isSelfPoint) {
+export function getPerpendicularCandidates(target, fromPoint, mousePoint, snapRadius, isSelfPoint, isDynamicCurve = null) {
   if (!target || !fromPoint) return [];
   const results = [];
 
@@ -57,7 +78,7 @@ export function getPerpendicularCandidates(target, fromPoint, mousePoint, snapRa
   if (!(target instanceof paper.Path) || !target.curves) return results;
 
   target.curves.forEach((curve) => {
-    if (!curve || curve.length <= GEOM_EPSILON) return;
+    if (!curve || curve.length <= GEOM_EPSILON || isDynamicCurve?.(curve)) return;
 
     if (curve.isLinear()) {
       const p1 = curve.point1;
@@ -99,7 +120,7 @@ export function getPerpendicularCandidates(target, fromPoint, mousePoint, snapRa
   return results;
 }
 
-export function getTangentCandidates(target, fromPoint, mousePoint, snapRadius, isSelfPoint) {
+export function getTangentCandidates(target, fromPoint, mousePoint, snapRadius, isSelfPoint, isDynamicCurve = null) {
   if (!target || !fromPoint) return [];
   const results = [];
 
@@ -133,7 +154,7 @@ export function getTangentCandidates(target, fromPoint, mousePoint, snapRadius, 
   if (!(target instanceof paper.Path) || !target.curves) return results;
 
   target.curves.forEach((curve) => {
-    if (!curve || curve.isLinear() || curve.length <= GEOM_EPSILON) return;
+    if (!curve || curve.isLinear() || curve.length <= GEOM_EPSILON || isDynamicCurve?.(curve)) return;
 
     const crossAt = (t) => {
       const pt = curve.getPointAtTime(t);
@@ -193,6 +214,7 @@ export function collectExtendedOsnapCandidates({
   fromPoint,
   draggedPath,
   isSelfPoint,
+  isDynamicCurve = null,
   getRasterContourPath
 }) {
   const usePerp = Boolean(snapFilters.perpendicular && fromPoint);
@@ -204,28 +226,28 @@ export function collectExtendedOsnapCandidates({
   const candidates = [];
   const isOriginPoint = (pt) => Boolean(fromPoint && pt && pt.getDistance(fromPoint) < 0.01);
 
-  const evaluateTarget = (target) => {
+  const evaluateTarget = (target, curveFilter = null) => {
     if (usePerp) {
-      getPerpendicularCandidates(target, fromPoint, mousePoint, snapRadius, isSelfPoint).forEach((c) => {
+      getPerpendicularCandidates(target, fromPoint, mousePoint, snapRadius, isSelfPoint, curveFilter).forEach((c) => {
         if (!isOriginPoint(c.point)) candidates.push(c);
       });
     }
     if (useTan) {
-      getTangentCandidates(target, fromPoint, mousePoint, snapRadius, isSelfPoint).forEach((c) => {
+      getTangentCandidates(target, fromPoint, mousePoint, snapRadius, isSelfPoint, curveFilter).forEach((c) => {
         if (!isOriginPoint(c.point)) candidates.push(c);
       });
     }
     if (useNear) {
-      const nearCand = getNearestCandidate(target, mousePoint, snapRadius, isSelfPoint);
+      const nearCand = getNearestCandidate(target, mousePoint, snapRadius, isSelfPoint, curveFilter);
       if (nearCand) candidates.push(nearCand);
     }
   };
 
-  circleTargets.forEach(evaluateTarget);
+  circleTargets.forEach((circle) => evaluateTarget(circle));
 
   snapTargets.forEach((path) => {
     if (draggedPath && path === draggedPath) return;
-    evaluateTarget(path);
+    evaluateTarget(path, isDynamicCurve);
   });
 
   if (typeof getRasterContourPath === 'function') {

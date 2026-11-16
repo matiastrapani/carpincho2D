@@ -176,12 +176,12 @@ export class HandleSelectionHandler {
       ? new paper.Point(pt.x, startPt.y)
       : new paper.Point(startPt.x, pt.y));
 
-    const activePaths = Array.from(new Set([
-      ...(this.selectedEntitiesStartData || []).map((i) => i.entity),
-      ...(this.selectedSegmentsStartData || []).map((i) => i.path),
-      ...(this.selectedHandlesStartData || []).map((i) => i.path)
-    ].filter(Boolean)));
+    const movedEntities = (this.selectedEntitiesStartData || []).map((i) => i.entity).filter(Boolean);
     const activeSegments = (this.selectedSegmentsStartData || []).map((item) => item.segment).filter(Boolean);
+    const activeHandles = (this.selectedHandlesStartData || []).map((item) => ({
+      segment: item.segment,
+      type: item.handleType
+    }));
 
     const osnap = this.service.calculateOsnap(
       constrainedTarget,
@@ -192,10 +192,9 @@ export class HandleSelectionHandler {
       null,
       {
         fromPoint: startPt,
-        path: activeSeg.path,
-        segment: activeSeg,
-        ignoreEntities: activePaths,
-        ignoreSegments: activeSegments
+        ignoreEntities: movedEntities,
+        ignoreSegments: activeSegments,
+        ignoreHandles: activeHandles
       }
     );
 

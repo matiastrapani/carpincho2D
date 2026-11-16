@@ -187,13 +187,12 @@ export class SegmentEditHandler {
         ? new paper.Point(pt.x, startPt.y)
         : new paper.Point(startPt.x, pt.y));
 
-      const activePaths = Array.from(new Set([
-        ...(this.selectedEntitiesStartData || []).map((i) => i.entity),
-        ...this.selectedSegmentsStartData.map((i) => i.path),
-        ...(this.selectedHandlesStartData || []).map((i) => i.path)
-      ].filter(Boolean)));
+      const movedEntities = (this.selectedEntitiesStartData || []).map((i) => i.entity).filter(Boolean);
       const activeSegments = this.selectedSegmentsStartData.map((item) => item.segment).filter(Boolean);
-      const selectedPointsCoords = this.selectedSegmentsStartData.map((item) => item.initialPt);
+      const activeHandles = (this.selectedHandlesStartData || []).map((item) => ({
+        segment: item.segment,
+        type: item.handleType
+      }));
 
       const osnap = this.service.calculateOsnap(
         projectedPivot,
@@ -204,11 +203,9 @@ export class SegmentEditHandler {
         null,
         {
           fromPoint: startPt,
-          path: pivotSegData.path,
-          segment: pivotSegData.segment,
-          ignoreEntities: activePaths,
+          ignoreEntities: movedEntities,
           ignoreSegments: activeSegments,
-          selectedPointsCoords
+          ignoreHandles: activeHandles
         }
       );
 

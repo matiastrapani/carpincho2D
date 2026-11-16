@@ -475,11 +475,11 @@ export class SelectionRenderEngine {
                 ? (cfg.bezierArmStrokeSelected || '#ffff00') 
                 : handleBaseColor;
 
-              let armWidth = cfg.bezierArmStrokeWidthPx || 1.0;
+              let armWidth = cfg.bezierArmStrokeWidthPx ?? 0.5;
               if (isArmActive) {
-                armWidth = cfg.anchorStrokeWidthSelectedPx || 1.5;
+                armWidth = cfg.bezierArmStrokeWidthSelectedPx ?? cfg.anchorStrokeWidthSelectedPx ?? 1.0;
               } else if (isArmHovered) {
-                armWidth = cfg.bezierArmStrokeWidthHoverPx || 1.8;
+                armWidth = cfg.bezierArmStrokeWidthHoverPx ?? 1.0;
               }
 
               const arm = new paper.Path.Line({

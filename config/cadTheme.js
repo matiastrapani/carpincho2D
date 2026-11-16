@@ -63,9 +63,9 @@ export const CAD_THEME = {
     bezierHandleSizePx: 6.0,            
     bezierHandleStrokeWidthPx: 1.0,   
     bezierHandleStrokeWidthHoverPx: 1.5, 
-    bezierHandleFill: '#10141D',      
+    bezierHandleFill: '#10141D',
     bezierHandleStrokeSelected: '#aaff00',
-    bezierArmStrokeWidthPx: 1.0,
+    bezierArmStrokeWidthPx: 0.5,
     bezierArmStrokeSelected: '#aaff00'
   },
   hud: {
