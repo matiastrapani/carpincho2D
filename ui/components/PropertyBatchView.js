@@ -5,13 +5,14 @@
 
 import { CAD_THEME } from '../../config/cadTheme.js';
 import { PropertyControls } from './PropertyControls.js';
+import { analyzeBatchSelection } from './BatchSelectionAnalyzer.js';
 
 export class PropertyBatchView {
   constructor({
     utils,
     colorHandler,
     onDispatchCommand,
-    onRequestCanvasUpdate,
+    onPreviewStateChange,
     getLayer,
     getHexColor,
     formatWidthDisplay,
@@ -21,7 +22,7 @@ export class PropertyBatchView {
     this.utils = utils;
     this.colorHandler = colorHandler;
     this.onDispatchCommand = onDispatchCommand;
-    this.onRequestCanvasUpdate = onRequestCanvasUpdate;
+    this.onPreviewStateChange = onPreviewStateChange;
     this.getLayer = getLayer;
     this.getHexColor = getHexColor;
     this.formatWidthDisplay = formatWidthDisplay;
@@ -29,86 +30,13 @@ export class PropertyBatchView {
     this.getWidthTextColorClass = getWidthTextColorClass;
   }
 
-  _analyzeSelection(selectedEntities) {
-    const { defaultColor } = CAD_THEME.properties;
-    const layerManager = this.utils.layerManager;
-    const activeLayer = layerManager ? layerManager.getActiveLayer() : null;
-
-    const state = {
-      sharedLayerId: null,
-      allSameLayer: true,
-      sharedColor: null,
-      allSameColor: true,
-      allColorByLayer: true,
-      allColorCustom: true,
-      sharedOpacity: null,
-      allSameOpacity: true,
-      allOpacityByLayer: true,
-      allOpacityCustom: true,
-      sharedWidth: null,
-      allSameWidth: true,
-      allWidthByLayer: true,
-      allWidthCustom: true
-    };
-
-    for (const ent of selectedEntities) {
-      const entLayerId = String(ent.data?.layerId ?? '0');
-      if (state.sharedLayerId === null) {
-        state.sharedLayerId = entLayerId;
-      } else if (state.sharedLayerId !== entLayerId) {
-        state.allSameLayer = false;
-      }
-
-      const layerOfEnt = this.getLayer(ent.data?.layerId) || activeLayer;
-
-      // Color
-      const colorByLayer = ent.data?.colorByLayer !== false;
-      if (colorByLayer) state.allColorCustom = false;
-      else state.allColorByLayer = false;
-
-      const entColor = colorByLayer
-        ? (layerOfEnt ? layerOfEnt.color : defaultColor)
-        : (ent.data?.origStrokeColor || ent.strokeColor || defaultColor);
-      const hex = this.getHexColor(entColor);
-
-      if (state.sharedColor === null) {
-        state.sharedColor = hex;
-      } else if (state.sharedColor.toLowerCase() !== hex.toLowerCase()) {
-        state.allSameColor = false;
-      }
-
-      // Opacidad
-      const opacityByLayer = ent.data?.opacityByLayer !== false;
-      if (opacityByLayer) state.allOpacityCustom = false;
-      else state.allOpacityByLayer = false;
-
-      const entOp = opacityByLayer
-        ? (layerOfEnt && layerOfEnt.opacity !== undefined ? layerOfEnt.opacity : 1)
-        : (ent.data?.origOpacity !== undefined ? ent.data.origOpacity : (ent.opacity !== undefined ? ent.opacity : 1));
-
-      if (state.sharedOpacity === null) {
-        state.sharedOpacity = entOp;
-      } else if (Math.abs(state.sharedOpacity - entOp) > 0.01) {
-        state.allSameOpacity = false;
-      }
-
-      // Grosor
-      const widthByLayer = ent.data?.widthByLayer !== false;
-      if (widthByLayer) state.allWidthCustom = false;
-      else state.allWidthByLayer = false;
-
-      const entW = widthByLayer
-        ? (layerOfEnt && layerOfEnt.strokeWidth !== undefined ? layerOfEnt.strokeWidth : 1)
-        : (ent.data?.baseStrokeWidth !== undefined ? ent.data.baseStrokeWidth : (ent.strokeWidth !== undefined ? ent.strokeWidth : 1));
-
-      if (state.sharedWidth === null) {
-        state.sharedWidth = entW;
-      } else if (Math.abs(state.sharedWidth - entW) > 0.001) {
-        state.allSameWidth = false;
-      }
-    }
-
-    return state;
+  _escapeHtml(str) {
+    return String(str ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   render(container, selectedEntities) {
@@ -119,7 +47,11 @@ export class PropertyBatchView {
     const activeLayer = layerManager ? layerManager.getActiveLayer() : null;
     const defaults = propManager ? propManager.defaultSettings : null;
 
-    const s = this._analyzeSelection(selectedEntities);
+    const s = analyzeBatchSelection(selectedEntities, {
+      getLayer: this.getLayer,
+      activeLayer,
+      getHexColor: this.getHexColor
+    });
 
     const isColorCustomMode = s.allColorCustom && s.allSameColor;
     const isColorMixedMode = !s.allColorByLayer && !isColorCustomMode;
@@ -147,6 +79,10 @@ export class PropertyBatchView {
     const opacityDisplay = s.allSameOpacity && s.sharedOpacity !== null ? `${Math.round(s.sharedOpacity * 100)}` : '?';
     const widthDisplay = s.allSameWidth && s.sharedWidth !== null ? this.formatWidthDisplay(s.sharedWidth) : '?';
 
+    const layerOptions = layers
+      .map((l) => `<option value="${this._escapeHtml(l.id)}" ${s.allSameLayer && String(l.id) === String(s.sharedLayerId) ? 'selected' : ''}>${this._escapeHtml(l.name)}</option>`)
+      .join('');
+
     const widthPresetOptions = strokeWidthPresets.map((preset) => {
       const label = preset === 0 ? '-' : preset.toFixed(1);
       const selected = isWidthCustomMode && s.sharedWidth === preset ? 'selected' : '';
@@ -167,7 +103,7 @@ export class PropertyBatchView {
           <div class="relative flex items-center flex-1 min-w-0">
             <select id="propBatchLayerSelect" class="w-full bg-[#17171c] hover:bg-[#27272a] text-zinc-200 text-[11px] px-2 py-1 rounded outline-none cursor-pointer appearance-none pr-5">
               ${!s.allSameLayer ? '<option value="" disabled selected>-- Varias --</option>' : ''}
-              ${layers.map((l) => `<option value="${l.id}" ${s.allSameLayer && String(l.id) === String(s.sharedLayerId) ? 'selected' : ''}>${l.name}</option>`).join('')}
+              ${layerOptions}
             </select>
           </div>
         </div>
@@ -238,16 +174,23 @@ export class PropertyBatchView {
   }
 
   _attachEvents(container, selectedEntities) {
-    const { customFallbackColor } = CAD_THEME.properties;
-    const propManager = this.utils.propertyManager;
+    this._bindBatchLayerEvents(container);
+    this._bindBatchColorEvents(container);
+    this._bindBatchOpacityEvents(container, selectedEntities);
+    this._bindBatchWidthEvents(container, selectedEntities);
+  }
 
+  _bindBatchLayerEvents(container) {
     const batchLayerSelect = container.querySelector('#propBatchLayerSelect');
     batchLayerSelect?.addEventListener('change', (e) => {
       const targetLayerId = e.target.value;
       if (!targetLayerId) return;
       this.onDispatchCommand({ layerId: targetLayerId });
     });
+  }
 
+  _bindBatchColorEvents(container) {
+    const { customFallbackColor } = CAD_THEME.properties;
     const batchColorModeSelect = container.querySelector('#propBatchColorModeSelect');
     const batchColorPicker = container.querySelector('#propBatchColorPicker');
 
@@ -263,7 +206,10 @@ export class PropertyBatchView {
       e.preventDefault();
       this.colorHandler.openForBatch(batchColorPicker);
     });
+  }
 
+  _bindBatchOpacityEvents(container, selectedEntities) {
+    const propManager = this.utils.propertyManager;
     const batchOpacityModeSelect = container.querySelector('#propBatchOpacityModeSelect');
     const batchOpacityContainer = container.querySelector('#propBatchOpacityContainer');
     const batchOpacityInput = container.querySelector('#propBatchOpacityInput');
@@ -280,12 +226,38 @@ export class PropertyBatchView {
       });
     });
 
+    const captureOpacitySnapshots = () => selectedEntities.map((ent) => ({
+      opacityByLayer: ent.data?.opacityByLayer,
+      origOpacity: ent.data?.origOpacity,
+      baseOpacity: ent.data?.baseOpacity,
+      opacity: ent.opacity
+    }));
+
+    let opacityStartSnapshots = captureOpacitySnapshots();
+    let isOpacityScrubbing = false;
+
     PropertyControls.attachScrubInput(batchOpacityContainer, batchOpacityInput, (pctVal) => {
+      if (isOpacityScrubbing) {
+        isOpacityScrubbing = false;
+        this.onPreviewStateChange?.(false);
+      }
       const val = pctVal / 100;
-      this.onDispatchCommand({ opacityByLayer: false, origOpacity: val, baseOpacity: val, opacity: val });
+      this.onDispatchCommand(
+        { opacityByLayer: false, origOpacity: val, baseOpacity: val, opacity: val },
+        null,
+        opacityStartSnapshots
+      );
+      opacityStartSnapshots = captureOpacitySnapshots();
     }, {
       min: 0, max: 100, step: 1, precision: 0,
+      onScrubStart: () => {
+        opacityStartSnapshots = captureOpacitySnapshots();
+      },
       onLiveChange: (val) => {
+        if (!isOpacityScrubbing) {
+          isOpacityScrubbing = true;
+          this.onPreviewStateChange?.(true);
+        }
         propManager.previewEntitiesProperty(selectedEntities, { opacity: val / 100 });
         if (batchOpacityInput) {
           batchOpacityInput.classList.remove('text-zinc-500');
@@ -293,7 +265,10 @@ export class PropertyBatchView {
         }
       }
     });
+  }
 
+  _bindBatchWidthEvents(container, selectedEntities) {
+    const propManager = this.utils.propertyManager;
     const batchWidthModeSelect = container.querySelector('#propBatchWidthModeSelect');
     const batchWidthContainer = container.querySelector('#propBatchWidthContainer');
     const batchWidthInput = container.querySelector('#propBatchWidthInput');
@@ -311,12 +286,37 @@ export class PropertyBatchView {
       }
     });
 
+    const captureWidthSnapshots = () => selectedEntities.map((ent) => ({
+      widthByLayer: ent.data?.widthByLayer,
+      baseStrokeWidth: ent.data?.baseStrokeWidth,
+      strokeWidth: ent.strokeWidth
+    }));
+
+    let widthStartSnapshots = captureWidthSnapshots();
+    let isWidthScrubbing = false;
+
     PropertyControls.attachScrubInput(batchWidthContainer, batchWidthInput, (widthVal) => {
-      this.onDispatchCommand({ widthByLayer: false, baseStrokeWidth: widthVal, strokeWidth: widthVal });
+      if (isWidthScrubbing) {
+        isWidthScrubbing = false;
+        this.onPreviewStateChange?.(false);
+      }
+      this.onDispatchCommand(
+        { widthByLayer: false, baseStrokeWidth: widthVal, strokeWidth: widthVal },
+        null,
+        widthStartSnapshots
+      );
+      widthStartSnapshots = captureWidthSnapshots();
     }, {
       min: 0, max: null, step: 0.1, precision: 1,
       formatValue: (v) => this.formatWidthDisplay(v),
+      onScrubStart: () => {
+        widthStartSnapshots = captureWidthSnapshots();
+      },
       onLiveChange: (val) => {
+        if (!isWidthScrubbing) {
+          isWidthScrubbing = true;
+          this.onPreviewStateChange?.(true);
+        }
         propManager.previewEntitiesProperty(selectedEntities, { strokeWidth: val });
         const isPreset = this.isPresetWidth(val);
         if (batchWidthInput) {

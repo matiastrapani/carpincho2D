@@ -8,12 +8,24 @@ export class PropertyManager {
   constructor(cadService, cadUtils) {
     this.service = cadService;
     this.utils = cadUtils;
+    this._listeners = new Set();
 
     this.defaultSettings = {
       color: 'BYLAYER',       // 'BYLAYER' o Hex string ('#00e5ff')
       strokeWidth: 'BYLAYER', // 'BYLAYER' o número (0, 1, 1.5, 2, 3)
       opacity: 'BYLAYER'      // 'BYLAYER' o número (0..1)
     };
+  }
+
+  subscribe(listener) {
+    if (typeof listener === 'function') {
+      this._listeners.add(listener);
+    }
+    return () => this._listeners.delete(listener);
+  }
+
+  _notify() {
+    this._listeners.forEach((listener) => listener());
   }
 
   /**
@@ -80,6 +92,27 @@ export class PropertyManager {
     return layer ? layer.color : CAD_THEME.properties.customFallbackColor;
   }
 
+  getResolvedOpacity(entity = null) {
+    if (entity) {
+      const isCustomOpacity = entity.data?.opacityByLayer === false
+        || (entity.data?.opacityByLayer === undefined && entity.data?.origOpacity !== undefined);
+
+      if (isCustomOpacity) {
+        const raw = entity.data?.origOpacity !== undefined
+          ? Number(entity.data.origOpacity)
+          : (entity.opacity !== undefined ? Number(entity.opacity) : 1);
+        return Number.isNaN(raw) ? 1 : raw;
+      }
+    } else if (this.defaultSettings.opacity !== 'BYLAYER' && this.defaultSettings.opacity !== undefined) {
+      const rawDefault = Number(this.defaultSettings.opacity);
+      return Number.isNaN(rawDefault) ? 1 : rawDefault;
+    }
+
+    const layerId = entity?.data?.layerId || this.utils.layerManager?.activeLayerId || '0';
+    const layer = this.utils.layerManager?.layers?.get(String(layerId));
+    return layer?.opacity !== undefined ? Number(layer.opacity) : 1;
+  }
+
   getResolvedStrokeWidth(entity = null) {
     if (entity) {
         if (entity.data?.widthByLayer === false && entity.data?.baseStrokeWidth !== undefined) {
@@ -110,10 +143,7 @@ export class PropertyManager {
       this.defaultSettings[keyOrState] = value;
     }
 
-    if (this.utils.activePath) {
-      this.applyDefaultSettings(this.utils.activePath);
-    }
-    this._requestRender();
+    this.syncActivePath();
   }
 
   /**
@@ -177,5 +207,12 @@ export class PropertyManager {
     if (paperInstance?.view) {
       paperInstance.view.update();
     }
+  }
+
+  syncActivePath() {
+    if (this.utils?.activePath) {
+      this.applyDefaultSettings(this.utils.activePath);
+    }
+    this._requestRender();
   }
 }

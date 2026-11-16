@@ -10,26 +10,32 @@ import { PropertyColorHandler } from './components/PropertyColorHandler.js';
 import { PropertyDefaultsView } from './components/PropertyDefaultsView.js';
 import { PropertySingleView } from './components/PropertySingleView.js';
 import { PropertyBatchView } from './components/PropertyBatchView.js';
+import { ColorMath } from './components/ColorMath.js';
 import { CAD_THEME } from '../config/cadTheme.js';
 
 export class PropertyPanelUI {
-  constructor(cadUtils, containerId = 'propertyPanelContainer', { layerPanelUI = null, paperInstance = null } = {}) {
+  constructor(cadUtils, containerId = 'propertyPanelContainer', { paperInstance = null } = {}) {
     if (!cadUtils || !cadUtils.service) {
       throw new Error('PropertyPanelUI requiere una instancia válida de cadUtils con service.');
     }
 
     this.utils = cadUtils;
     this.service = cadUtils.service;
-    this.layerPanelUI = layerPanelUI;
     this.paper = paperInstance || cadUtils.paper;
     this.container = document.getElementById(containerId);
+    this._unsubscribers = [];
+    this._isPreviewing = false;
+
+    const toHex = (color) => ColorMath.normalizeToHex(color, CAD_THEME.properties.defaultColor);
 
     this.colorHandler = new PropertyColorHandler({
       utils: this.utils,
+      container: this.container,
+      getHexColor: toHex,
       onDispatchEntity: (newState, entity, oldState) => this._dispatchCommand(newState, entity, oldState),
       onDispatchDefault: (oldState, newState) => this._dispatchDefaultCommand(oldState, newState),
       onRefresh: () => this.refresh(),
-      onRequestCanvasUpdate: () => this._requestCanvasUpdate(),
+      onPreviewStateChange: (isPreviewing) => { this._isPreviewing = Boolean(isPreviewing); },
       getSelectedEntities: () => this.selectedEntities,
       getLayer: (layerId) => this._getLayer(layerId)
     });
@@ -37,13 +43,13 @@ export class PropertyPanelUI {
     this.defaultsView = new PropertyDefaultsView({
       utils: this.utils,
       service: this.service,
-      layerPanelUI: this.layerPanelUI,
       paper: this.paper,
       colorHandler: this.colorHandler,
       onDispatchDefaultCommand: (oldState, newState) => this._dispatchDefaultCommand(oldState, newState),
       onRefresh: () => this.refresh(),
+      onPreviewStateChange: (isPreviewing) => { this._isPreviewing = Boolean(isPreviewing); },
       onEnsureDefaultSettings: () => this._ensureDefaultSettings(),
-      getHexColor: (color) => this._getHexColor(color),
+      getHexColor: toHex,
       formatWidthDisplay: (val) => this._formatWidthDisplay(val),
       isPresetWidth: (val) => this._isPresetWidth(val),
       getOpacityTextColorClass: (isByLayer) => this._getOpacityTextColorClass(isByLayer),
@@ -56,9 +62,9 @@ export class PropertyPanelUI {
       paper: this.paper,
       colorHandler: this.colorHandler,
       onDispatchCommand: (newState, entity, oldState) => this._dispatchCommand(newState, entity, oldState),
-      onRequestCanvasUpdate: () => this._requestCanvasUpdate(),
+      onPreviewStateChange: (isPreviewing) => { this._isPreviewing = Boolean(isPreviewing); },
       getLayer: (layerId) => this._getLayer(layerId),
-      getHexColor: (color) => this._getHexColor(color),
+      getHexColor: toHex,
       formatWidthDisplay: (val) => this._formatWidthDisplay(val),
       isPresetWidth: (val) => this._isPresetWidth(val),
       getOpacityTextColorClass: (isByLayer) => this._getOpacityTextColorClass(isByLayer),
@@ -69,9 +75,9 @@ export class PropertyPanelUI {
       utils: this.utils,
       colorHandler: this.colorHandler,
       onDispatchCommand: (newState, entity, oldState) => this._dispatchCommand(newState, entity, oldState),
-      onRequestCanvasUpdate: () => this._requestCanvasUpdate(),
+      onPreviewStateChange: (isPreviewing) => { this._isPreviewing = Boolean(isPreviewing); },
       getLayer: (layerId) => this._getLayer(layerId),
-      getHexColor: (color) => this._getHexColor(color),
+      getHexColor: toHex,
       formatWidthDisplay: (val) => this._formatWidthDisplay(val),
       isPresetWidth: (val) => this._isPresetWidth(val),
       getWidthTextColorClass: (isByLayer, val) => this._getWidthTextColorClass(isByLayer, val)
@@ -83,7 +89,30 @@ export class PropertyPanelUI {
   init() {
     if (!this.container) return;
     this.renderShell();
+    this._bindSubscriptions();
     this.refresh();
+  }
+
+  _bindSubscriptions() {
+    this._unbindSubscriptions();
+
+    const selectionManager = this.service?.selectionManager || this.utils?.selectionManager;
+    const layerManager = this.utils?.layerManager;
+    const propertyManager = this.utils?.propertyManager;
+
+    [selectionManager, layerManager, propertyManager].forEach((manager) => {
+      if (manager && typeof manager.subscribe === 'function') {
+        const unsubscribe = manager.subscribe(() => this.refresh());
+        if (typeof unsubscribe === 'function') {
+          this._unsubscribers.push(unsubscribe);
+        }
+      }
+    });
+  }
+
+  _unbindSubscriptions() {
+    this._unsubscribers.forEach((unsubscribe) => unsubscribe());
+    this._unsubscribers = [];
   }
 
   _ensureDefaultSettings() {
@@ -125,8 +154,10 @@ export class PropertyPanelUI {
   }
 
   refresh() {
-    const fieldsContainer = document.getElementById('propertyFieldsContainer');
-    const badge = document.getElementById('propSelectionBadge');
+    if (this._isPreviewing || !this.container) return;
+
+    const fieldsContainer = this.container.querySelector('#propertyFieldsContainer');
+    const badge = this.container.querySelector('#propSelectionBadge');
     if (!fieldsContainer) return;
 
     fieldsContainer.innerHTML = '';
@@ -149,24 +180,6 @@ export class PropertyPanelUI {
       this.batchView.render(fieldsContainer, this.selectedEntities);
     }
     PropertyControls.convertSelectsToCustom(fieldsContainer);
-  }
-
-  _getHexColor(color) {
-    const fallback = CAD_THEME.properties.defaultColor;
-    if (!color) return fallback;
-    if (typeof color === 'string') {
-      if (color.startsWith('#')) {
-        if (color.length === 4) {
-          return `#${color[1]}${color[1]}${color[2]}${color[2]}${color[3]}${color[3]}`;
-        }
-        return color;
-      }
-      return fallback;
-    }
-    if (typeof color.toCSS === 'function') {
-      return color.toCSS(true);
-    }
-    return fallback;
   }
 
   _formatWidthDisplay(val) {
@@ -233,21 +246,7 @@ export class PropertyPanelUI {
   }
 
   _getLayer(layerId) {
-    const lm = this.utils?.layerManager;
-    if (!lm) return null;
-    if (typeof lm.getLayer === 'function') return lm.getLayer(layerId);
-    if (lm.layers && typeof lm.layers.get === 'function') return lm.layers.get(String(layerId));
-    if (lm.layers && typeof lm.layers === 'object') return lm.layers[layerId];
-    return null;
-  }
-
-  _requestCanvasUpdate() {
-    if (this.utils.selectionRenderEngine?.updateEntitiesStroke) {
-      this.utils.selectionRenderEngine.updateEntitiesStroke();
-    }
-    if (this.paper?.view) {
-      this.paper.view.update();
-    }
+    return this.utils?.layerManager?.layers?.get(String(layerId)) || null;
   }
 
   destroy() {
@@ -258,6 +257,8 @@ export class PropertyPanelUI {
   }
 
   cleanup() {
+    this._isPreviewing = false;
+    this._unbindSubscriptions();
     this.colorHandler.close();
     PropertyControls.cleanup();
   }

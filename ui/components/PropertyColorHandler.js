@@ -7,45 +7,47 @@
 import { CAD_THEME } from '../../config/cadTheme.js';
 import { ColorPickerPopover } from './ColorPickerPopover.js';
 import { PropertyControls } from './PropertyControls.js';
+import { analyzeBatchSelection } from './BatchSelectionAnalyzer.js';
 
 export class PropertyColorHandler {
   constructor({
     utils,
+    container = null,
+    getHexColor,
     onDispatchEntity,
     onDispatchDefault,
     onRefresh,
-    onRequestCanvasUpdate,
+    onPreviewStateChange,
     getSelectedEntities,
     getLayer
   }) {
+    if (typeof getHexColor !== 'function') {
+      throw new Error('PropertyColorHandler requiere la función getHexColor.');
+    }
+
     this.utils = utils;
+    this.container = container;
+    this.getHexColor = getHexColor;
     this.onDispatchEntity = onDispatchEntity;
     this.onDispatchDefault = onDispatchDefault;
     this.onRefresh = onRefresh;
-    this.onRequestCanvasUpdate = onRequestCanvasUpdate;
+    this.onPreviewStateChange = onPreviewStateChange;
     this.getSelectedEntities = getSelectedEntities;
     this.getLayer = getLayer;
     this.activePopover = null;
   }
 
-  _getHexColor(color) {
-    const fallback = CAD_THEME.properties.defaultColor;
-    if (!color) return fallback;
-    if (typeof color === 'string') {
-      if (color.startsWith('#')) {
-        return color.length === 4
-          ? `#${color[1]}${color[1]}${color[2]}${color[2]}${color[3]}${color[3]}`
-          : color;
-      }
-      return fallback;
-    }
-    return typeof color.toCSS === 'function' ? color.toCSS(true) : fallback;
+  _el(id) {
+    if (!id) return null;
+    return this.container
+      ? this.container.querySelector(`#${id}`)
+      : document.getElementById(id);
   }
 
   _syncCustomOpacityDOM(selectId, inputId, containerId, alphaValue) {
-    const selectEl = document.getElementById(selectId);
-    const inputEl = document.getElementById(inputId);
-    const containerEl = containerId ? document.getElementById(containerId) : null;
+    const selectEl = this._el(selectId);
+    const inputEl = this._el(inputId);
+    const containerEl = this._el(containerId);
 
     if (selectEl) PropertyControls.updateSelectValueSilently(selectEl, 'CUSTOM');
     if (inputEl && document.activeElement !== inputEl) {
@@ -90,6 +92,7 @@ export class PropertyColorHandler {
   }
 
   close() {
+    this.onPreviewStateChange?.(false);
     if (this.activePopover && typeof this.activePopover.close === 'function') {
       this.activePopover.close();
       this.activePopover = null;
@@ -114,7 +117,7 @@ export class PropertyColorHandler {
     let hasChanges = false;
 
     this.activePopover = new ColorPickerPopover({
-      color: this._getHexColor(resolvedColor),
+      color: this.getHexColor(resolvedColor),
       opacity: typeof resolvedOpacity === 'number' ? resolvedOpacity : 1,
       anchorEl: triggerEl,
       presets: ColorPickerPopover.getPresets(),
@@ -123,12 +126,12 @@ export class PropertyColorHandler {
         const previewPatch = {};
         if (flags.colorChanged) {
           previewPatch.color = hexColor;
-          const freshTrigger = (triggerEl?.id ? document.getElementById(triggerEl.id) : null) || triggerEl;
+          const freshTrigger = (triggerEl?.id ? this._el(triggerEl.id) : null) || triggerEl;
           if (freshTrigger) {
             freshTrigger.dataset.color = hexColor;
             freshTrigger.style.backgroundColor = hexColor;
           }
-          const colorSelect = document.getElementById('defColorSelect');
+          const colorSelect = this._el('defColorSelect');
           if (colorSelect) PropertyControls.updateSelectValueSilently(colorSelect, 'CUSTOM');
         }
         if (flags.opacityChanged) {
@@ -137,11 +140,13 @@ export class PropertyColorHandler {
         }
         if (flags.colorChanged || flags.opacityChanged) {
           hasChanges = true;
+          this.onPreviewStateChange?.(true);
           propManager.previewDefaultSetting(previewPatch);
         }
       },
 
       onChangeEnd: (hexColor, alphaValue, flags = {}) => {
+        this.onPreviewStateChange?.(false);
         const oldState = {};
         const newState = {};
         if (flags.colorChanged) {
@@ -156,12 +161,14 @@ export class PropertyColorHandler {
       },
 
       onCancel: () => {
+        this.onPreviewStateChange?.(false);
         if (!hasChanges) return;
         propManager.previewDefaultSetting(snapshot);
         this.onRefresh();
       },
 
       onClose: () => {
+        this.onPreviewStateChange?.(false);
         this.activePopover = null;
       }
     });
@@ -194,7 +201,7 @@ export class PropertyColorHandler {
     let hasChanges = false;
 
     this.activePopover = new ColorPickerPopover({
-      color: this._getHexColor(resolvedColor),
+      color: this.getHexColor(resolvedColor),
       opacity: typeof resolvedOpacity === 'number' ? resolvedOpacity : 1,
       anchorEl: triggerEl,
       presets: ColorPickerPopover.getPresets(),
@@ -202,8 +209,8 @@ export class PropertyColorHandler {
       onChange: (hexColor, alphaValue, flags = {}) => {
         const { newState } = this._buildStateDiff(hexColor, alphaValue, flags, snapshot);
         if (flags.colorChanged) {
-          const picker = document.getElementById('propColorPicker');
-          const select = document.getElementById('propColorModeSelect');
+          const picker = this._el('propColorPicker');
+          const select = this._el('propColorModeSelect');
           if (picker) {
             picker.dataset.color = hexColor;
             picker.style.backgroundColor = hexColor;
@@ -215,22 +222,26 @@ export class PropertyColorHandler {
         }
         if (Object.keys(newState).length > 0) {
           hasChanges = true;
+          this.onPreviewStateChange?.(true);
           propManager.previewEntitiesProperty(entity, newState);
         }
       },
 
       onChangeEnd: (hexColor, alphaValue, flags = {}) => {
+        this.onPreviewStateChange?.(false);
         const { newState, oldState } = this._buildStateDiff(hexColor, alphaValue, flags, snapshot);
         if (Object.keys(newState).length > 0) this.onDispatchEntity(newState, entity, oldState);
       },
 
       onCancel: () => {
+        this.onPreviewStateChange?.(false);
         if (!hasChanges) return;
         propManager.previewEntitiesProperty(entity, snapshot);
         this.onRefresh();
       },
 
       onClose: () => {
+        this.onPreviewStateChange?.(false);
         this.activePopover = null;
       }
     });
@@ -243,33 +254,24 @@ export class PropertyColorHandler {
 
     const { defaultColor } = CAD_THEME.properties;
     const propManager = this.utils.propertyManager;
-    const activeLayer = this.utils.layerManager.getActiveLayer();
+    const activeLayer = this.utils.layerManager?.getActiveLayer() || null;
     const defaults = propManager.defaultSettings;
 
-    let sharedColor = null;
-    let allSameColor = true;
-    let sharedOpacity = null;
-    let allSameOpacity = true;
-
-    for (const ent of entities) {
-      const layerOfEnt = this.getLayer(ent.data?.layerId) || activeLayer;
-      const entColor = ent.data?.colorByLayer !== false
-        ? (layerOfEnt ? layerOfEnt.color : defaultColor)
-        : (ent.data?.origStrokeColor || ent.strokeColor || defaultColor);
-      const hex = this._getHexColor(entColor);
-
-      if (sharedColor === null) sharedColor = hex;
-      else if (sharedColor.toLowerCase() !== hex.toLowerCase()) allSameColor = false;
-
-      const entOp = ent.opacity ?? ent.data?.origOpacity ?? 1;
-      if (sharedOpacity === null) sharedOpacity = entOp;
-      else if (Math.abs(sharedOpacity - entOp) > 0.01) allSameOpacity = false;
-    }
+    const {
+      sharedColor,
+      allSameColor,
+      sharedOpacity,
+      allSameOpacity
+    } = analyzeBatchSelection(entities, {
+      getLayer: this.getLayer,
+      activeLayer,
+      getHexColor: (c) => this.getHexColor(c)
+    });
 
     const creationColor = (defaults.color === 'BYLAYER' || !defaults.color)
       ? (activeLayer ? activeLayer.color : defaultColor)
       : defaults.color;
-    const initialColor = allSameColor && sharedColor ? sharedColor : this._getHexColor(creationColor);
+    const initialColor = allSameColor && sharedColor ? sharedColor : this.getHexColor(creationColor);
     const initialOpacity = allSameOpacity && sharedOpacity !== null
       ? sharedOpacity
       : (defaults.opacity !== 'BYLAYER' && typeof defaults.opacity === 'number' ? defaults.opacity : (activeLayer?.opacity ?? 1));
@@ -294,8 +296,8 @@ export class PropertyColorHandler {
       onChange: (hexColor, alphaValue, flags = {}) => {
         const { newState } = this._buildStateDiff(hexColor, alphaValue, flags, snapshots[0]);
         if (flags.colorChanged) {
-          const picker = document.getElementById('propBatchColorPicker');
-          const select = document.getElementById('propBatchColorModeSelect');
+          const picker = this._el('propBatchColorPicker');
+          const select = this._el('propBatchColorModeSelect');
           if (picker) {
             picker.dataset.color = hexColor;
             picker.style.backgroundColor = hexColor;
@@ -308,11 +310,13 @@ export class PropertyColorHandler {
         }
         if (Object.keys(newState).length > 0) {
           hasChanges = true;
+          this.onPreviewStateChange?.(true);
           propManager.previewEntitiesProperty(entities, newState);
         }
       },
 
       onChangeEnd: (hexColor, alphaValue, flags = {}) => {
+        this.onPreviewStateChange?.(false);
         const { newState } = this._buildStateDiff(hexColor, alphaValue, flags, snapshots[0]);
         if (Object.keys(newState).length > 0) {
           const oldStates = snapshots.map((s) => this._buildStateDiff(hexColor, alphaValue, flags, s).oldState);
@@ -321,12 +325,14 @@ export class PropertyColorHandler {
       },
 
       onCancel: () => {
+        this.onPreviewStateChange?.(false);
         if (!hasChanges) return;
         propManager.previewEntitiesProperty(entities, snapshots);
         this.onRefresh();
       },
 
       onClose: () => {
+        this.onPreviewStateChange?.(false);
         this.activePopover = null;
       }
     });

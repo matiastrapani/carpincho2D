@@ -6,8 +6,12 @@
 export class PropertyControls {
   static _listenersAttached = false;
 
-  static _onDropdownClose = () => {
+  static closeAllDropdowns() {
     document.querySelectorAll('.cad-custom-dropdown').forEach((d) => d.classList.add('hidden'));
+  }
+
+  static _onDropdownClose = () => {
+    PropertyControls.closeAllDropdowns();
   };
 
   static _onDropdownSync = () => {
@@ -131,7 +135,7 @@ export class PropertyControls {
       trigger.addEventListener('click', (e) => {
         e.stopPropagation();
         const isOpen = !dropdown.classList.contains('hidden');
-        PropertyControls._onDropdownClose();
+        PropertyControls.closeAllDropdowns();
 
         if (!isOpen) {
           renderOptions();
@@ -167,99 +171,122 @@ export class PropertyControls {
     });
   }
 
-  static attachScrubInput(
-    containerEl,
-    inputEl,
-    onChange,
-    { min = 0, max = null, step = 1, precision = 0, formatValue = null, onLiveChange = null } = {}
-  ) {
-    if (!containerEl || !inputEl) return;
+  static attachScrubInput(container, input, onChange, options = {}) {
+    if (!container || !input || typeof onChange !== 'function') return;
 
-    let isDragging = false;
+    const {
+      min = 0,
+      max = null,
+      step = 1,
+      precision = 0,
+      formatValue = null,
+      onLiveChange = null,
+      onScrubStart = null
+    } = options;
+
+    const factor = Math.pow(10, precision);
+    const clampAndRound = (raw) => {
+      const num = parseFloat(String(raw).replace(',', '.'));
+      if (Number.isNaN(num)) return null;
+      let clamped = num;
+      if (min !== null && clamped < min) clamped = min;
+      if (max !== null && clamped > max) clamped = max;
+      return Math.round(clamped * factor) / factor;
+    };
+
+    const formatDisplay = (val) => {
+      if (typeof formatValue === 'function') return formatValue(val);
+      return precision > 0 ? val.toFixed(precision) : String(Math.round(val));
+    };
+
     let startX = 0;
     let startVal = 0;
-    let hasDragged = false;
+    let isDragging = false;
+    let hasMoved = false;
+    let hasStarted = false;
 
-    const parseInputValue = (v) => {
-      if (v === '-' || v === '0') return 0;
-      const parsed = parseFloat(v);
-      return isNaN(parsed) ? 0 : parsed;
-    };
-
-    const formatOutput = (val) => {
-      if (typeof formatValue === 'function') return formatValue(val);
-      return precision > 0 ? val.toFixed(precision) : String(val);
-    };
-
-    const onMouseDown = (e) => {
-      if (e.button !== 0) return;
-      if (document.activeElement === inputEl) return;
-
-      isDragging = true;
-      hasDragged = false;
-      startX = e.clientX;
-      startVal = parseInputValue(inputEl.value);
-
-      document.addEventListener('mousemove', onMouseMove);
-      document.addEventListener('mouseup', onMouseUp);
-      window.addEventListener('blur', onMouseUp);
-    };
-
-    const onMouseMove = (e) => {
-      if (!isDragging) return;
-      const deltaX = e.clientX - startX;
-
-      if (Math.abs(deltaX) > 2) {
-        hasDragged = true;
-        document.body.style.cursor = 'ew-resize';
-        document.body.style.userSelect = 'none';
-
-        const sensitivity = precision > 0 ? 0.05 : 0.7;
-        let newVal = startVal + deltaX * sensitivity;
-        if (min !== null) newVal = Math.max(min, newVal);
-        if (max !== null) newVal = Math.min(max, newVal);
-
-        if (precision > 0) {
-          newVal = parseFloat(newVal.toFixed(precision));
-        } else {
-          newVal = Math.round(newVal);
-        }
-
-        const formatted = formatOutput(newVal);
-
-        if (inputEl.value !== formatted) {
-          inputEl.value = formatted;
-          if (typeof onLiveChange === 'function') onLiveChange(newVal);
-        }
+    const triggerStart = () => {
+      if (!hasStarted) {
+        hasStarted = true;
+        onScrubStart?.();
       }
     };
 
-    const onMouseUp = () => {
+    input.addEventListener('focus', () => {
+      triggerStart();
+    });
+
+    input.addEventListener('change', () => {
+      const validVal = clampAndRound(input.value);
+      hasStarted = false;
+      if (validVal === null) return;
+      input.value = formatDisplay(validVal);
+      onChange(validVal);
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        input.blur();
+      } else if (e.key === 'Escape') {
+        hasStarted = false;
+        input.blur();
+      }
+    });
+
+    container.addEventListener('pointerdown', (e) => {
+      if (document.activeElement === input && e.target === input) return;
+
+      e.preventDefault();
+      triggerStart();
+
+      startX = e.clientX;
+      const parsed = clampAndRound(input.value);
+      startVal = parsed !== null ? parsed : (min !== null ? min : 0);
+      isDragging = true;
+      hasMoved = false;
+
+      container.setPointerCapture?.(e.pointerId);
+      document.body.style.cursor = 'ew-resize';
+    });
+
+    container.addEventListener('pointermove', (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - startX;
+      if (!hasMoved && Math.abs(dx) < 3) return;
+
+      hasMoved = true;
+      const multiplier = e.shiftKey ? 0.25 : 0.5;
+      const nextVal = clampAndRound(startVal + dx * multiplier * step);
+      if (nextVal === null) return;
+
+      input.value = formatDisplay(nextVal);
+      onLiveChange?.(nextVal);
+    });
+
+    const finishDrag = (e) => {
       if (!isDragging) return;
       isDragging = false;
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-      window.removeEventListener('blur', onMouseUp);
+      container.releasePointerCapture?.(e.pointerId);
       document.body.style.cursor = '';
-      document.body.style.userSelect = '';
 
-      if (hasDragged) {
-        const finalVal = parseInputValue(inputEl.value);
+      if (!hasMoved) {
+        hasStarted = false;
+        triggerStart();
+        input.focus();
+        input.select();
+        return;
+      }
+
+      hasStarted = false;
+      const finalVal = clampAndRound(input.value);
+      if (finalVal !== null) {
+        input.value = formatDisplay(finalVal);
         onChange(finalVal);
-      } else {
-        inputEl.focus();
-        if (inputEl.select) inputEl.select();
       }
     };
 
-    containerEl.addEventListener('mousedown', onMouseDown);
-
-    inputEl.addEventListener('change', () => {
-      let val = parseInputValue(inputEl.value);
-      if (min !== null) val = Math.max(min, val);
-      if (max !== null) val = Math.min(max, val);
-      inputEl.value = formatOutput(val);
-      onChange(val);
-    });
+    container.addEventListener('pointerup', finishDrag);
+    container.addEventListener('pointercancel', finishDrag);
   }
 }

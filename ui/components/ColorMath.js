@@ -133,4 +133,30 @@ export class ColorMath {
       b: Math.max(0, Math.min(100, nums[2]))
     };
   }
+
+  static normalizeToHex(color, fallback = '#FFFFFF') {
+    if (!color) return fallback;
+    if (typeof color === 'string') {
+      const trimmed = color.trim();
+      if (trimmed.startsWith('#')) {
+        if (trimmed.length === 4) {
+          return `#${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`;
+        }
+        if (trimmed.length === 7 || trimmed.length === 9) {
+          return trimmed.slice(0, 7);
+        }
+        return fallback;
+      }
+      const rgbMatch = trimmed.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+      if (rgbMatch) {
+        const toHex = (n) => Math.max(0, Math.min(255, Number(n))).toString(16).padStart(2, '0');
+        return `#${toHex(rgbMatch[1])}${toHex(rgbMatch[2])}${toHex(rgbMatch[3])}`.toUpperCase();
+      }
+      return fallback;
+    }
+    if (typeof color.toCSS === 'function') {
+      return color.toCSS(true);
+    }
+    return fallback;
+  }
 }

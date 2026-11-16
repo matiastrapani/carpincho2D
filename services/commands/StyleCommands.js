@@ -130,16 +130,20 @@ export class UpdateDefaultSettingsCommand {
 
     Object.assign(this.defaults, state);
 
-    if (this.utils?.activePath && this.utils?.propertyManager) {
-      this.utils.propertyManager.applyDefaultSettings(this.utils.activePath);
+    if (this.utils?.propertyManager) {
+      if (this.utils.activePath) {
+        this.utils.propertyManager.applyDefaultSettings(this.utils.activePath);
+      }
+      this.utils.propertyManager._notify();
     }
     if (this.utils?.selectionRenderEngine?.updateEntitiesStroke) {
       this.utils.selectionRenderEngine.updateEntitiesStroke();
     }
-    if (window.paper?.view) {
-      window.paper.view.update();
+    const paperInstance = this.utils?.paper || (typeof paper !== 'undefined' ? paper : null);
+    if (paperInstance?.view) {
+      paperInstance.view.update();
     }
-    if (window.propertyPanelUI) {
+    if (window.propertyPanelUI && !this.utils?.propertyManager?._listeners?.size) {
       window.propertyPanelUI.refresh();
     }
   }

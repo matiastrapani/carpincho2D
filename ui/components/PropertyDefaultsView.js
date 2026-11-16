@@ -10,11 +10,10 @@ export class PropertyDefaultsView {
   constructor({
     utils,
     service,
-    layerPanelUI = null,
-    paper = null,
     colorHandler,
     onDispatchDefaultCommand,
     onRefresh,
+    onPreviewStateChange,
     onEnsureDefaultSettings,
     getHexColor,
     formatWidthDisplay,
@@ -25,11 +24,10 @@ export class PropertyDefaultsView {
   }) {
     this.utils = utils;
     this.service = service;
-    this.layerPanelUI = layerPanelUI;
-    this.paper = paper;
     this.colorHandler = colorHandler;
     this.onDispatchDefaultCommand = onDispatchDefaultCommand;
     this.onRefresh = onRefresh;
+    this.onPreviewStateChange = onPreviewStateChange;
     this.onEnsureDefaultSettings = onEnsureDefaultSettings;
     this.getHexColor = getHexColor;
     this.formatWidthDisplay = formatWidthDisplay;
@@ -39,10 +37,19 @@ export class PropertyDefaultsView {
     this.SetActiveLayerCommandClass = SetActiveLayerCommandClass;
   }
 
+  _escapeHtml(str) {
+    return String(str ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   render(container) {
     this.onEnsureDefaultSettings();
 
-    const { defaultColor, strokeWidthPresets } = CAD_THEME.properties;
+    const { strokeWidthPresets } = CAD_THEME.properties;
     const layerManager = this.utils.layerManager;
     const propManager = this.utils.propertyManager;
     const layers = layerManager ? Array.from(layerManager.layers.values()) : [];
@@ -54,20 +61,18 @@ export class PropertyDefaultsView {
     const isOpacityByLayer = defaults.opacity === 'BYLAYER';
     const isWidthByLayer = defaults.strokeWidth === 'BYLAYER';
 
-    const activeColor = activeLayer ? activeLayer.color : defaultColor;
-    const resolvedColor = isColorByLayer ? activeColor : defaults.color;
-    const hexColor = this.getHexColor(resolvedColor);
-
-    const activeOpacity = (activeLayer && activeLayer.opacity !== undefined) ? activeLayer.opacity : 1;
-    const resolvedOpacity = isOpacityByLayer ? activeOpacity : defaults.opacity;
+    const hexColor = this.getHexColor(propManager.getResolvedColor());
+    const resolvedOpacity = propManager.getResolvedOpacity();
     const defOpacityPct = Math.round((typeof resolvedOpacity === 'number' ? resolvedOpacity : 1) * 100);
-
-    const activeWidth = (activeLayer && activeLayer.strokeWidth !== undefined) ? activeLayer.strokeWidth : 1;
-    const resolvedWidth = isWidthByLayer ? activeWidth : defaults.strokeWidth;
+    const resolvedWidth = propManager.getResolvedStrokeWidth();
     const defWidthFormatted = this.formatWidthDisplay(resolvedWidth);
 
     const opacityColorClass = this.getOpacityTextColorClass(isOpacityByLayer);
     const widthColorClass = this.getWidthTextColorClass(isWidthByLayer, resolvedWidth);
+
+    const layerOptions = layers
+      .map((l) => `<option value="${this._escapeHtml(l.id)}" ${String(l.id) === String(activeLayerId) ? 'selected' : ''}>${this._escapeHtml(l.name)}</option>`)
+      .join('');
 
     const widthPresetOptions = strokeWidthPresets.map((preset) => {
       const label = preset === 0 ? '-' : preset.toFixed(1);
@@ -83,7 +88,7 @@ export class PropertyDefaultsView {
           <span class="text-[11px] text-zinc-400 w-[55px] shrink-0">Capa</span>
           <div class="relative flex items-center flex-1 min-w-0">
             <select id="defLayerSelect" class="w-full bg-[#17171c] hover:bg-[#27272a] text-zinc-200 text-[11px] px-2 py-1 rounded outline-none cursor-pointer appearance-none pr-5">
-              ${layers.map((l) => `<option value="${l.id}" ${String(l.id) === String(activeLayerId) ? 'selected' : ''}>${l.name}</option>`).join('')}
+              ${layerOptions}
             </select>
           </div>
         </div>
@@ -145,60 +150,36 @@ export class PropertyDefaultsView {
   }
 
   _attachEvents(container) {
-    const { defaultColor, customFallbackColor } = CAD_THEME.properties;
+    this._bindLayerEvents(container);
+    this._bindColorEvents(container);
+    this._bindOpacityEvents(container);
+    this._bindWidthEvents(container);
+  }
+
+  _bindLayerEvents(container) {
     const layerSelect = container.querySelector('#defLayerSelect');
-    const colorSelect = container.querySelector('#defColorSelect');
-    const colorPicker = container.querySelector('#defColorPicker');
-
-    const opacityModeSelect = container.querySelector('#defOpacityModeSelect');
-    const opacityContainer = container.querySelector('#defOpacityContainer');
-    const opacityInput = container.querySelector('#defOpacityInput');
-
-    const widthModeSelect = container.querySelector('#defWidthModeSelect');
-    const widthContainer = container.querySelector('#defWidthContainer');
-    const widthInput = container.querySelector('#defWidthInput');
-
-    const propManager = this.utils.propertyManager;
-    const defaults = propManager.defaultSettings;
     const layerManager = this.utils.layerManager;
+    const propManager = this.utils.propertyManager;
+    const SetActiveLayerCommand = this.SetActiveLayerCommandClass;
 
     layerSelect?.addEventListener('change', (e) => {
       const newLayerId = e.target.value;
       const oldLayerId = layerManager ? layerManager.activeLayerId : '0';
-      const SetActiveLayerCommand = this.SetActiveLayerCommandClass;
 
-      if (String(oldLayerId) !== String(newLayerId)) {
-        if (SetActiveLayerCommand && this.service && layerManager) {
-          const uiListener = this.layerPanelUI || { refresh: () => this.onRefresh() };
-          const cmd = new SetActiveLayerCommand(layerManager, oldLayerId, newLayerId, uiListener);
-          this.service.executeCommand(cmd);
-        } else if (layerManager) {
-          layerManager.setActiveLayer(newLayerId);
-          if (this.layerPanelUI) this.layerPanelUI.refresh();
-          this.onRefresh();
-        }
+      if (String(oldLayerId) !== String(newLayerId) && SetActiveLayerCommand && this.service && layerManager) {
+        const cmd = new SetActiveLayerCommand(layerManager, oldLayerId, newLayerId);
+        this.service.executeCommand(cmd);
       }
 
-      const activeLayer = layerManager ? layerManager.getActiveLayer() : null;
-
-      if (defaults.color === 'BYLAYER' && colorPicker) {
-        const nextHex = this.getHexColor(activeLayer ? activeLayer.color : defaultColor);
-        colorPicker.dataset.color = nextHex;
-        colorPicker.style.backgroundColor = nextHex;
-      }
-
-      if (defaults.opacity === 'BYLAYER' && opacityInput) {
-        const layerOpacity = activeLayer?.opacity !== undefined ? activeLayer.opacity : 1;
-        opacityInput.value = Math.round(layerOpacity * 100);
-      }
-
-      if (defaults.strokeWidth === 'BYLAYER' && widthInput) {
-        const layerWidth = activeLayer?.strokeWidth !== undefined ? activeLayer.strokeWidth : 1;
-        widthInput.value = this.formatWidthDisplay(layerWidth);
-      }
-
-      propManager.previewDefaultSetting('color', defaults.color);
+      propManager?.syncActivePath?.();
     });
+  }
+
+  _bindColorEvents(container) {
+    const { customFallbackColor } = CAD_THEME.properties;
+    const colorSelect = container.querySelector('#defColorSelect');
+    const colorPicker = container.querySelector('#defColorPicker');
+    const defaults = this.utils.propertyManager.defaultSettings;
 
     colorSelect?.addEventListener('change', (e) => {
       const oldVal = defaults.color;
@@ -212,6 +193,14 @@ export class PropertyDefaultsView {
       e.preventDefault();
       this.colorHandler.openForDefaults(colorPicker);
     });
+  }
+
+  _bindOpacityEvents(container) {
+    const opacityModeSelect = container.querySelector('#defOpacityModeSelect');
+    const opacityContainer = container.querySelector('#defOpacityContainer');
+    const opacityInput = container.querySelector('#defOpacityInput');
+    const propManager = this.utils.propertyManager;
+    const defaults = propManager.defaultSettings;
 
     opacityModeSelect?.addEventListener('change', (e) => {
       const isByLayer = e.target.value === 'BYLAYER';
@@ -223,33 +212,51 @@ export class PropertyDefaultsView {
     });
 
     let opacityScrubStart = defaults.opacity;
+    let isScrubbing = false;
+
     PropertyControls.attachScrubInput(opacityContainer, opacityInput, (pctVal) => {
+      if (isScrubbing) {
+        isScrubbing = false;
+        this.onPreviewStateChange?.(false);
+      }
       const newVal = pctVal / 100;
       if (opacityScrubStart !== newVal) {
         this.onDispatchDefaultCommand({ opacity: opacityScrubStart }, { opacity: newVal });
+      } else {
+        this.onRefresh?.();
       }
+      opacityScrubStart = defaults.opacity;
     }, {
       min: 0, max: 100, step: 1, precision: 0,
+      onScrubStart: () => {
+        opacityScrubStart = defaults.opacity;
+      },
       onLiveChange: (val) => {
+        if (!isScrubbing) {
+          isScrubbing = true;
+          this.onPreviewStateChange?.(true);
+        }
         propManager.previewDefaultSetting('opacity', val / 100);
         PropertyControls.updateSelectValueSilently(opacityModeSelect, 'CUSTOM');
         if (opacityInput) {
           opacityInput.classList.remove('text-zinc-500');
           opacityInput.classList.add('text-white');
         }
-        if (opacityContainer) {
-          const span = opacityContainer.querySelector('span');
-          if (span) {
-            span.classList.remove('text-zinc-500');
-            span.classList.add('text-white');
-          }
+        const span = opacityContainer?.querySelector('span');
+        if (span) {
+          span.classList.remove('text-zinc-500');
+          span.classList.add('text-white');
         }
       }
     });
+  }
 
-    opacityContainer?.addEventListener('pointerdown', () => {
-      opacityScrubStart = defaults.opacity;
-    });
+  _bindWidthEvents(container) {
+    const widthModeSelect = container.querySelector('#defWidthModeSelect');
+    const widthContainer = container.querySelector('#defWidthContainer');
+    const widthInput = container.querySelector('#defWidthInput');
+    const propManager = this.utils.propertyManager;
+    const defaults = propManager.defaultSettings;
 
     widthModeSelect?.addEventListener('change', (e) => {
       const val = e.target.value;
@@ -268,14 +275,30 @@ export class PropertyDefaultsView {
     });
 
     let widthScrubStart = defaults.strokeWidth;
+    let isScrubbing = false;
+
     PropertyControls.attachScrubInput(widthContainer, widthInput, (widthVal) => {
+      if (isScrubbing) {
+        isScrubbing = false;
+        this.onPreviewStateChange?.(false);
+      }
       if (widthScrubStart !== widthVal) {
         this.onDispatchDefaultCommand({ strokeWidth: widthScrubStart }, { strokeWidth: widthVal });
+      } else {
+        this.onRefresh?.();
       }
+      widthScrubStart = defaults.strokeWidth;
     }, {
       min: 0, max: null, step: 0.1, precision: 1,
       formatValue: (v) => this.formatWidthDisplay(v),
+      onScrubStart: () => {
+        widthScrubStart = defaults.strokeWidth;
+      },
       onLiveChange: (widthVal) => {
+        if (!isScrubbing) {
+          isScrubbing = true;
+          this.onPreviewStateChange?.(true);
+        }
         propManager.previewDefaultSetting('strokeWidth', widthVal);
         const isPreset = this.isPresetWidth(widthVal);
         const targetSelectValue = isPreset ? (widthVal === 0 ? '0' : String(widthVal)) : 'CUSTOM';
@@ -286,10 +309,6 @@ export class PropertyDefaultsView {
           widthInput.classList.toggle('text-white', !isPreset);
         }
       }
-    });
-
-    widthContainer?.addEventListener('pointerdown', () => {
-      widthScrubStart = defaults.strokeWidth;
     });
   }
 }

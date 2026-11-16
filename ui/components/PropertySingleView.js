@@ -12,7 +12,7 @@ export class PropertySingleView {
     paper = null,
     colorHandler,
     onDispatchCommand,
-    onRequestCanvasUpdate,
+    onPreviewStateChange,
     getLayer,
     getHexColor,
     formatWidthDisplay,
@@ -24,7 +24,7 @@ export class PropertySingleView {
     this.paper = paper;
     this.colorHandler = colorHandler;
     this.onDispatchCommand = onDispatchCommand;
-    this.onRequestCanvasUpdate = onRequestCanvasUpdate;
+    this.onPreviewStateChange = onPreviewStateChange;
     this.getLayer = getLayer;
     this.getHexColor = getHexColor;
     this.formatWidthDisplay = formatWidthDisplay;
@@ -33,9 +33,19 @@ export class PropertySingleView {
     this.getWidthTextColorClass = getWidthTextColorClass;
   }
 
+  _escapeHtml(str) {
+    return String(str ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   render(container, entity) {
-    const { defaultColor, strokeWidthPresets } = CAD_THEME.properties;
+    const { strokeWidthPresets } = CAD_THEME.properties;
     const layerManager = this.utils.layerManager;
+    const propManager = this.utils.propertyManager;
     const layers = layerManager ? Array.from(layerManager.layers.values()) : [];
     const currentLayerId = entity.data?.layerId || '0';
     const entityName = entity.name || entity.data?.name || '';
@@ -56,26 +66,18 @@ export class PropertySingleView {
       ? entity.data.widthByLayer === true
       : entity.data?.baseStrokeWidth === undefined;
 
-    const activeLayer = this.getLayer(currentLayerId);
-
-    const layerColor = activeLayer ? activeLayer.color : defaultColor;
-    const resolvedColor = isColorByLayer ? layerColor : (entity.data?.origStrokeColor || entity.strokeColor);
-    const hexColor = this.getHexColor(resolvedColor);
-
-    const layerOpacity = (activeLayer && activeLayer.opacity !== undefined) ? activeLayer.opacity : 1;
-    const resolvedOpacity = isOpacityByLayer
-      ? layerOpacity
-      : (entity.data?.origOpacity !== undefined ? entity.data.origOpacity : (entity.opacity !== undefined ? entity.opacity : 1));
+    const hexColor = this.getHexColor(propManager.getResolvedColor(entity));
+    const resolvedOpacity = propManager.getResolvedOpacity(entity);
     const opacityPct = Math.round(resolvedOpacity * 100);
-
-    const layerWidth = (activeLayer && activeLayer.strokeWidth !== undefined) ? activeLayer.strokeWidth : 1;
-    const resolvedWidth = isWidthByLayer
-      ? layerWidth
-      : (entity.data?.baseStrokeWidth !== undefined ? entity.data.baseStrokeWidth : (entity.strokeWidth !== undefined ? entity.strokeWidth : 1));
+    const resolvedWidth = propManager.getResolvedStrokeWidth(entity);
     const formattedWidth = this.formatWidthDisplay(resolvedWidth);
 
     const opacityColorClass = this.getOpacityTextColorClass(isOpacityByLayer);
     const widthColorClass = this.getWidthTextColorClass(isWidthByLayer, resolvedWidth);
+
+    const layerOptions = layers
+      .map((l) => `<option value="${this._escapeHtml(l.id)}" ${String(l.id) === String(currentLayerId) ? 'selected' : ''}>${this._escapeHtml(l.name)}</option>`)
+      .join('');
 
     const widthPresetOptions = strokeWidthPresets.map((preset) => {
       const label = preset === 0 ? '-' : preset.toFixed(1);
@@ -88,7 +90,7 @@ export class PropertySingleView {
         <!-- Nombre -->
         <div class="flex items-center justify-between gap-2 mb-1.5 w-full mt-2">
           <span class="text-[11px] text-zinc-400 w-[55px] shrink-0">Nombre</span>
-          <input type="text" id="propNameInput" value="${entityName}" placeholder="${entity.type || 'Elemento'}" class="w-full bg-[#17171c] hover:bg-[#27272a] focus:bg-[#09090b] text-zinc-200 text-[11px] px-2 py-1 rounded outline-none border-0 flex-1 min-w-0 transition-colors">
+          <input type="text" id="propNameInput" value="${this._escapeHtml(entityName)}" placeholder="${this._escapeHtml(entity.type || 'Elemento')}" class="w-full bg-[#17171c] hover:bg-[#27272a] focus:bg-[#09090b] text-zinc-200 text-[11px] px-2 py-1 rounded outline-none border-0 flex-1 min-w-0 transition-colors">
         </div>
 
         <!-- Capa -->
@@ -96,7 +98,7 @@ export class PropertySingleView {
           <span class="text-[11px] text-zinc-400 w-[55px] shrink-0">Capa</span>
           <div class="relative flex items-center flex-1 min-w-0">
             <select id="propLayerSelect" class="w-full bg-[#17171c] hover:bg-[#27272a] text-zinc-200 text-[11px] px-2 py-1 rounded outline-none cursor-pointer appearance-none pr-5">
-              ${layers.map((l) => `<option value="${l.id}" ${String(l.id) === String(currentLayerId) ? 'selected' : ''}>${l.name}</option>`).join('')}
+              ${layerOptions}
             </select>
           </div>
         </div>
@@ -213,17 +215,39 @@ export class PropertySingleView {
       }, entity);
     });
 
+    const captureOpacitySnapshot = () => ({
+      opacityByLayer: entity.data?.opacityByLayer,
+      origOpacity: entity.data?.origOpacity,
+      baseOpacity: entity.data?.baseOpacity,
+      opacity: entity.opacity
+    });
+
+    let opacityStartSnapshot = captureOpacitySnapshot();
+    let isOpacityScrubbing = false;
+
     PropertyControls.attachScrubInput(opacityContainer, opacityInput, (pctVal) => {
+      if (isOpacityScrubbing) {
+        isOpacityScrubbing = false;
+        this.onPreviewStateChange?.(false);
+      }
       const opacityVal = pctVal / 100;
       this.onDispatchCommand({
         opacityByLayer: false,
         origOpacity: opacityVal,
         baseOpacity: opacityVal,
         opacity: opacityVal
-      }, entity);
+      }, entity, opacityStartSnapshot);
+      opacityStartSnapshot = captureOpacitySnapshot();
     }, {
       min: 0, max: 100, step: 1, precision: 0,
+      onScrubStart: () => {
+        opacityStartSnapshot = captureOpacitySnapshot();
+      },
       onLiveChange: (val) => {
+        if (!isOpacityScrubbing) {
+          isOpacityScrubbing = true;
+          this.onPreviewStateChange?.(true);
+        }
         propManager.previewEntitiesProperty(entity, { opacity: val / 100 });
         if (opacityInput) {
           opacityInput.classList.remove('text-zinc-500');
@@ -235,7 +259,7 @@ export class PropertySingleView {
     widthModeSelect?.addEventListener('change', (e) => {
       const val = e.target.value;
       if (val === 'BYLAYER') {
-        const layerWidth = activeLayer?.strokeWidth !== undefined ? activeLayer.strokeWidth : 1;
+        const layerWidth = activeLayer?.strokeWidth !== undefined ? activeLayer.strokeWidth : 0;
         this.onDispatchCommand({ widthByLayer: true, baseStrokeWidth: undefined, strokeWidth: layerWidth }, entity);
       } else if (val === 'CUSTOM') {
         const num = parseFloat(widthInput ? widthInput.value : 1.0) || 1.0;
@@ -246,16 +270,37 @@ export class PropertySingleView {
       }
     });
 
+    const captureWidthSnapshot = () => ({
+      widthByLayer: entity.data?.widthByLayer,
+      baseStrokeWidth: entity.data?.baseStrokeWidth,
+      strokeWidth: entity.strokeWidth
+    });
+
+    let widthStartSnapshot = captureWidthSnapshot();
+    let isWidthScrubbing = false;
+
     PropertyControls.attachScrubInput(widthContainer, widthInput, (widthVal) => {
+      if (isWidthScrubbing) {
+        isWidthScrubbing = false;
+        this.onPreviewStateChange?.(false);
+      }
       this.onDispatchCommand({
         widthByLayer: false,
         baseStrokeWidth: widthVal,
         strokeWidth: widthVal
-      }, entity);
+      }, entity, widthStartSnapshot);
+      widthStartSnapshot = captureWidthSnapshot();
     }, {
       min: 0, max: null, step: 0.1, precision: 1,
       formatValue: (v) => this.formatWidthDisplay(v),
+      onScrubStart: () => {
+        widthStartSnapshot = captureWidthSnapshot();
+      },
       onLiveChange: (val) => {
+        if (!isWidthScrubbing) {
+          isWidthScrubbing = true;
+          this.onPreviewStateChange?.(true);
+        }
         propManager.previewEntitiesProperty(entity, { strokeWidth: val });
         const isPreset = this.isPresetWidth(val);
         if (widthInput) {
