@@ -191,6 +191,27 @@ export class SelectionManager {
     this.selectedSegments = [];
   }
 
+  purgeLayerSelection(layerId) {
+    const idStr = String(layerId);
+    const isOtherLayer = (ent) => String(ent?.data?.layerId || '0') !== idStr;
+    const prevTotal = this._selectedEntities.length + this.editingEntities.length +
+      this.selectedSegments.length + this.selectedHandles.length;
+
+    this._selectedEntities = this._selectedEntities.filter(isOtherLayer);
+    this.editingEntities = this.editingEntities.filter(isOtherLayer);
+    this.selectedSegments = this.selectedSegments.filter((seg) => seg?.path && isOtherLayer(seg.path));
+    this.selectedHandles = this.selectedHandles.filter((h) => h?.segment?.path && isOtherLayer(h.segment.path));
+
+    const nextTotal = this._selectedEntities.length + this.editingEntities.length +
+      this.selectedSegments.length + this.selectedHandles.length;
+
+    if (prevTotal !== nextTotal) {
+      window.cadUtils?.selectionRenderEngine?.updateEntitiesStroke();
+      window.cadUtils?.selectionRenderEngine?.renderBezierHandles();
+      this._notify();
+    }
+  }
+
   deleteSelectedElements(renderBezierFn) {
     // A. Borrado de PUNTOS DE CONTROL (Vértices/Anclas seleccionados)
     if (this.selectedSegments.length > 0) {

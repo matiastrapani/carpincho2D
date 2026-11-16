@@ -145,10 +145,16 @@ export class LayerManager {
     const layer = this.layers.get(layerId);
     if (!layer) return false;
 
-    // 2. Eliminar la capa del Map sin restringir el id '0'
+    // 2. Remover grupo visual de Paper.js para evitar grupos huérfanos
+    if (layer.paperGroup && typeof layer.paperGroup.remove === 'function') {
+      layer.paperGroup.remove();
+    }
+    layer.paperGroup = null;
+
+    // 3. Eliminar la capa del Map sin restringir el id '0'
     this.layers.delete(layerId);
 
-    // 3. Si la capa eliminada era la activa, asignar la primera disponible
+    // 4. Si la capa eliminada era la activa, asignar la primera disponible
     if (String(this.activeLayerId) === layerId) {
       const firstAvailableId = this.layers.keys().next().value;
       if (firstAvailableId !== undefined) {
@@ -212,12 +218,8 @@ export class LayerManager {
       }
     }
 
-    if (this.service && ((property === 'locked' && value === true) || (property === 'visible' && value === false))) {
-      this._purgeLockedLayerState(layerId);
-
-      if (this.service.selectionManager?._notifySelectionChanged) {
-        this.service.selectionManager._notifySelectionChanged();
-      }
+    if (this.service?.selectionManager && ((property === 'locked' && value === true) || (property === 'visible' && value === false))) {
+      this.service.selectionManager.purgeLayerSelection(layerId);
     }
 
     if (this.utils) {
@@ -232,66 +234,6 @@ export class LayerManager {
 
   getActiveLayer() {
     return this.layers.get(this.activeLayerId) || this.layers.get('0');
-  }
-
-  toggleVisibility(layerId) {
-    const key = String(layerId);
-    const layer = this.layers.get(key);
-    if (!layer) return;
-
-    layer.visible = !layer.visible;
-    
-    // Ocultar/Mostrar entidades vinculadas en Paper.js (incluyendo puntos en pointsLayer)
-    this.service.entities.forEach(ent => {
-      if (ent.data && String(ent.data.layerId || '0') === key) {
-        ent.visible = layer.visible;
-      }
-    });
-
-    if (layer.paperGroup) {
-      layer.paperGroup.visible = layer.visible;
-    }
-
-    paper.view.update();
-  }
-
-  toggleLock(layerId) {
-    const key = String(layerId);
-    const layer = this.layers.get(key);
-    if (!layer) return;
-
-    layer.locked = !layer.locked;
-
-    if (layer.locked && this.service) {
-      this._purgeLockedLayerState(key);
-    }
-
-    if (this.utils) {
-      this.utils.selectionRenderEngine.updateEntitiesStroke();
-      this.utils.selectionRenderEngine.renderBezierHandles();
-      if (paper?.view) paper.view.update();
-    }
-  }
-
-  _purgeLockedLayerState(layerId) {
-    if (!this.service) return;
-    const idStr = String(layerId);
-
-    this.service.selectedEntities = (this.service.selectedEntities || []).filter(
-      ent => String(ent.data?.layerId || '0') !== idStr
-    );
-
-    this.service.editingEntities = (this.service.editingEntities || []).filter(
-      ent => String(ent.data?.layerId || '0') !== idStr
-    );
-
-    this.service.selectedSegments = (this.service.selectedSegments || []).filter(
-      seg => seg && seg.path && String(seg.path.data?.layerId || '0') !== idStr
-    );
-
-    this.service.selectedHandles = (this.service.selectedHandles || []).filter(
-      h => h && h.segment && h.segment.path && String(h.segment.path.data?.layerId || '0') !== idStr
-    );
   }
 
   assignEntityToLayer(entity, layerId) {

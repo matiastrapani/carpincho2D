@@ -1,24 +1,20 @@
 TODO
-opacidad en capas
-grosor personalizado en capas
-exportacion/importacion de archivos (dxf? pdf?)
-incorporar osnaps pendientes
 propiedades por herramienta
 consola y opciones por herramientas
 modo edicion con multiples entidades
+exportacion/importacion de archivos (dxf? pdf?)
 agregar exportacion/importacion dxf
 guardado y apertura de documento propio de app
 
 
 
 FIXME
-osnap en svg importado
-herramienta de seleccion y edicion de objetos
-cambiar icono de bezier
-pasar todo a iconos personalizados usar solo iconify
+revisar funcionalidad de los osnaps en distintas entidades
+osnap en svg importado a veces falla
+osnap centro en imagen
+herramienta de seleccion y edicion de objetos. mejorar funcionalidad de bezier
 aumentar solo 1px el espesor de la seleccion
 el export svg exporta los colores de la seleccion, y los puntos escalados por zoom
-
 
 unificar estilo para data-tooltips en capas y properties
 poner "..." en nombre de capas largos
@@ -34,7 +30,7 @@ seleccion y bezier con zoom falla
 espesores y zoom, escalar bordes?
 
 autocompletado en consola
-agregar teclas rapidas a cadtheme
+agregar teclas rapidas a cadtheme cmd+z cmd+a cmd+y backspace, shift, alt, etc
 la tangente en circulos no es con la linea del radio sino que es con la curva
 movimiento y osnap perpendicular
 - [x] **QW-01 | Rubber band en Move con Select:** Dibujar guía discontinua (`CAD_THEME.rubberBand`) en `hudLayer` entre el *pivot point* inicial y la posición actual durante el arrastre de entidades/vértices en `HandleSelectionHandler` / `SelectTool`, limpiándola en `onMouseUp` y `reset()`.
@@ -46,4 +42,5 @@ movimiento y osnap perpendicular
 modo edicion y osnap sobre referencias a la propia entidad
 seleccion sobre elementos superpuestos en modo edicion
 agregar el movetool
-resolver properties con entidades en modos multiples o en modo edicion
+no permitir la seleccion de imagen como elemento en trim/extend
+agregar en linetool los colores de la etiqueta de rubberband

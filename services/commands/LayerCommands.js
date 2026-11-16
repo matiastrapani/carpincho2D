@@ -3,43 +3,25 @@
 // =========================================================================
 
 export class CreateLayerCommand {
-  constructor(layerManager, layerData, panelUI) {
+  constructor(layerManager, layerData) {
     this.manager = layerManager;
     this.layerData = layerData;
-    this.panelUI = panelUI;
     this.createdLayerId = layerData?.id || null;
   }
 
   execute() {
-    if (!this.createdLayerId) {
-      const layer = this.manager.createLayer(this.layerData);
-      if (layer) {
-        this.createdLayerId = layer.id;
-      }
-    } else {
-      this.manager.layers.set(this.createdLayerId, {
-        ...this.layerData,
-        id: this.createdLayerId,
-        paperGroup: null
-      });
-      if (typeof this.manager.ensureLayerGroups === 'function') {
-        this.manager.ensureLayerGroups();
-      } else if (typeof this.manager.syncZOrder === 'function') {
-        this.manager.syncZOrder();
-      }
-    }
-    
-    if (this.panelUI && typeof this.panelUI.refresh === 'function') {
-      this.panelUI.refresh();
+    const layer = this.manager.createLayer({
+      ...this.layerData,
+      id: this.createdLayerId
+    });
+    if (layer) {
+      this.createdLayerId = layer.id;
     }
   }
 
   undo() {
     if (this.createdLayerId) {
       this.manager.deleteLayer(this.createdLayerId);
-      if (this.panelUI && typeof this.panelUI.refresh === 'function') {
-        this.panelUI.refresh();
-      }
     }
   }
 }
@@ -48,11 +30,10 @@ export class CreateLayerCommand {
 // 2. COMANDO ACTIVAR CAPA (Recibe 4 parámetros)
 // =========================================================================
 export class SetActiveLayerCommand {
-  constructor(layerManager, oldLayerId, newLayerId, panelUI) {
+  constructor(layerManager, oldLayerId, newLayerId) {
     this.manager = layerManager;
     this.oldLayerId = oldLayerId;
     this.newLayerId = newLayerId;
-    this.panelUI = panelUI;
 
     // Guardar estados previos para deshacer con precisión
     const targetLayer = this.manager.layers.get(newLayerId);
@@ -62,9 +43,6 @@ export class SetActiveLayerCommand {
 
   execute() {
     this.manager.setActiveLayer(this.newLayerId);
-    if (this.panelUI && typeof this.panelUI.refresh === 'function') {
-      this.panelUI.refresh();
-    }
   }
 
   undo() {
@@ -72,9 +50,9 @@ export class SetActiveLayerCommand {
     if (layer && String(this.oldLayerId) !== String(this.newLayerId)) {
       layer.visible = this.wasVisible;
       layer.locked = this.wasLocked;
-      
+
       if (!this.wasVisible && this.manager.service?.entities) {
-        this.manager.service.entities.forEach(ent => {
+        this.manager.service.entities.forEach((ent) => {
           if (ent.data && String(ent.data.layerId) === String(this.newLayerId)) {
             ent.visible = false;
           }
@@ -83,20 +61,16 @@ export class SetActiveLayerCommand {
     }
 
     this.manager.setActiveLayer(this.oldLayerId);
-    if (this.panelUI && typeof this.panelUI.refresh === 'function') {
-      this.panelUI.refresh();
-    }
   }
 }
 
 export class DeleteLayerCommand {
-  constructor(layerManager, layerId, targetLayerId, cadService, panelUI) {
+  constructor(layerManager, layerId, targetLayerId, cadService) {
     this.manager = layerManager;
     this.layerId = String(layerId);
     // Si targetLayerId es null/vacío, significa eliminar el contenido
     this.targetLayerId = targetLayerId ? String(targetLayerId) : null;
     this.cadService = cadService;
-    this.panelUI = panelUI;
 
     this.oldEntries = Array.from(this.manager.layers.entries());
     this.layerBackup = { ...this.manager.layers.get(this.layerId) };
@@ -114,15 +88,21 @@ export class DeleteLayerCommand {
           this.affectedEntities.push(ent);
 
           if (this.targetLayerId) {
-            ent.data.layerId = this.targetLayerId;
-            const targetLayer = this.manager.layers.get(this.targetLayerId);
-            if (targetLayer) {
-              ent.visible = targetLayer.visible !== false;
-              if (targetLayer.paperGroup) {
-                targetLayer.paperGroup.addChild(ent);
-              }
-            }
+            this.manager.assignEntityToLayer(ent, this.targetLayerId);
           } else {
+            if (this.cadService.selectionManager?.exitEditMode && this.cadService.editingEntities?.includes(ent)) {
+              this.cadService.selectionManager.exitEditMode(ent);
+            }
+            if (Array.isArray(this.cadService.selectedSegments) && typeof this.cadService.deselectSegment === 'function') {
+              [...this.cadService.selectedSegments]
+                .filter((seg) => seg?.path === ent)
+                .forEach((seg) => this.cadService.deselectSegment(seg));
+            }
+            if (Array.isArray(this.cadService.selectedHandles) && typeof this.cadService.deselectHandle === 'function') {
+              [...this.cadService.selectedHandles]
+                .filter((h) => h?.segment?.path === ent)
+                .forEach((h) => this.cadService.deselectHandle(h));
+            }
             if (typeof this.cadService.deselectEntity === 'function') {
               this.cadService.deselectEntity(ent);
             }
@@ -142,7 +122,6 @@ export class DeleteLayerCommand {
 
     this.manager.deleteLayer(this.layerId);
     this.manager.syncZOrder();
-    this.panelUI?.refresh();
 
     if (this.manager.utils?.selectionRenderEngine?.updateEntitiesStroke) {
       this.manager.utils.selectionRenderEngine.updateEntitiesStroke();
@@ -156,32 +135,15 @@ export class DeleteLayerCommand {
     if (!this.layerBackup || !this.oldEntries) return;
 
     this.manager.layers = new Map(this.oldEntries);
-    const restoredLayer = this.manager.layers.get(this.layerId);
+    this.manager.ensureLayerGroups();
 
     this.affectedEntities.forEach((ent) => {
-      if (ent.data) ent.data.layerId = this.layerId;
-
-      if (this.targetLayerId) {
-        if (restoredLayer) {
-          ent.visible = restoredLayer.visible !== false;
-          if (restoredLayer.paperGroup) {
-            restoredLayer.paperGroup.addChild(ent);
-          }
-        }
-      } else {
-        if (restoredLayer?.paperGroup) {
-          restoredLayer.paperGroup.addChild(ent);
-        } else if (this.manager.utils?.drawLayer) {
-          this.manager.utils.drawLayer.addChild(ent);
-        } else if (paper?.project?.activeLayer) {
-          paper.project.activeLayer.addChild(ent);
-        }
-        if (restoredLayer) {
-          ent.visible = restoredLayer.visible !== false;
-        }
-        if (this.cadService && !this.cadService.entities.includes(ent)) {
-          this.cadService.entities.push(ent);
-        }
+      if (!this.targetLayerId && this.cadService && !this.cadService.entities.includes(ent)) {
+        this.cadService.entities.push(ent);
+      }
+      this.manager.assignEntityToLayer(ent, this.layerId);
+      if (!ent.parent && paper?.project?.activeLayer) {
+        paper.project.activeLayer.addChild(ent);
       }
     });
 
@@ -190,7 +152,7 @@ export class DeleteLayerCommand {
     }
 
     this.manager.syncZOrder();
-    this.panelUI?.refresh();
+    this.manager._notify();
 
     if (this.manager.utils?.selectionRenderEngine?.updateEntitiesStroke) {
       this.manager.utils.selectionRenderEngine.updateEntitiesStroke();
@@ -202,25 +164,20 @@ export class DeleteLayerCommand {
 }
 
 export class UpdateLayerPropertyCommand {
-  constructor(layerManager, layerId, property, oldValue, newValue, panelUI) {
+  constructor(layerManager, layerId, property, oldValue, newValue) {
     this.manager = layerManager;
     this.layerId = layerId;
     this.property = property;
     this.oldValue = oldValue;
     this.newValue = newValue;
-    this.panelUI = panelUI;
   }
 
   execute() {
     this.manager.updateLayerProperty(this.layerId, this.property, this.newValue);
-    this.panelUI.refresh();
-    this._updateCanvas();
   }
 
   undo() {
     this.manager.updateLayerProperty(this.layerId, this.property, this.oldValue);
-    this.panelUI.refresh();
-    this._updateCanvas();
   }
 
   _updateCanvas() {
@@ -234,46 +191,38 @@ export class UpdateLayerPropertyCommand {
 }
 
 export class RenameLayerCommand {
-  constructor(layerManager, layerId, oldName, newName, panelUI) {
+  constructor(layerManager, layerId, oldName, newName) {
     this.manager = layerManager;
     this.layerId = layerId;
     this.oldName = oldName;
     this.newName = newName;
-    this.panelUI = panelUI;
   }
 
   execute() {
     this.manager.updateLayerProperty(this.layerId, 'name', this.newName);
-    this.panelUI.refresh();
   }
 
   undo() {
     this.manager.updateLayerProperty(this.layerId, 'name', this.oldName);
-    this.panelUI.refresh();
   }
 }
 
 export class ReorderLayersCommand {
-  constructor(layerManager, oldOrderEntries, newOrderEntries, panelUI) {
+  constructor(layerManager, oldOrderEntries, newOrderEntries) {
     this.manager = layerManager;
     this.oldOrderEntries = oldOrderEntries;
     this.newOrderEntries = newOrderEntries;
-    this.panelUI = panelUI;
   }
 
   execute() {
     this.manager.layers = new Map(this.newOrderEntries);
     this.manager.syncZOrder();
-    if (this.panelUI && typeof this.panelUI.refresh === 'function') {
-      this.panelUI.refresh();
-    }
+    this.manager._notify();
   }
 
   undo() {
     this.manager.layers = new Map(this.oldOrderEntries);
     this.manager.syncZOrder();
-    if (this.panelUI && typeof this.panelUI.refresh === 'function') {
-      this.panelUI.refresh();
-    }
+    this.manager._notify();
   }
 }
