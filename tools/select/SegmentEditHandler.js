@@ -21,6 +21,44 @@ export class SegmentEditHandler {
     this.pivotPoint = null;
     this.mouseStartPt = null;
     this.selectedSegmentsStartData = null;
+    this.selectedHandlesStartData = null;
+    this.selectedEntitiesStartData = null;
+  }
+
+  _captureDragStartState() {
+    this.selectedSegmentsStartData = this.service.selectedSegments
+      .filter((s) => s && s.path && !this.service.selectedEntities.includes(s.path))
+      .map((s) => ({
+        segment: s,
+        path: s.path,
+        segmentIndex: s.index,
+        initialPt: s.point.clone(),
+        initialHandleIn: s.handleIn.clone(),
+        initialHandleOut: s.handleOut.clone()
+      }));
+
+    this.selectedHandlesStartData = this.service.selectedHandles
+      .filter((h) => h && h.segment && h.segment.path &&
+        !this.service.selectedEntities.includes(h.segment.path) &&
+        !this.service.selectedSegments.includes(h.segment))
+      .map((h) => ({
+        segment: h.segment,
+        path: h.segment.path,
+        segmentIndex: h.segment.index,
+        handleType: h.type,
+        initialVector: h.segment[h.type].clone()
+      }));
+
+    this.selectedEntitiesStartData = this.service.selectedEntities.map((ent) => ({
+      entity: ent,
+      isPath: ent instanceof paper.Path && !ent.data?.isPointEntity,
+      initialPos: ent.data?.isPointEntity ? ent.bounds.center.clone() : ent.position.clone(),
+      initialSegments: (ent instanceof paper.Path && !ent.data?.isPointEntity) ? ent.segments.map((s) => ({
+        point: s.point.clone(),
+        handleIn: s.handleIn.clone(),
+        handleOut: s.handleOut.clone()
+      })) : null
+    }));
   }
 
   _updateDragRubberBand(fromPt, toPt) {
@@ -49,15 +87,15 @@ export class SegmentEditHandler {
     }
   }
 
-  enterEditMode(targetItem) {
-    this.service.editingEntities = [targetItem];
-    this.service.selectedEntities = [targetItem];
-    this.service.deselectAllSegments();
-    this.service.deselectAllHandles();
+  enterEditMode(targetOrList, options = {}) {
+    const edited = this.service.selectionManager.enterEditMode(targetOrList, options);
+    if (edited.length === 0) return false;
 
-    this.utils.selectionRenderEngine.renderBezierHandles();
-    this.utils.selectionRenderEngine.updateEntitiesStroke();
-    this.utils.setPrompt('Modo edición de nodos activo. Presiona Esc para salir.');
+    const countLabel = edited.length === 1
+      ? '1 entidad'
+      : `${edited.length} entidades`;
+    this.utils.setPrompt(`Modo edición de nodos activo (${countLabel}). Presiona Esc o F11 para salir.`);
+    return true;
   }
 
   onMouseDown(event, targetItem, hitEntity) {
@@ -92,6 +130,7 @@ export class SegmentEditHandler {
     }
 
     if (!isSegmentFullySelected) {
+      this.service.deselectAllEntities();
       this.service.deselectAllSegments();
       this.service.deselectAllHandles();
       if (seg1) this.service.selectSegment(seg1, true);
@@ -100,7 +139,6 @@ export class SegmentEditHandler {
 
     let activePivotSeg = seg1;
     let minDist = seg1 ? seg1.point.getDistance(event.point) : Infinity;
-
     const poolSegments = this.service.selectedSegments.length > 0
       ? this.service.selectedSegments
       : [seg1, seg2].filter(Boolean);
@@ -117,15 +155,8 @@ export class SegmentEditHandler {
     this.pivotPoint = activePivotSeg ? activePivotSeg.point.clone() : event.point.clone();
     this.mouseStartPt = event.point.clone();
 
-    this.selectedSegmentsStartData = this.service.selectedSegments.map((s) => ({
-      segment: s,
-      path: s.path,
-      segmentIndex: s.index,
-      initialPt: s.point.clone(),
-      initialHandleIn: s.handleIn.clone(),
-      initialHandleOut: s.handleOut.clone()
-    }));
-
+    this._captureDragStartState();
+    this.utils.selectionRenderEngine.updateEntitiesStroke();
     this.utils.selectionRenderEngine.renderBezierHandles();
     if (this.pivotPoint) {
       this.utils.renderPivotMarker(this.pivotPoint);
@@ -156,9 +187,11 @@ export class SegmentEditHandler {
         ? new paper.Point(pt.x, startPt.y)
         : new paper.Point(startPt.x, pt.y));
 
-      const activePaths = Array.from(new Set(
-        this.selectedSegmentsStartData.map((item) => item.path).filter(Boolean)
-      ));
+      const activePaths = Array.from(new Set([
+        ...(this.selectedEntitiesStartData || []).map((i) => i.entity),
+        ...this.selectedSegmentsStartData.map((i) => i.path),
+        ...(this.selectedHandlesStartData || []).map((i) => i.path)
+      ].filter(Boolean)));
       const activeSegments = this.selectedSegmentsStartData.map((item) => item.segment).filter(Boolean);
       const selectedPointsCoords = this.selectedSegmentsStartData.map((item) => item.initialPt);
 
@@ -193,8 +226,23 @@ export class SegmentEditHandler {
     }
 
     this.selectedSegmentsStartData.forEach((item) => {
-      if (item.segment) {
-        item.segment.point = item.initialPt.add(globalDelta);
+      if (item.segment) item.segment.point = item.initialPt.add(globalDelta);
+    });
+
+    (this.selectedHandlesStartData || []).forEach((item) => {
+      if (item.segment) item.segment[item.handleType] = item.initialVector.add(globalDelta);
+    });
+
+    (this.selectedEntitiesStartData || []).forEach((item) => {
+      if (!item.entity) return;
+      if (item.isPath && item.initialSegments) {
+        item.entity.segments.forEach((seg, idx) => {
+          if (item.initialSegments[idx]) {
+            seg.point = item.initialSegments[idx].point.add(globalDelta);
+          }
+        });
+      } else if (item.initialPos) {
+        item.entity.position = item.initialPos.add(globalDelta);
       }
     });
 
@@ -207,38 +255,57 @@ export class SegmentEditHandler {
       return false;
     }
 
-    const movedSegmentsData = [];
     let hasMoved = false;
 
-    this.selectedSegmentsStartData.forEach((item) => {
-      if (!item.segment || !item.path) return;
+    const entitiesData = (this.selectedEntitiesStartData || []).filter((i) => i.entity).map((item) => {
+      const isPath = item.isPath;
+      const finalPos = isPath ? null : (item.entity.data?.isPointEntity ? item.entity.bounds.center.clone() : item.entity.position.clone());
+      const finalSegments = isPath ? item.entity.segments.map((s) => ({
+        point: s.point.clone(),
+        handleIn: s.handleIn.clone(),
+        handleOut: s.handleOut.clone()
+      })) : null;
 
-      const currentPt = item.segment.point.clone();
-      const currentHandleIn = item.segment.handleIn.clone();
-      const currentHandleOut = item.segment.handleOut.clone();
-
-      if (!currentPt.equals(item.initialPt) ||
-          !currentHandleIn.equals(item.initialHandleIn) ||
-          !currentHandleOut.equals(item.initialHandleOut)) {
+      if (isPath && finalSegments.some((s, idx) =>
+        !s.point.equals(item.initialSegments[idx].point) ||
+        !s.handleIn.equals(item.initialSegments[idx].handleIn) ||
+        !s.handleOut.equals(item.initialSegments[idx].handleOut))) {
+        hasMoved = true;
+      } else if (!isPath && finalPos && item.initialPos && !finalPos.equals(item.initialPos)) {
         hasMoved = true;
       }
 
-      movedSegmentsData.push({
-        segment: item.segment,
-        path: item.path,
-        segmentIndex: item.segmentIndex,
-        initialPt: item.initialPt,
-        initialHandleIn: item.initialHandleIn,
-        initialHandleOut: item.initialHandleOut,
-        finalPt: currentPt,
-        finalHandleIn: currentHandleIn,
-        finalHandleOut: currentHandleOut
-      });
+      return {
+        entity: item.entity,
+        isPath,
+        initialPos: item.initialPos ? item.initialPos.clone() : null,
+        finalPos,
+        initialSegments: item.initialSegments,
+        finalSegments
+      };
+    });
+
+    const segmentsData = this.selectedSegmentsStartData.filter((i) => i.segment && i.path).map((item) => {
+      const finalPt = item.segment.point.clone();
+      const finalHandleIn = item.segment.handleIn.clone();
+      const finalHandleOut = item.segment.handleOut.clone();
+      if (!finalPt.equals(item.initialPt)) hasMoved = true;
+      return { ...item, finalPt, finalHandleIn, finalHandleOut };
+    });
+
+    const handlesData = (this.selectedHandlesStartData || []).filter((i) => i.segment && i.path).map((item) => {
+      const finalVector = item.segment[item.handleType].clone();
+      if (!finalVector.equals(item.initialVector)) hasMoved = true;
+      return { ...item, finalVector };
     });
 
     if (hasMoved) {
-      const moveCmd = new MoveCommand(this.service, { type: 'segments', items: movedSegmentsData });
-      this.service.executeCommand(moveCmd);
+      this.service.executeCommand(new MoveCommand(this.service, {
+        type: 'mixed',
+        entities: entitiesData,
+        segments: segmentsData,
+        handles: handlesData
+      }));
     }
 
     this.reset();
@@ -254,14 +321,31 @@ export class SegmentEditHandler {
   }
 
   cancelDrag() {
-    if (this.selectedSegmentsStartData && this.selectedSegmentsStartData.length > 0) {
-      this.selectedSegmentsStartData.forEach((item) => {
-        if (!item.segment) return;
-        item.segment.point = item.initialPt.clone();
-        item.segment.handleIn = item.initialHandleIn.clone();
-        item.segment.handleOut = item.initialHandleOut.clone();
-      });
-    }
+    (this.selectedSegmentsStartData || []).forEach((item) => {
+      if (!item.segment) return;
+      item.segment.point = item.initialPt.clone();
+      item.segment.handleIn = item.initialHandleIn.clone();
+      item.segment.handleOut = item.initialHandleOut.clone();
+    });
+
+    (this.selectedHandlesStartData || []).forEach((item) => {
+      if (item.segment) item.segment[item.handleType] = item.initialVector.clone();
+    });
+
+    (this.selectedEntitiesStartData || []).forEach((item) => {
+      if (!item.entity) return;
+      if (item.isPath && item.initialSegments) {
+        item.entity.segments.forEach((seg, idx) => {
+          if (item.initialSegments[idx]) {
+            seg.point = item.initialSegments[idx].point.clone();
+            seg.handleIn = item.initialSegments[idx].handleIn.clone();
+            seg.handleOut = item.initialSegments[idx].handleOut.clone();
+          }
+        });
+      } else if (item.initialPos) {
+        item.entity.position = item.initialPos.clone();
+      }
+    });
 
     this.reset();
   }

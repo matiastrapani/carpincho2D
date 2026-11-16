@@ -19,7 +19,9 @@ export class MoveCommand {
   applyState(useFinal) {
     if (!this.moveData) return;
 
-    if (this.moveData.type === 'segments') {
+    if (this.moveData.type === 'mixed') {
+      this._applyMixedState(useFinal);
+    } else if (this.moveData.type === 'segments') {
       this.moveData.items.forEach(item => {
         const seg = item.path && item.path.segments ? item.path.segments[item.segmentIndex] : item.segment;
         if (!seg) return;
@@ -71,6 +73,48 @@ export class MoveCommand {
       this.cadService.selectionRenderEngine.renderBezierHandles();
     }
     paper.view.update();
+  }
+
+  _applyMixedState(useFinal) {
+    (this.moveData.entities || []).forEach((item) => {
+      if (!item.entity) return;
+      if (item.isPath && item.initialSegments && item.finalSegments) {
+        const segments = useFinal ? item.finalSegments : item.initialSegments;
+        item.entity.segments.forEach((seg, idx) => {
+          if (segments[idx]) {
+            seg.point = segments[idx].point.clone();
+            seg.handleIn = segments[idx].handleIn.clone();
+            seg.handleOut = segments[idx].handleOut.clone();
+          }
+        });
+      } else {
+        const pos = useFinal ? item.finalPos : item.initialPos;
+        if (pos) item.entity.position = pos.clone();
+      }
+    });
+
+    (this.moveData.segments || []).forEach((item) => {
+      const seg = item.path && item.path.segments ? item.path.segments[item.segmentIndex] : item.segment;
+      if (!seg) return;
+
+      const pt = useFinal ? item.finalPt : item.initialPt;
+      const hIn = useFinal ? item.finalHandleIn : item.initialHandleIn;
+      const hOut = useFinal ? item.finalHandleOut : item.initialHandleOut;
+
+      if (pt) seg.point = pt.clone();
+      if (hIn) seg.handleIn = hIn.clone();
+      if (hOut) seg.handleOut = hOut.clone();
+    });
+
+    (this.moveData.handles || []).forEach((item) => {
+      const seg = item.path && item.path.segments ? item.path.segments[item.segmentIndex] : item.segment;
+      if (!seg) return;
+
+      const vec = useFinal ? item.finalVector : item.initialVector;
+      if (vec && (item.handleType === 'handleIn' || item.handleType === 'handleOut')) {
+        seg[item.handleType] = vec.clone();
+      }
+    });
   }
 }
 

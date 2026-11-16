@@ -22,7 +22,56 @@ export class HandleSelectionHandler {
     this.handleDragStartPt = null;
     this.grabOffset = null;
     this.selectedSegmentsStartData = null;
+    this.selectedHandlesStartData = null;
     this.selectedEntitiesStartData = null;
+  }
+
+  _updateSelectionOnMouseDown(seg, rawType, armHandleType, isShift) {
+    if (rawType === 'arm') {
+      const isArmActive = this.service.selectedSegments.includes(seg) &&
+                          this.service.isSelectedHandle(seg, armHandleType);
+      if (isShift) {
+        if (isArmActive) {
+          this.service.deselectSegment(seg);
+          this.service.deselectHandle(seg, armHandleType);
+        } else {
+          this.service.selectSegment(seg, true);
+          this.service.selectHandle(seg, armHandleType, true);
+        }
+      } else if (!isArmActive) {
+        this.service.deselectAllEntities();
+        this.service.deselectAllHandles();
+        this.service.deselectAllSegments();
+        this.service.selectSegment(seg, true);
+        this.service.selectHandle(seg, armHandleType, true);
+      }
+      return;
+    }
+
+    if (rawType === 'anchor') {
+      const isSelected = this.service.selectedSegments.includes(seg);
+      if (isShift) {
+        if (isSelected) this.service.deselectSegment(seg);
+        else this.service.selectSegment(seg, true);
+      } else if (!isSelected) {
+        this.service.deselectAllEntities();
+        this.service.deselectAllSegments();
+        this.service.deselectAllHandles();
+        this.service.selectSegment(seg, true);
+      }
+      return;
+    }
+
+    const isSelected = this.service.isSelectedHandle(seg, rawType);
+    if (isShift) {
+      if (isSelected) this.service.deselectHandle(seg, rawType);
+      else this.service.selectHandle(seg, rawType, true);
+    } else if (!isSelected) {
+      this.service.deselectAllEntities();
+      this.service.deselectAllHandles();
+      this.service.deselectAllSegments();
+      this.service.selectHandle(seg, rawType, false);
+    }
   }
 
   _updateDragRubberBand(fromPt, toPt) {
@@ -77,114 +126,36 @@ export class HandleSelectionHandler {
   onMouseDown(event, hitResult) {
     const handleData = hitResult.item.data;
     const seg = handleData.segment;
-
     if (!seg || !seg.path) return;
 
     const isShift = event.event.shiftKey;
-    this.mouseStartPt = event.point.clone();
     const rawType = handleData.type;
+    this.mouseStartPt = event.point.clone();
 
-    if (rawType === 'arm') {
-      const handleType = handleData.handleType;
-      const isAnchorSelected = this.service.selectedSegments.includes(seg);
-      const isHandleSelected = this.service.isSelectedHandle(seg, handleType);
-      const isArmActive = isAnchorSelected && isHandleSelected;
+    this._updateSelectionOnMouseDown(seg, rawType, handleData.handleType, isShift);
 
-      if (isShift) {
-        if (isArmActive) {
-          this.service.deselectSegment(seg);
-          this.service.deselectHandle(seg, handleType);
-        } else {
-          this.service.selectSegment(seg, true);
-          this.service.selectHandle(seg, handleType, true);
-        }
-      } else {
-        if (!isArmActive) {
-          this.service.deselectAllHandles();
-          this.service.deselectAllSegments();
-          this.service.deselectAllEntities();
-          this.service.selectSegment(seg, true);
-          this.service.selectHandle(seg, handleType, true);
-        }
-      }
-
-      const handlePos = seg.point.clone();
-      this.handleDragStartPt = handlePos;
-      this.grabOffset = handlePos.subtract(event.point);
+    if (rawType === 'arm' || rawType === 'anchor') {
+      this.handleDragStartPt = seg.point.clone();
+      this.grabOffset = this.handleDragStartPt.subtract(event.point);
       this.activeHandleData = { segment: seg, type: 'anchor' };
-    } 
-    else if (rawType === 'anchor') {
-      const isSelected = this.service.selectedSegments.includes(seg);
-
-      if (isShift) {
-        if (isSelected) this.service.deselectSegment(seg);
-        else this.service.selectSegment(seg, true);
-      } else {
-        if (!isSelected) {
-          this.service.deselectAllSegments();
-          this.service.deselectAllHandles();
-          this.service.deselectAllEntities();
-          this.service.selectSegment(seg, true);
-        }
-      }
-
-      const handlePos = seg.point.clone();
-      this.handleDragStartPt = handlePos;
-      this.grabOffset = handlePos.subtract(event.point);
-      this.activeHandleData = { segment: seg, type: rawType };
-    } 
-    else {
-      const isSelected = this.service.isSelectedHandle(seg, rawType);
-
-      if (isShift) {
-        if (isSelected) this.service.deselectHandle(seg, rawType);
-        else this.service.selectHandle(seg, rawType, true);
-      } else {
-        if (!isSelected) {
-          this.service.deselectAllHandles();
-          this.service.deselectAllSegments(); 
-          this.service.deselectAllEntities();
-          this.service.selectHandle(seg, rawType, false);
-        }
-      }
-
+    } else {
       const handlePos = (rawType === 'handleIn')
         ? seg.point.add(seg.handleIn)
         : seg.point.add(seg.handleOut);
-
       this.handleDragStartPt = handlePos.clone();
       this.grabOffset = handlePos.subtract(event.point);
       this.activeHandleData = { segment: seg, type: rawType };
     }
 
-    // CAPTURA DE ESTADOS INICIALES PARA EL HISTORIAL
-    this.selectedSegmentsStartData = this.service.selectedSegments.map(s => ({
-      segment: s,
-      path: s.path,
-      segmentIndex: s.index,
-      initialPt: s.point.clone(),
-      initialHandleIn: s.handleIn.clone(),
-      initialHandleOut: s.handleOut.clone()
-    }));
-
-    this.selectedEntitiesStartData = this.service.selectedEntities.map(ent => ({
-      entity: ent,
-      isPath: ent instanceof paper.Path && !ent.data?.isPointEntity,
-      initialPos: ent.data?.isPointEntity ? ent.bounds.center.clone() : ent.position.clone(),
-      initialSegments: (ent instanceof paper.Path && !ent.data?.isPointEntity) ? ent.segments.map(s => ({
-        point: s.point.clone(),
-        handleIn: s.handleIn.clone(),
-        handleOut: s.handleOut.clone()
-      })) : null
-    }));
-
+    this._captureDragStartState();
+    this.utils.selectionRenderEngine.updateEntitiesStroke();
     this.utils.selectionRenderEngine.renderBezierHandles();
   }
 
   onMouseDrag(event) {
     if (!this.activeHandleData) return;
 
-    const { segment: activeSeg, type: handleType } = this.activeHandleData;
+    const { segment: activeSeg } = this.activeHandleData;
     if (!activeSeg) {
       this.reset();
       return;
@@ -205,9 +176,11 @@ export class HandleSelectionHandler {
       ? new paper.Point(pt.x, startPt.y)
       : new paper.Point(startPt.x, pt.y));
 
-    const activePaths = Array.from(new Set(
-      (this.selectedSegmentsStartData || []).map((item) => item.path).filter(Boolean)
-    ));
+    const activePaths = Array.from(new Set([
+      ...(this.selectedEntitiesStartData || []).map((i) => i.entity),
+      ...(this.selectedSegmentsStartData || []).map((i) => i.path),
+      ...(this.selectedHandlesStartData || []).map((i) => i.path)
+    ].filter(Boolean)));
     const activeSegments = (this.selectedSegmentsStartData || []).map((item) => item.segment).filter(Boolean);
 
     const osnap = this.service.calculateOsnap(
@@ -235,154 +208,161 @@ export class HandleSelectionHandler {
 
     this.utils.hud.updateHUD(finalPoint);
     this._updateDragRubberBand(startPt, finalPoint);
-
-    const currentHandlePt = handleType === 'anchor'
-      ? activeSeg.point
-      : (handleType === 'handleIn'
-          ? activeSeg.point.add(activeSeg.handleIn)
-          : activeSeg.point.add(activeSeg.handleOut));
-
-    this._applyDeltaToSelection(finalPoint.subtract(currentHandlePt), handleType, activeSeg);
+    this._applyDeltaToSelection(finalPoint.subtract(startPt));
     this.utils.selectionRenderEngine.renderBezierHandles();
   }
 
-  onMouseUp(event) {
+  onMouseUp() {
     if (!this.activeHandleData || !this.handleDragStartPt) {
       this.reset();
       return;
     }
 
-    // 1. REGISTRO DE MOVIMIENTO DE SEGMENTOS MULTIPLES
-    if (this.selectedSegmentsStartData && this.selectedSegmentsStartData.length > 0) {
-      const movedSegmentsData = [];
-      let hasMoved = false;
+    let hasMoved = false;
 
-      this.selectedSegmentsStartData.forEach(item => {
-        if (!item.segment || !item.path) return;
+    const entitiesData = (this.selectedEntitiesStartData || []).filter((i) => i.entity).map((item) => {
+      const isPath = item.isPath;
+      const finalPos = isPath ? null : (item.entity.data?.isPointEntity ? item.entity.bounds.center.clone() : item.entity.position.clone());
+      const finalSegments = isPath ? item.entity.segments.map((s) => ({
+        point: s.point.clone(),
+        handleIn: s.handleIn.clone(),
+        handleOut: s.handleOut.clone()
+      })) : null;
 
-        const currentPt = item.segment.point.clone();
-        const currentHandleIn = item.segment.handleIn.clone();
-        const currentHandleOut = item.segment.handleOut.clone();
-
-        if (!currentPt.equals(item.initialPt) || 
-            !currentHandleIn.equals(item.initialHandleIn) || 
-            !currentHandleOut.equals(item.initialHandleOut)) {
-          hasMoved = true;
-        }
-
-        movedSegmentsData.push({
-          segment: item.segment,
-          path: item.path,
-          segmentIndex: item.segmentIndex,
-          initialPt: item.initialPt,
-          initialHandleIn: item.initialHandleIn,
-          initialHandleOut: item.initialHandleOut,
-          finalPt: currentPt,
-          finalHandleIn: currentHandleIn,
-          finalHandleOut: currentHandleOut
-        });
-      });
-
-      if (hasMoved) {
-        const moveCmd = new MoveCommand(this.service, {
-          type: 'segments',
-          items: movedSegmentsData
-        });
-        this.service.executeCommand(moveCmd);
-        this.reset();
-        return;
+      if (isPath && finalSegments.some((s, idx) =>
+        !s.point.equals(item.initialSegments[idx].point) ||
+        !s.handleIn.equals(item.initialSegments[idx].handleIn) ||
+        !s.handleOut.equals(item.initialSegments[idx].handleOut))) {
+        hasMoved = true;
+      } else if (!isPath && finalPos && item.initialPos && !finalPos.equals(item.initialPos)) {
+        hasMoved = true;
       }
-    }
 
-    // 2. REGISTRO DE MOVIMIENTO DE HANDLE / ANCHOR INDIVIDUAL
-    const seg = this.activeHandleData.segment;
-    const type = this.activeHandleData.type;
+      return {
+        entity: item.entity,
+        isPath,
+        initialPos: item.initialPos ? item.initialPos.clone() : null,
+        finalPos,
+        initialSegments: item.initialSegments,
+        finalSegments
+      };
+    });
 
-    let finalPt = null;
-    if (type === 'anchor') {
-      finalPt = seg.point.clone();
-    } else if (type === 'handleIn') {
-      finalPt = seg.point.add(seg.handleIn);
-    } else if (type === 'handleOut') {
-      finalPt = seg.point.add(seg.handleOut);
-    }
+    const segmentsData = (this.selectedSegmentsStartData || []).filter((i) => i.segment && i.path).map((item) => {
+      const finalPt = item.segment.point.clone();
+      const finalHandleIn = item.segment.handleIn.clone();
+      const finalHandleOut = item.segment.handleOut.clone();
+      if (!finalPt.equals(item.initialPt)) hasMoved = true;
+      return { ...item, finalPt, finalHandleIn, finalHandleOut };
+    });
 
-    if (finalPt && !finalPt.equals(this.handleDragStartPt)) {
-      const moveCmd = new MoveCommand(this.service, {
-        type: 'handle',
-        segment: seg,
-        path: seg.path,
-        segmentIndex: seg.index,
-        handleType: type,
-        initialPt: this.handleDragStartPt.clone(),
-        finalPt: finalPt
-      });
-      this.service.executeCommand(moveCmd);
+    const handlesData = (this.selectedHandlesStartData || []).filter((i) => i.segment && i.path).map((item) => {
+      const finalVector = item.segment[item.handleType].clone();
+      if (!finalVector.equals(item.initialVector)) hasMoved = true;
+      return { ...item, finalVector };
+    });
+
+    if (hasMoved) {
+      this.service.executeCommand(new MoveCommand(this.service, {
+        type: 'mixed',
+        entities: entitiesData,
+        segments: segmentsData,
+        handles: handlesData
+      }));
     }
 
     this.reset();
   }
 
-  _applyDeltaToSelection(delta, handleType, activeSeg) {
-    if (this.service.selectedSegments.length > 0) {
-      this.service.selectedSegments.forEach((s) => { s.point = s.point.add(delta); });
-    } else if (handleType === 'anchor') {
-      activeSeg.point = activeSeg.point.add(delta);
-    }
+  _applyDeltaToSelection(totalDelta) {
+    (this.selectedSegmentsStartData || []).forEach((item) => {
+      if (item.segment) {
+        item.segment.point = item.initialPt.add(totalDelta);
+      }
+    });
 
-    if (this.service.selectedHandles.length > 0) {
-      this.service.selectedHandles.forEach((h) => {
-        if (!this.service.selectedSegments.includes(h.segment)) {
-          if (h.type === 'handleIn') h.segment.handleIn = h.segment.handleIn.add(delta);
-          else if (h.type === 'handleOut') h.segment.handleOut = h.segment.handleOut.add(delta);
-        }
-      });
-    } else if ((handleType === 'handleIn' || handleType === 'handleOut') && !this.service.selectedSegments.includes(activeSeg)) {
-      if (handleType === 'handleIn') activeSeg.handleIn = activeSeg.handleIn.add(delta);
-      else if (handleType === 'handleOut') activeSeg.handleOut = activeSeg.handleOut.add(delta);
-    }
+    (this.selectedHandlesStartData || []).forEach((item) => {
+      if (item.segment) {
+        item.segment[item.handleType] = item.initialVector.add(totalDelta);
+      }
+    });
 
-    if (this.service.selectedEntities.length > 0) {
-      this.service.selectedEntities.forEach((ent) => {
-        if (!this.service.editingEntities.includes(ent)) {
-          ent.position = ent.position.add(delta);
-        }
-      });
-    }
+    (this.selectedEntitiesStartData || []).forEach((item) => {
+      if (!item.entity) return;
+      if (item.isPath && item.initialSegments) {
+        item.entity.segments.forEach((seg, idx) => {
+          if (item.initialSegments[idx]) {
+            seg.point = item.initialSegments[idx].point.add(totalDelta);
+          }
+        });
+      } else if (item.initialPos) {
+        item.entity.position = item.initialPos.add(totalDelta);
+      }
+    });
+  }
+
+  _captureDragStartState() {
+    this.selectedSegmentsStartData = this.service.selectedSegments
+      .filter((s) => s && s.path && !this.service.selectedEntities.includes(s.path))
+      .map((s) => ({
+        segment: s,
+        path: s.path,
+        segmentIndex: s.index,
+        initialPt: s.point.clone(),
+        initialHandleIn: s.handleIn.clone(),
+        initialHandleOut: s.handleOut.clone()
+      }));
+
+    this.selectedHandlesStartData = this.service.selectedHandles
+      .filter((h) => h && h.segment && h.segment.path &&
+        !this.service.selectedEntities.includes(h.segment.path) &&
+        !this.service.selectedSegments.includes(h.segment))
+      .map((h) => ({
+        segment: h.segment,
+        path: h.segment.path,
+        segmentIndex: h.segment.index,
+        handleType: h.type,
+        initialVector: h.segment[h.type].clone()
+      }));
+
+    this.selectedEntitiesStartData = this.service.selectedEntities.map((ent) => ({
+      entity: ent,
+      isPath: ent instanceof paper.Path && !ent.data?.isPointEntity,
+      initialPos: ent.data?.isPointEntity ? ent.bounds.center.clone() : ent.position.clone(),
+      initialSegments: (ent instanceof paper.Path && !ent.data?.isPointEntity) ? ent.segments.map((s) => ({
+        point: s.point.clone(),
+        handleIn: s.handleIn.clone(),
+        handleOut: s.handleOut.clone()
+      })) : null
+    }));
   }
 
   cancelDrag() {
-    if (!this.activeHandleData) {
-      this.reset();
-      return;
-    }
+    (this.selectedSegmentsStartData || []).forEach((item) => {
+      if (!item.segment) return;
+      item.segment.point = item.initialPt.clone();
+      item.segment.handleIn = item.initialHandleIn.clone();
+      item.segment.handleOut = item.initialHandleOut.clone();
+    });
 
-    if (this.selectedSegmentsStartData && this.selectedSegmentsStartData.length > 0) {
-      this.selectedSegmentsStartData.forEach((item) => {
-        if (!item.segment) return;
-        item.segment.point = item.initialPt.clone();
-        item.segment.handleIn = item.initialHandleIn.clone();
-        item.segment.handleOut = item.initialHandleOut.clone();
-      });
-    } else if (this.handleDragStartPt && this.activeHandleData.segment) {
-      const { segment: seg, type } = this.activeHandleData;
-      if (type === 'anchor') {
-        seg.point = this.handleDragStartPt.clone();
-      } else if (type === 'handleIn') {
-        seg.handleIn = this.handleDragStartPt.subtract(seg.point);
-      } else if (type === 'handleOut') {
-        seg.handleOut = this.handleDragStartPt.subtract(seg.point);
+    (this.selectedHandlesStartData || []).forEach((item) => {
+      if (item.segment) item.segment[item.handleType] = item.initialVector.clone();
+    });
+
+    (this.selectedEntitiesStartData || []).forEach((item) => {
+      if (!item.entity) return;
+      if (item.isPath && item.initialSegments) {
+        item.entity.segments.forEach((seg, idx) => {
+          if (item.initialSegments[idx]) {
+            seg.point = item.initialSegments[idx].point.clone();
+            seg.handleIn = item.initialSegments[idx].handleIn.clone();
+            seg.handleOut = item.initialSegments[idx].handleOut.clone();
+          }
+        });
+      } else if (item.initialPos) {
+        item.entity.position = item.initialPos.clone();
       }
-    }
-
-    if (this.selectedEntitiesStartData && this.selectedEntitiesStartData.length > 0) {
-      this.selectedEntitiesStartData.forEach((item) => {
-        if (!item.entity || this.service.editingEntities.includes(item.entity)) return;
-        if (item.initialPos) {
-          item.entity.position = item.initialPos.clone();
-        }
-      });
-    }
+    });
 
     this.reset();
   }

@@ -86,6 +86,16 @@ export const CAD_THEME = {
     ]
   },
 
+  // Atajos globales de teclado estilo Rhino 3D
+  shortcuts: {
+    osnap: 'F3',
+    grid: 'F7',
+    ortho: 'F8',
+    gridSnap: 'F9',
+    pointsOn: 'F10',
+    pointsOff: 'F11'
+  },
+
   // Tokens de interfaz sincronizados con variables CSS (--cad-*)
   ui: {
     bgRoot: '#121215',
@@ -100,7 +110,7 @@ export const CAD_THEME = {
     textDisabled: '#54545f',
     textBright: '#e4e4e7',
     accent: '#008800'
-  }
+  },
 };
 
 export function applyThemeToDocument(theme = CAD_THEME, root = document.documentElement) {

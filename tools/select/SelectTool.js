@@ -35,6 +35,8 @@ export class SelectTool extends BaseTool {
       mouseStartPt: null,
       dragAnchorEntity: null,
       entityStartPositions: null,
+      segmentStartPositions: null,
+      handleStartPositions: null,
       selectionStartPoint: null,
       selectionBoxRect: null,
       pivotPoint: null,
@@ -79,79 +81,70 @@ export class SelectTool extends BaseTool {
     if (isShift) {
       if (isAlreadySelected) {
         this.service.deselectEntity(targetItem);
-        this.service.editingEntities = this.service.editingEntities.filter((ent) => ent !== targetItem);
       } else {
         this.service.selectEntity(targetItem, true);
-        this.service.editingEntities = [];
-        this.service.deselectAllSegments();
       }
     } else if (!isAlreadySelected) {
       this.service.selectEntity(targetItem, false);
-      this.service.editingEntities = [];
-      this.service.deselectAllSegments();
     }
 
     if (enableDrag) {
-      this.dragState.dragAnchorEntity = targetItem;
-      this.dragState.mouseStartPt = point.clone();
-
-      const checkIsPoint = (ent) => {
-        let current = ent;
-        while (current) {
-          if (current.data?.isPointEntity || current.data?.isPoint || current.data?.type === 'point' || current.data?.type === 'Point' || current.data?.isPointShape) {
-            return true;
-          }
-          current = current.parent;
-        }
-        return false;
-      };
-
-      let closestVertex = null;
-      let minDistance = Infinity;
-      const isPivotFromPoint = checkIsPoint(targetItem);
-
-      if (isPivotFromPoint) {
-        closestVertex = targetItem.position || targetItem.bounds?.center;
-      } else if (targetItem instanceof paper.Raster && targetItem.bounds) {
-        const b = targetItem.bounds;
-        [b.topLeft, b.topCenter, b.topRight, b.rightCenter, b.bottomRight, b.bottomCenter, b.bottomLeft, b.leftCenter, b.center].forEach((pt) => {
-          const dist = pt.getDistance(point);
-          if (dist < minDistance) {
-            minDistance = dist;
-            closestVertex = pt.clone();
-          }
-        });
-      } else if (targetItem instanceof paper.Path && targetItem.segments) {
-        targetItem.segments.forEach((seg) => {
-          const dist = seg.point.getDistance(point);
-          if (dist < minDistance) {
-            minDistance = dist;
-            closestVertex = seg.point.clone();
-          }
-        });
-      }
-
-      this.dragState.pivotPoint = closestVertex || point.clone();
-      this.dragState.isPivotFromPoint = isPivotFromPoint;
-
-      this.dragState.entityStartPositions = this.service.selectedEntities.map((ent) => {
-        const isPath = ent instanceof paper.Path && !checkIsPoint(ent);
-        return {
-          entity: ent,
-          isPath,
-          initialPos: checkIsPoint(ent) ? (ent.bounds ? ent.bounds.center.clone() : ent.position.clone()) : ent.position.clone(),
-          initialSegments: isPath ? ent.segments.map((s) => ({
-            point: s.point.clone(),
-            handleIn: s.handleIn.clone(),
-            handleOut: s.handleOut.clone()
-          })) : null
-        };
-      });
+      this._prepareEntityDrag(targetItem, point);
     }
 
     this.utils.selectionRenderEngine.updateEntitiesStroke();
     this.utils.selectionRenderEngine.renderBezierHandles();
     if (paper.view) paper.view.update();
+  }
+
+  _captureMixedSelectionStartState() {
+    const checkIsPoint = (ent) => {
+      let current = ent;
+      while (current) {
+        if (current.data?.isPointEntity || current.data?.isPoint || current.data?.type === 'point' || current.data?.type === 'Point' || current.data?.isPointShape) {
+          return true;
+        }
+        current = current.parent;
+      }
+      return false;
+    };
+
+    this.dragState.entityStartPositions = this.service.selectedEntities.map((ent) => {
+      const isPath = ent instanceof paper.Path && !checkIsPoint(ent);
+      return {
+        entity: ent,
+        isPath,
+        initialPos: checkIsPoint(ent) ? (ent.bounds ? ent.bounds.center.clone() : ent.position.clone()) : ent.position.clone(),
+        initialSegments: isPath ? ent.segments.map((s) => ({
+          point: s.point.clone(),
+          handleIn: s.handleIn.clone(),
+          handleOut: s.handleOut.clone()
+        })) : null
+      };
+    });
+
+    this.dragState.segmentStartPositions = this.service.selectedSegments
+      .filter((s) => s && s.path && !this.service.selectedEntities.includes(s.path))
+      .map((s) => ({
+        segment: s,
+        path: s.path,
+        segmentIndex: s.index,
+        initialPt: s.point.clone(),
+        initialHandleIn: s.handleIn.clone(),
+        initialHandleOut: s.handleOut.clone()
+      }));
+
+    this.dragState.handleStartPositions = this.service.selectedHandles
+      .filter((h) => h && h.segment && h.segment.path &&
+        !this.service.selectedEntities.includes(h.segment.path) &&
+        !this.service.selectedSegments.includes(h.segment))
+      .map((h) => ({
+        segment: h.segment,
+        path: h.segment.path,
+        segmentIndex: h.segment.index,
+        handleType: h.type,
+        initialVector: h.segment[h.type].clone()
+      }));
   }
 
   onMouseDown(event) {
@@ -205,7 +198,16 @@ export class SelectTool extends BaseTool {
       this.lastClickEntity = targetItem;
 
       if (isDoubleClick && (targetItem instanceof paper.Path) && !targetItem.data?.isPointEntity) {
-        this.segmentEditHandler.enterEditMode(targetItem);
+        const isTargetInSelection = this.service.selectedEntities.includes(targetItem);
+        const targetsToEdit = isTargetInSelection
+          ? [...this.service.selectedEntities]
+          : [targetItem];
+        const append = isShift && this.service.editingEntities.length > 0;
+
+        if (!isTargetInSelection && !isShift) {
+          this.service.deselectAllEntities();
+        }
+        this.segmentEditHandler.enterEditMode(targetsToEdit, { append });
         this.dragState.dragAnchorEntity = null;
         return;
       }
@@ -269,6 +271,12 @@ export class SelectTool extends BaseTool {
       const isHorizontal = Math.abs(event.point.x - this.dragState.mouseStartPt.x) >
                            Math.abs(event.point.y - this.dragState.mouseStartPt.y);
 
+      const ignoreEntities = Array.from(new Set([
+        ...this.service.selectedEntities,
+        ...(this.dragState.segmentStartPositions || []).map((i) => i.path),
+        ...(this.dragState.handleStartPositions || []).map((i) => i.path)
+      ].filter(Boolean)));
+
       const osnap = this.service.calculateOsnap(
         projectedPivot,
         (pt, type) => {
@@ -278,10 +286,7 @@ export class SelectTool extends BaseTool {
           this.utils.hud.renderSnapMarker(markerPt, type);
         },
         null,
-        {
-          fromPoint: pivotPoint,
-          ignoreEntities: this.service.selectedEntities
-        }
+        { fromPoint: pivotPoint, ignoreEntities }
       );
 
       let finalTargetPivot = projectedPivot;
@@ -308,6 +313,14 @@ export class SelectTool extends BaseTool {
         }
       });
 
+      (this.dragState.segmentStartPositions || []).forEach((item) => {
+        if (item.segment) item.segment.point = item.initialPt.add(globalDelta);
+      });
+
+      (this.dragState.handleStartPositions || []).forEach((item) => {
+        if (item.segment) item.segment[item.handleType] = item.initialVector.add(globalDelta);
+      });
+
       this.utils.selectionRenderEngine.renderBezierHandles();
       if (!this.dragState.isPivotFromPoint) {
         this.utils.renderPivotMarker(finalTargetPivot);
@@ -322,9 +335,7 @@ export class SelectTool extends BaseTool {
   }
 
   onMouseUp(event) {
-    if (this.selectionMenuHandler.isOpen()) {
-      return;
-    }
+    if (this.selectionMenuHandler.isOpen()) return;
 
     if (this.activeModule) {
       this.activeModule.onMouseUp(event);
@@ -337,18 +348,12 @@ export class SelectTool extends BaseTool {
       return;
     }
 
-    const pendingHits = this.dragState.pendingMenuHits;
-    const pendingEvent = this.dragState.pendingMenuEvent;
-    const pendingPoint = this.dragState.pendingMenuPoint;
-    const pendingShift = this.dragState.pendingMenuShift;
+    const { pendingMenuHits, pendingMenuEvent, pendingMenuPoint, pendingMenuShift } = this.dragState;
 
     if (this.dragState.entityStartPositions && this.dragState.entityStartPositions.length > 0) {
-      const movedEntitiesData = [];
       let hasMoved = false;
 
-      this.dragState.entityStartPositions.forEach((item) => {
-        if (!item.entity) return;
-
+      const entitiesData = this.dragState.entityStartPositions.filter((i) => i.entity).map((item) => {
         const isPath = item.isPath;
         const finalPos = isPath ? null : (item.entity.data?.isPointEntity ? item.entity.bounds.center.clone() : item.entity.position.clone());
         const finalSegments = isPath ? item.entity.segments.map((s) => ({
@@ -357,33 +362,50 @@ export class SelectTool extends BaseTool {
           handleOut: s.handleOut.clone()
         })) : null;
 
-        if (isPath) {
-          hasMoved = finalSegments.some((s, idx) =>
-            !s.point.equals(item.initialSegments[idx].point) ||
-            !s.handleIn.equals(item.initialSegments[idx].handleIn) ||
-            !s.handleOut.equals(item.initialSegments[idx].handleOut)
-          );
-        } else if (finalPos && item.initialPos) {
-          hasMoved = !finalPos.equals(item.initialPos);
+        if (isPath && finalSegments.some((s, idx) =>
+          !s.point.equals(item.initialSegments[idx].point) ||
+          !s.handleIn.equals(item.initialSegments[idx].handleIn) ||
+          !s.handleOut.equals(item.initialSegments[idx].handleOut))) {
+          hasMoved = true;
+        } else if (!isPath && finalPos && item.initialPos && !finalPos.equals(item.initialPos)) {
+          hasMoved = true;
         }
 
-        movedEntitiesData.push({
+        return {
           entity: item.entity,
           isPath,
           initialPos: item.initialPos ? item.initialPos.clone() : null,
           finalPos,
           initialSegments: item.initialSegments,
           finalSegments
-        });
+        };
+      });
+
+      const segmentsData = (this.dragState.segmentStartPositions || []).filter((i) => i.segment && i.path).map((item) => {
+        const finalPt = item.segment.point.clone();
+        const finalHandleIn = item.segment.handleIn.clone();
+        const finalHandleOut = item.segment.handleOut.clone();
+        if (!finalPt.equals(item.initialPt)) hasMoved = true;
+        return { ...item, finalPt, finalHandleIn, finalHandleOut };
+      });
+
+      const handlesData = (this.dragState.handleStartPositions || []).filter((i) => i.segment && i.path).map((item) => {
+        const finalVector = item.segment[item.handleType].clone();
+        if (!finalVector.equals(item.initialVector)) hasMoved = true;
+        return { ...item, finalVector };
       });
 
       if (hasMoved) {
-        const moveCmd = new MoveCommand(this.service, { type: 'entities', items: movedEntitiesData });
-        this.service.executeCommand(moveCmd);
-      } else if (pendingHits && pendingHits.length > 1) {
+        this.service.executeCommand(new MoveCommand(this.service, {
+          type: 'mixed',
+          entities: entitiesData,
+          segments: segmentsData,
+          handles: handlesData
+        }));
+      } else if (pendingMenuHits && pendingMenuHits.length > 1) {
         this.cleanBox();
-        this.selectionMenuHandler.open(pendingEvent, pendingHits, (chosenHit) => {
-          this._applyEntitySelection(chosenHit.entity, pendingPoint, pendingShift, false);
+        this.selectionMenuHandler.open(pendingMenuEvent, pendingMenuHits, (chosenHit) => {
+          this._applyEntitySelection(chosenHit.entity, pendingMenuPoint, pendingMenuShift, false);
         });
         return;
       }
@@ -438,102 +460,6 @@ export class SelectTool extends BaseTool {
     } else if (this.service.hoveredEntity) {
       this.utils.clearHoverHighlight();
     }
-  }
-
-  onKeyDown(event) {
-    const key = event.key || event.code;
-    const targetTag = event.target?.tagName;
-    const targetId = event.target?.id;
-    const isConsoleInput = targetId === 'cmdInput' || targetId === 'cmdInputFloating';
-    const isOtherInputFocused = !isConsoleInput && (
-      targetTag === 'INPUT' || targetTag === 'TEXTAREA' || targetTag === 'SELECT' || event.target?.isContentEditable
-    );
-
-    if (!isOtherInputFocused && (event.ctrlKey || event.metaKey) && (key.toLowerCase() === 'a' || event.code === 'KeyA')) {
-      if (isConsoleInput && event.target.value.length > 0) {
-        return false;
-      }
-
-      if (this.service.editingEntities && this.service.editingEntities.length > 0) {
-        event.preventDefault();
-
-        this.service.deselectAllHandles();
-        this.service.deselectAllSegments();
-
-        this.service.editingEntities.forEach((entity) => {
-          if (!entity || entity.visible === false) return;
-
-          const layerId = String(entity.data?.layerId || '0');
-          const layer = this.utils.layerManager?.layers?.get(layerId);
-          if (layer && (layer.locked || layer.visible === false)) return;
-
-          if (entity instanceof paper.Path && !entity.data?.isPointEntity) {
-            entity.segments.forEach((seg) => {
-              this.service.selectSegment(seg, true);
-            });
-          } else if (entity instanceof paper.CompoundPath && entity.children) {
-            entity.children.forEach((child) => {
-              if (child instanceof paper.Path && child.segments) {
-                child.segments.forEach((seg) => {
-                  this.service.selectSegment(seg, true);
-                });
-              }
-            });
-          }
-        });
-
-        this.utils.selectionRenderEngine.renderBezierHandles();
-        this.utils.selectionRenderEngine.updateEntitiesStroke();
-        if (paper.view) paper.view.update();
-        return true;
-      }
-
-      return false;
-    }
-
-    if (key === 'Escape') {
-      if (this.selectionMenuHandler.isOpen()) {
-        this.selectionMenuHandler.close();
-        return true;
-      }
-
-      // 1. MODO EDICIÓN DE NODOS ACTIVO
-      if (this.service.editingEntities && this.service.editingEntities.length > 0) {
-        const hasSelectedSegments = this.service.selectedSegments && this.service.selectedSegments.length > 0;
-        const hasSelectedHandles = this.service.selectedHandles && this.service.selectedHandles.length > 0;
-
-        // Primer ESC: Si hay nodos o asas seleccionadas, suelta esa selección
-        if (hasSelectedSegments || hasSelectedHandles) {
-          this.service.deselectAllSegments();
-          this.service.deselectAllHandles();
-        } else {
-          // Segundo ESC (o si no hay nada seleccionado): Sale del modo edición de nodos
-          this.service.editingEntities = [];
-          this.service.deselectAllSegments();
-          this.service.deselectAllHandles();
-          this.utils.hoveredHandle = null;
-          this.utils.hoveredCurve = null;
-          this.utils.setPrompt('Herramienta Selección: selecciona objetos o haz doble clic en un trazo para editar sus nodos.');
-        }
-
-        this.utils.selectionRenderEngine.renderBezierHandles();
-        this.utils.selectionRenderEngine.updateEntitiesStroke();
-        if (paper.view) paper.view.update();
-        return true;
-      }
-
-      // 2. MODO SELECCIÓN NORMAL (Lienzo con entidades seleccionadas)
-      if (this.service.selectedEntities && this.service.selectedEntities.length > 0) {
-        this.service.deselectAllEntities();
-        this.service.deselectAllSegments();
-        this.cleanBox();
-        return true;
-      }
-
-      return super.onKeyDown(event);
-    }
-
-    return false;
   }
 
   cleanBox() {
@@ -598,36 +524,28 @@ export class SelectTool extends BaseTool {
         return true;
       }
 
+      // 1er ESC: Cancela el arrastre activo sin perder selección ni modo edición
       if (this._cancelActiveDrag()) {
         return true;
       }
 
-      if (this.service.editingEntities && this.service.editingEntities.length > 0) {
-        const hasSelectedSegments = this.service.selectedSegments && this.service.selectedSegments.length > 0;
-        const hasSelectedHandles = this.service.selectedHandles && this.service.selectedHandles.length > 0;
+      // 2do ESC: Quita cualquier selección activa (entidades, nodos o tiradores) sin salir del modo edición
+      const hasSelectedEntities = this.service.selectedEntities && this.service.selectedEntities.length > 0;
+      const hasSelectedSegments = this.service.selectedSegments && this.service.selectedSegments.length > 0;
+      const hasSelectedHandles = this.service.selectedHandles && this.service.selectedHandles.length > 0;
 
-        if (hasSelectedSegments || hasSelectedHandles) {
-          this.service.deselectAllSegments();
-          this.service.deselectAllHandles();
-        } else {
-          this.service.editingEntities = [];
-          this.service.deselectAllSegments();
-          this.service.deselectAllHandles();
-          this.utils.hoveredHandle = null;
-          this.utils.hoveredCurve = null;
-          this.utils.setPrompt('Herramienta Selección: selecciona objetos o haz doble clic en un trazo para editar sus nodos.');
-        }
-
-        this.utils.selectionRenderEngine.renderBezierHandles();
-        this.utils.selectionRenderEngine.updateEntitiesStroke();
-        if (paper.view) paper.view.update();
+      if (hasSelectedEntities || hasSelectedSegments || hasSelectedHandles) {
+        if (hasSelectedEntities) this.service.deselectAllEntities();
+        if (hasSelectedSegments) this.service.deselectAllSegments();
+        if (hasSelectedHandles) this.service.deselectAllHandles();
+        this.cleanBox();
         return true;
       }
 
-      if (this.service.selectedEntities && this.service.selectedEntities.length > 0) {
-        this.service.deselectAllEntities();
-        this.service.deselectAllSegments();
-        this.cleanBox();
+      // 3er ESC: Sale del modo edición de nodos
+      if (this.service.editingEntities && this.service.editingEntities.length > 0) {
+        this.service.selectionManager.exitEditMode();
+        this.utils.setPrompt('Herramienta Selección: selecciona objetos o haz doble clic en un trazo para editar sus nodos.');
         return true;
       }
 
@@ -670,6 +588,40 @@ export class SelectTool extends BaseTool {
     return true;
   }
 
+  _prepareEntityDrag(targetItem, point) {
+    this.dragState.dragAnchorEntity = targetItem;
+    this.dragState.mouseStartPt = point.clone();
+
+    const isPivotFromPoint = Boolean(targetItem.data?.isPointEntity);
+    let closestVertex = null;
+    let minDistance = Infinity;
+
+    if (isPivotFromPoint) {
+      closestVertex = targetItem.position || targetItem.bounds?.center;
+    } else if (targetItem instanceof paper.Raster && targetItem.bounds) {
+      const b = targetItem.bounds;
+      [b.topLeft, b.topCenter, b.topRight, b.rightCenter, b.bottomRight, b.bottomCenter, b.bottomLeft, b.leftCenter, b.center].forEach((pt) => {
+        const dist = pt.getDistance(point);
+        if (dist < minDistance) {
+          minDistance = dist;
+          closestVertex = pt.clone();
+        }
+      });
+    } else if (targetItem instanceof paper.Path && targetItem.segments) {
+      targetItem.segments.forEach((seg) => {
+        const dist = seg.point.getDistance(point);
+        if (dist < minDistance) {
+          minDistance = dist;
+          closestVertex = seg.point.clone();
+        }
+      });
+    }
+
+    this.dragState.pivotPoint = closestVertex || point.clone();
+    this.dragState.isPivotFromPoint = isPivotFromPoint;
+    this._captureMixedSelectionStartState();
+  }
+
   _cancelActiveDrag() {
     if (this.activeModule) {
       if (typeof this.activeModule.cancelDrag === 'function') {
@@ -695,23 +647,33 @@ export class SelectTool extends BaseTool {
     }
 
     if (this.dragState.mouseStartPt || this.dragState.entityStartPositions) {
-      if (this.dragState.entityStartPositions) {
-        this.dragState.entityStartPositions.forEach((item) => {
-          if (!item.entity) return;
-          if (item.isPath && item.initialSegments) {
-            item.entity.segments.forEach((seg, idx) => {
-              const initSeg = item.initialSegments[idx];
-              if (initSeg) {
-                seg.point = initSeg.point.clone();
-                seg.handleIn = initSeg.handleIn.clone();
-                seg.handleOut = initSeg.handleOut.clone();
-              }
-            });
-          } else if (item.initialPos) {
-            item.entity.position = item.initialPos.clone();
-          }
-        });
-      }
+      (this.dragState.entityStartPositions || []).forEach((item) => {
+        if (!item.entity) return;
+        if (item.isPath && item.initialSegments) {
+          item.entity.segments.forEach((seg, idx) => {
+            const initSeg = item.initialSegments[idx];
+            if (initSeg) {
+              seg.point = initSeg.point.clone();
+              seg.handleIn = initSeg.handleIn.clone();
+              seg.handleOut = initSeg.handleOut.clone();
+            }
+          });
+        } else if (item.initialPos) {
+          item.entity.position = item.initialPos.clone();
+        }
+      });
+
+      (this.dragState.segmentStartPositions || []).forEach((item) => {
+        if (!item.segment) return;
+        item.segment.point = item.initialPt.clone();
+        item.segment.handleIn = item.initialHandleIn.clone();
+        item.segment.handleOut = item.initialHandleOut.clone();
+      });
+
+      (this.dragState.handleStartPositions || []).forEach((item) => {
+        if (item.segment) item.segment[item.handleType] = item.initialVector.clone();
+      });
+
       this.utils.hud.clear();
       this.cleanBox();
       return true;

@@ -50,12 +50,11 @@ export class SelectionManager {
 
     if (!addToSelection) {
       this.deselectAllEntities();
-      this.editingEntities = [];
     }
 
     if (!this.selectedEntities.includes(entity)) {
       if (!entity.data) entity.data = {};
-      
+
       if (!entity.data.origStrokeColor && entity.strokeColor) {
         entity.data.origStrokeColor = entity.strokeColor.toCSS ? entity.strokeColor.toCSS() : entity.strokeColor;
       }
@@ -67,19 +66,6 @@ export class SelectionManager {
       }
 
       this.selectedEntities.push(entity);
-      
-      if (!this.editingEntities.includes(entity)) {
-        this.editingEntities.push(entity);
-      }
-
-      if (entity instanceof paper.Path && entity.segments && !entity.data?.isPointEntity) {
-        entity.segments.forEach(seg => {
-          if (!this.selectedSegments.includes(seg)) {
-            this.selectedSegments.push(seg);
-          }
-        });
-      }
-
       entity.selected = false;
     }
 
@@ -111,8 +97,10 @@ export class SelectionManager {
     if (layer && (layer.locked || layer.visible === false)) return;
 
     if (!addToSelection) {
+      this._clearSelectedEntitiesOnly();
       this.deselectAllHandles();
     }
+
     const exists = this.selectedHandles.some(h => h.segment === segment && h.type === type);
     if (!exists) {
       this.selectedHandles.push({ segment, type });
@@ -177,10 +165,12 @@ export class SelectionManager {
     const layerManager = this.service.utils?.layerManager || window.cadUtils?.layerManager;
     const layer = layerManager?.layers?.get(layerId);
     if (layer && (layer.locked || layer.visible === false)) return;
-    
+
     if (!addToSelection) {
+      this._clearSelectedEntitiesOnly();
       this.selectedSegments = [];
     }
+
     if (!this.selectedSegments.includes(segment)) {
       this.selectedSegments.push(segment);
     }
@@ -260,4 +250,76 @@ export class SelectionManager {
     }
   }
 
+  enterEditMode(entities = null, { append = false } = {}) {
+    const sourceList = entities
+      ? (Array.isArray(entities) ? entities : [entities])
+      : [...this.selectedEntities];
+
+    const layerManager = this.service.utils?.layerManager || window.cadUtils?.layerManager;
+    const editable = sourceList.filter((ent) => {
+      if (!ent || !ent.parent || !ent.visible) return false;
+      if (!(ent instanceof paper.Path) || ent.data?.isPointEntity) return false;
+      if (!ent.segments || ent.segments.length < 2) return false;
+
+      const layerId = String(ent.data?.layerId || '0');
+      const layer = layerManager?.layers?.get(layerId);
+      if (layer && (layer.locked || layer.visible === false)) return false;
+
+      return true;
+    });
+
+    if (editable.length === 0) return [];
+
+    if (!append) {
+      this.editingEntities = [];
+      this.deselectAllSegments();
+      this.deselectAllHandles();
+    }
+
+    editable.forEach((ent) => {
+      if (!this.editingEntities.includes(ent)) {
+        this.editingEntities.push(ent);
+      }
+    });
+
+    // Sacar de selectedEntities las entidades que entran en edición
+    // para habilitar la selección y arrastre directo de sus nodos y tramos
+    this.selectedEntities = this.selectedEntities.filter((ent) => !editable.includes(ent));
+
+    if (window.cadUtils) {
+      window.cadUtils.selectionRenderEngine?.updateEntitiesStroke();
+      window.cadUtils.selectionRenderEngine?.renderBezierHandles();
+    }
+    if (window.paper?.view) window.paper.view.update();
+
+    return editable;
+  }
+
+  exitEditMode() {
+    if (this.editingEntities.length === 0) return false;
+
+    this.editingEntities = [];
+    this.deselectAllSegments();
+    this.deselectAllHandles();
+
+    if (window.cadUtils) {
+      window.cadUtils.hoveredHandle = null;
+      window.cadUtils.hoveredCurve = null;
+      window.cadUtils.selectionRenderEngine?.updateEntitiesStroke();
+      window.cadUtils.selectionRenderEngine?.renderBezierHandles();
+    }
+    if (window.paper?.view) window.paper.view.update();
+
+    return true;
+  }
+
+  _clearSelectedEntitiesOnly() {
+    if (this.selectedEntities.length === 0) return;
+
+    this.selectedEntities = [];
+    if (window.cadUtils) {
+      window.cadUtils.selectionRenderEngine?.updateEntitiesStroke();
+      window.cadUtils.selectionRenderEngine?.renderBezierHandles();
+    }
+  }
 }

@@ -2,6 +2,8 @@
  * services/input/InputDispatcher.js - Captura centralizada de teclado y atajos globales
  */
 
+import { CAD_THEME } from '../../config/cadTheme.js';
+
 export class InputDispatcher {
   constructor(cadService) {
     this._cadService = cadService;
@@ -55,38 +57,8 @@ export class InputDispatcher {
 
     const isCtrlOrCmd = e.ctrlKey || e.metaKey;
 
-    // 2. Teclas de función hardware (F3 Snap, F7 Grid, F8 Ortho, F9 Grid Snap) funcionan siempre
-    if (e.key === 'F3') {
-      e.preventDefault();
-      if (cadUtils?.toggleSnapMaster) cadUtils.toggleSnapMaster();
-      else this.service?.toggleSnapMaster();
-      return;
-    }
-    if (e.key === 'F7') {
-      e.preventDefault();
-      if (cadUtils?.toggleGrid) cadUtils.toggleGrid();
-      else this.service?.viewportManager?.toggleGrid();
-      return;
-    }
-    if (e.key === 'F8') {
-      e.preventDefault();
-      if (cadUtils?.toggleOrtho) {
-        cadUtils.toggleOrtho();
-      } else {
-        this.service?.toggleOrtho();
-      }
-      return;
-    }
-    if (e.key === 'F9') {
-      e.preventDefault();
-      if (cadUtils?.toggleSnapFilter) {
-        cadUtils.toggleSnapFilter('grid');
-      } else {
-        this.service?.toggleSnapFilter('grid');
-      }
-      if (cadUtils?.refreshActivePreview) {
-        cadUtils.refreshActivePreview();
-      }
+    // 2. Teclas de función hardware (F3 Snap, F7 Grid, F8 Ortho, F9 Grid Snap, F10 PointsOn, F11 PointsOff)
+    if (this._handleFunctionKeys(e, cadUtils)) {
       return;
     }
 
@@ -104,12 +76,10 @@ export class InputDispatcher {
 
     // 3. Seleccionar todo (Ctrl+A / Cmd+A)
     if (isCtrlOrCmd && (e.key.toLowerCase() === 'a' || e.code === 'KeyA')) {
-      // Si la consola tiene texto escrito, permitir seleccionar el texto normalmente
       if (isConsoleInput && activeElement.value.length > 0) {
         return;
       }
 
-      // Delegar primero a la herramienta activa (ej. modo edición de nodos en SelectTool)
       if (activeTool && typeof activeTool.onKeyDown === 'function' && activeTool.onKeyDown(e)) {
         return;
       }
@@ -165,7 +135,6 @@ export class InputDispatcher {
       return;
     }
 
-    // Si el foco ya está en el input de la consola, ConsoleManager maneja Enter, Espacio, Escape y Delete
     if (isConsoleInput) {
       return;
     }
@@ -259,5 +228,75 @@ export class InputDispatcher {
         cadUtils.refreshActivePreview();
       }
     }
+  }
+
+  _handleFunctionKeys(e, cadUtils) {
+    const shortcuts = CAD_THEME?.shortcuts || {};
+    const osnapKey = shortcuts.osnap || 'F3';
+    const gridKey = shortcuts.grid || 'F7';
+    const orthoKey = shortcuts.ortho || 'F8';
+    const gridSnapKey = shortcuts.gridSnap || 'F9';
+    const pointsOnKey = shortcuts.pointsOn || 'F10';
+    const pointsOffKey = shortcuts.pointsOff || 'F11';
+
+    if (e.key === osnapKey) {
+      e.preventDefault();
+      if (cadUtils?.toggleSnapMaster) cadUtils.toggleSnapMaster();
+      else this.service?.toggleSnapMaster();
+      return true;
+    }
+    if (e.key === gridKey) {
+      e.preventDefault();
+      if (cadUtils?.toggleGrid) cadUtils.toggleGrid();
+      else this.service?.viewportManager?.toggleGrid();
+      return true;
+    }
+    if (e.key === orthoKey) {
+      e.preventDefault();
+      if (cadUtils?.toggleOrtho) cadUtils.toggleOrtho();
+      else this.service?.toggleOrtho();
+      return true;
+    }
+    if (e.key === gridSnapKey) {
+      e.preventDefault();
+      if (cadUtils?.toggleSnapFilter) cadUtils.toggleSnapFilter('grid');
+      else this.service?.toggleSnapFilter('grid');
+      if (cadUtils?.refreshActivePreview) cadUtils.refreshActivePreview();
+      return true;
+    }
+    if (e.key === pointsOnKey) {
+      e.preventDefault();
+      if (e.shiftKey) {
+        if (this.service?.selectionManager?.exitEditMode() && cadUtils?.setPrompt) {
+          cadUtils.setPrompt('Herramienta Selección: selecciona objetos o haz doble clic en un trazo para editar sus nodos.');
+        }
+        return true;
+      }
+
+      if (cadUtils?.currentToolMode !== 'select' && typeof cadUtils?.setTool === 'function') {
+        cadUtils.setTool('select');
+      }
+
+      const append = (this.service?.editingEntities?.length || 0) > 0;
+      const edited = this.service?.selectionManager?.enterEditMode(null, { append }) || [];
+
+      if (edited.length > 0 && cadUtils?.setPrompt) {
+        const total = this.service.editingEntities.length;
+        const label = total === 1 ? '1 entidad' : `${total} entidades`;
+        cadUtils.setPrompt(`Modo edición de nodos activo (${label}). Presiona Esc o Shift+${pointsOnKey} para salir.`);
+      } else if (append && this.service?.selectionManager?.exitEditMode()) {
+        cadUtils?.setPrompt?.('Herramienta Selección: selecciona objetos o haz doble clic en un trazo para editar sus nodos.');
+      }
+      return true;
+    }
+    if (e.key === pointsOffKey) {
+      e.preventDefault();
+      if (this.service?.selectionManager?.exitEditMode() && cadUtils?.setPrompt) {
+        cadUtils.setPrompt('Herramienta Selección: selecciona objetos o haz doble clic en un trazo para editar sus nodos.');
+      }
+      return true;
+    }
+
+    return false;
   }
 }
