@@ -6,9 +6,16 @@ import {
   resolveFromPoint,
   collectExtendedOsnapCandidates
 } from './OsnapGeometryMath.js';
+import {
+  buildRasterContourPath,
+  collectPrimitiveOsnapCandidates
+} from './OsnapPrimitiveSolvers.js';
 
 export class OsnapEngine {
   constructor(cadService) {
+    if (!cadService) {
+      throw new Error('OsnapEngine requiere una instancia válida de cadService.');
+    }
     this.service = cadService;
   }
 
@@ -36,86 +43,53 @@ export class OsnapEngine {
       const { circleTargets, snapTargets, pointTargets, rasterTargets } =
         this._collectTargetGroups(mousePoint, snapRadius, activePath, draggedPath, ignoreEntities);
 
-      circleTargets.forEach((circle) => {
-        const center = circle.position.clone();
-        const radius = circle.data?.radius || (circle.bounds.width / 2);
-        if (circle.data) circle.data.centerPt = center.clone();
-
-        if (this.service.snapFilters.quadrant) {
-          [
-            center.add(new paper.Point(radius, 0)),
-            center.add(new paper.Point(0, -radius)),
-            center.add(new paper.Point(-radius, 0)),
-            center.add(new paper.Point(0, radius))
-          ].forEach((qPt) => {
-            if (!isSelfPoint(qPt) && qPt.getDistance(mousePoint) <= snapRadius) {
-              candidatePoints.push({ point: qPt, type: 'quadrant', dist: qPt.getDistance(mousePoint), priority: 0 });
-            }
-          });
-        }
-
-        if (this.service.snapFilters.center && !isSelfPoint(center)) {
-          const distToCenter = center.getDistance(mousePoint);
-          const distToEdge = Math.abs(distToCenter - radius);
-          if (distToCenter <= snapRadius) {
-            candidatePoints.push({ point: center.clone(), type: 'center', dist: distToCenter, priority: 0 });
-          } else if (distToEdge <= snapRadius) {
-            candidatePoints.push({ point: center.clone(), type: 'center', dist: distToEdge + (5 / zoom), priority: 1 });
-          }
-        }
-      });
-
+      const rasterContourMap = new Map();
       rasterTargets.forEach((raster) => {
-        const contour = this.getRasterContourPath(raster);
-        if (!contour) return;
-        if (this.service.snapFilters.center && !isSelfPoint(raster.position) && raster.position.getDistance(mousePoint) <= snapRadius) {
-          candidatePoints.push({ point: raster.position.clone(), type: 'center', dist: raster.position.getDistance(mousePoint), priority: 0 });
-        }
-        if (this.service.snapFilters.endpoint) {
-          contour.segments.forEach((seg) => {
-            if (!isSelfPoint(seg.point) && seg.point.getDistance(mousePoint) <= snapRadius) {
-              candidatePoints.push({ point: seg.point.clone(), type: 'endpoint', dist: seg.point.getDistance(mousePoint), priority: 1 });
-            }
-          });
-        }
-        if (this.service.snapFilters.midpoint) {
-          contour.curves.forEach((curve) => {
-            const mid = curve?.length > 0 ? curve.getPointAt(curve.length * 0.5) : null;
-            if (mid && !isSelfPoint(mid) && mid.getDistance(mousePoint) <= snapRadius) {
-              candidatePoints.push({ point: mid, type: 'midpoint', dist: mid.getDistance(mousePoint), priority: 2 });
-            }
-          });
-        }
-        contour.remove();
+        const contour = buildRasterContourPath(raster);
+        if (contour) rasterContourMap.set(raster, contour);
       });
 
-      if (this.service.snapFilters.node) {
-        pointTargets.forEach((ent) => {
-          const pt = ent.position;
-          if (!isSelfPoint(pt) && pt.getDistance(mousePoint) <= snapRadius) {
-            candidatePoints.push({ point: new paper.Point(pt.x, pt.y), type: 'node', dist: pt.getDistance(mousePoint), priority: 0 });
-          }
+      try {
+        candidatePoints.push(
+          ...collectPrimitiveOsnapCandidates({
+            snapFilters: this.service.snapFilters,
+            circleTargets,
+            rasterTargets,
+            pointTargets,
+            rasterContourMap,
+            zoom,
+            snapRadius,
+            mousePoint,
+            isSelfPoint
+          })
+        );
+
+        const intersectionPathTargets = rasterContourMap.size > 0
+          ? [...snapTargets, ...rasterContourMap.values()]
+          : snapTargets;
+
+        this._collectPathGeometryOsnaps(snapTargets, activePath, draggedPath, draggedSegment, ignoreSegments, isDynamicCurve, isSelfPoint, mousePoint, snapRadius, candidatePoints);
+        this._collectEditingHandleOsnaps(draggedPath, draggedSegment, ignoreEntities, ignoreSegments, ignoreHandles, isSelfPoint, mousePoint, snapRadius, candidatePoints);
+        this._collectIntersectionOsnaps(intersectionPathTargets, circleTargets, activePath, draggedPath, isDynamicCurve, isSelfPoint, mousePoint, snapRadius, EPSILON, candidatePoints);
+
+        const extendedCandidates = collectExtendedOsnapCandidates({
+          snapFilters: this.service.snapFilters,
+          circleTargets,
+          snapTargets,
+          rasterTargets,
+          mousePoint,
+          snapRadius,
+          fromPoint: resolveFromPoint(activePath, ignoreContext),
+          draggedPath,
+          isSelfPoint,
+          isDynamicCurve,
+          rasterContourMap
         });
+        if (extendedCandidates.length > 0) candidatePoints.push(...extendedCandidates);
+      } finally {
+        rasterContourMap.forEach((contour) => contour.remove());
+        rasterContourMap.clear();
       }
-
-      this._collectPathGeometryOsnaps(snapTargets, activePath, draggedPath, draggedSegment, ignoreSegments, isDynamicCurve, isSelfPoint, mousePoint, snapRadius, candidatePoints);
-      this._collectEditingHandleOsnaps(draggedPath, draggedSegment, ignoreEntities, ignoreSegments, ignoreHandles, isSelfPoint, mousePoint, snapRadius, candidatePoints);
-      this._collectIntersectionOsnaps(snapTargets, circleTargets, activePath, draggedPath, isDynamicCurve, isSelfPoint, mousePoint, snapRadius, EPSILON, candidatePoints);
-
-      const extendedCandidates = collectExtendedOsnapCandidates({
-        snapFilters: this.service.snapFilters,
-        circleTargets,
-        snapTargets,
-        rasterTargets,
-        mousePoint,
-        snapRadius,
-        fromPoint: resolveFromPoint(activePath, ignoreContext),
-        draggedPath,
-        isSelfPoint,
-        isDynamicCurve,
-        getRasterContourPath: (raster) => this.getRasterContourPath(raster)
-      });
-      if (extendedCandidates.length > 0) candidatePoints.push(...extendedCandidates);
 
       if (candidatePoints.length > 0) {
         candidatePoints.sort((a, b) => a.priority - b.priority || a.dist - b.dist);
@@ -125,41 +99,31 @@ export class OsnapEngine {
       }
     }
 
-    if (this.service.snapFilters.grid === true) {
-      const subStep = zoom > 3 ? 4 : (zoom < 0.3 ? 100 : 20);
-      const gridPoint = new paper.Point(
-        Math.round(mousePoint.x / subStep) * subStep,
-        Math.round(mousePoint.y / subStep) * subStep
-      );
-      if (gridPoint.getDistance(mousePoint) <= snapRadius * 0.8) {
-        if (renderMarkerFn) renderMarkerFn(gridPoint, 'grid');
-        return { point: gridPoint, type: 'grid' };
-      }
-    }
+    const gridSnap = this._resolveGridOsnap(mousePoint, zoom, snapRadius, renderMarkerFn);
+    if (gridSnap) return gridSnap;
 
     if (renderMarkerFn) renderMarkerFn(null, null);
     return { point: mousePoint, type: null };
   }
 
+  _resolveGridOsnap(mousePoint, zoom, snapRadius, renderMarkerFn) {
+    if (this.service.snapFilters.grid !== true) return null;
+
+    const subStep = zoom > 3 ? 4 : (zoom < 0.3 ? 100 : 20);
+    const gridPoint = new paper.Point(
+      Math.round(mousePoint.x / subStep) * subStep,
+      Math.round(mousePoint.y / subStep) * subStep
+    );
+
+    if (gridPoint.getDistance(mousePoint) <= snapRadius * 0.8) {
+      if (renderMarkerFn) renderMarkerFn(gridPoint, 'grid');
+      return { point: gridPoint, type: 'grid' };
+    }
+    return null;
+  }
+
   getRasterContourPath(raster) {
-    if (!raster || !raster.width || !raster.height) return null;
-
-    const halfW = raster.width / 2;
-    const halfH = raster.height / 2;
-    const m = raster.matrix;
-
-    const corners = [
-      m.transform(new paper.Point(-halfW, -halfH)), // Esquina superior izquierda
-      m.transform(new paper.Point(halfW, -halfH)),  // Esquina superior derecha
-      m.transform(new paper.Point(halfW, halfH)),   // Esquina inferior derecha
-      m.transform(new paper.Point(-halfW, halfH))   // Esquina inferior izquierda
-    ];
-
-    return new paper.Path({
-      segments: corners,
-      closed: true,
-      insert: false
-    });
+    return buildRasterContourPath(raster);
   }
 
   _createDynamicCurveFilter(draggedPath, draggedSegment, ignoreSegments, ignoreHandles) {
@@ -182,13 +146,16 @@ export class OsnapEngine {
   }
 
   _collectTargetGroups(mousePoint, snapRadius, activePath, draggedPath, ignoreEntities) {
+    const gridGroup = this.service.utils?.gridGroup || null;
+    const layerManager = this.service.utils?.layerManager || null;
+
     const isValidSnapEntity = (ent) => {
       if (!ent || ent.visible === false || ent.clipMask || ent.data?.isClipMask) return false;
       if (ent.data?.isGrid || ent.data?.isAuxiliary || ent.data?.isHandle) return false;
       if (ent.layer && ent.layer.name === 'hudLayer') return false;
-      if (window.cadUtils?.gridGroup && (ent === window.cadUtils.gridGroup || ent.isDescendant(window.cadUtils.gridGroup))) {
-        return false;
-      }
+      if (gridGroup && (ent === gridGroup || ent.isDescendant(gridGroup))) return false;
+      if (layerManager && !layerManager.isEntityVisible(ent)) return false;
+
       const isRaster = ent instanceof paper.Raster || ent.className === 'Raster' || ent.data?.isImageEntity;
       if (!isRaster) {
         const hasStroke = ent.strokeColor && ent.strokeColor.alpha > 0;
@@ -209,18 +176,24 @@ export class OsnapEngine {
       return Boolean(ent.bounds && ent.bounds.intersects(snapBox));
     };
 
-    const circleTargets = this.service.entities.filter((ent) =>
-      isValidSnapEntity(ent) && ent.data?.isCircleEntity && canEvaluate(ent)
-    );
-    const snapTargets = this.service.entities.filter((ent) =>
-      isValidSnapEntity(ent) && (ent instanceof paper.Path) && !ent.data?.isPointEntity && !ent.data?.isCircleEntity && canEvaluate(ent)
-    );
-    const pointTargets = this.service.entities.filter((ent) =>
-      isValidSnapEntity(ent) && ent.data?.isPointEntity && canEvaluate(ent)
-    );
-    const rasterTargets = this.service.entities.filter((ent) =>
-      isValidSnapEntity(ent) && (ent instanceof paper.Raster || ent.className === 'Raster') && canEvaluate(ent)
-    );
+    const circleTargets = [];
+    const snapTargets = [];
+    const pointTargets = [];
+    const rasterTargets = [];
+
+    for (const ent of this.service.entities) {
+      if (!isValidSnapEntity(ent) || !canEvaluate(ent)) continue;
+
+      if (ent.data?.isCircleEntity) {
+        circleTargets.push(ent);
+      } else if (ent.data?.isPointEntity) {
+        pointTargets.push(ent);
+      } else if (ent instanceof paper.Raster || ent.className === 'Raster' || ent.data?.isImageEntity) {
+        rasterTargets.push(ent);
+      } else if (ent instanceof paper.Path) {
+        snapTargets.push(ent);
+      }
+    }
 
     if (activePath instanceof paper.Path && activePath.segments?.length > 0 && !activePath.data?.isCircleEntity) {
       if (!activePath.clipMask && !snapTargets.includes(activePath)) {
@@ -325,17 +298,14 @@ export class OsnapEngine {
     const editingEntities = this.service.editingEntities || [];
     if (editingEntities.length === 0) return;
 
-    const layerManager = this.service.utils?.layerManager || window.cadUtils?.layerManager;
+    const layerManager = this.service.utils?.layerManager || null;
 
     editingEntities.forEach((ent) => {
       if (!ent || !ent.parent || ent.visible === false) return;
       if (!(ent instanceof paper.Path) || ent.data?.isPointEntity) return;
       if (!ent.segments || ent.segments.length < 2) return;
       if ((draggedPath && ent === draggedPath) || ignoreEntities.includes(ent)) return;
-
-      const layerId = String(ent.data?.layerId || '0');
-      const layer = layerManager?.layers?.get(layerId);
-      if (layer && (layer.locked || layer.visible === false)) return;
+      if (layerManager && !layerManager.isEntityInteractive(ent)) return;
 
       ent.segments.forEach((seg) => {
         if ((draggedPath && seg === draggedSegment) || ignoreSegments.includes(seg)) return;

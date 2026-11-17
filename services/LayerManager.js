@@ -236,6 +236,21 @@ export class LayerManager {
     return this.layers.get(this.activeLayerId) || this.layers.get('0');
   }
 
+  isEntityVisible(entity) {
+    if (!entity) return false;
+    const layerId = String(entity.data?.layerId || '0');
+    const layer = this.layers.get(layerId);
+    return layer ? layer.visible !== false : true;
+  }
+
+  isEntityInteractive(entity) {
+    if (!entity) return false;
+    const layerId = String(entity.data?.layerId || '0');
+    const layer = this.layers.get(layerId);
+    if (!layer) return true;
+    return layer.visible !== false && !layer.locked;
+  }
+  
   assignEntityToLayer(entity, layerId) {
     if (!entity) return;
 

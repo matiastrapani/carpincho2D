@@ -16,16 +16,14 @@ herramienta de seleccion y edicion de objetos. mejorar funcionalidad de bezier
 aumentar solo 1px el espesor de la seleccion
 el export svg exporta los colores de la seleccion, y los puntos escalados por zoom
 
-unificar estilo para data-tooltips en capas y properties
-poner "..." en nombre de capas largos
-nombre entidades con #
-resolver el punto de incio con estilo punto en division por distancia
+unificar el estilo para data-tooltips en capas y properties
 
-en modo orto o con shift el snap a grid debe respetar la jerarquia de ortogonal
+mejorar el nombre de las entidades agregando para separar el tag #
+resolver el punto de incio con estilo punto en division por distancia
 
 resolver la barra de desplazamiento horizontal en el panel de propiedades al reducir el tamaño sin overflow
 resolver que hacer con la opacidad en capa
-seleccion y bezier con zoom falla
+seleccion y bezier con zoom falla y zoom extents solo usa nodos y no min y max de curvas.
 
 espesores y zoom, escalar bordes?
 
@@ -33,14 +31,27 @@ autocompletado en consola
 agregar teclas rapidas a cadtheme cmd+z cmd+a cmd+y backspace, shift, alt, etc
 la tangente en circulos no es con la linea del radio sino que es con la curva
 movimiento y osnap perpendicular
+los puntos de control en imagen al moverlos deben cambiar su color a seleccionados
+
 - [x] **QW-01 | Rubber band en Move con Select:** Dibujar guía discontinua (`CAD_THEME.rubberBand`) en `hudLayer` entre el *pivot point* inicial y la posición actual durante el arrastre de entidades/vértices en `HandleSelectionHandler` / `SelectTool`, limpiándola en `onMouseUp` y `reset()`.
 - [x] **QW-02 | OSNAP Perpendicular en Selección y Movimiento:** Pasar el *pivot point* como `fromPoint` e incluir las entidades arrastradas en `ignoreEntities` al invocar `OsnapEngine.calculateOsnap()` desde `HandleSelectionHandler` / `SegmentEditHandler`.
 
 - [ ] **Refactor de arrastre unificado (`MixedDragHelper`):** Extraer la lógica duplicada de captura de estado inicial, aplicación de desplazamiento, registro en `MoveCommand` (`type: 'mixed'`) y cancelación de arrastre compartida entre `SelectTool`, `HandleSelectionHandler` y `SegmentEditHandler`.
 
 - [x] modo edicion con tecla rapida y con multiples entidades
-modo edicion y osnap sobre referencias a la propia entidad
-seleccion sobre elementos superpuestos en modo edicion
-agregar el movetool
+
+
+seleccion sobre elementos superpuestos en modo edicion con dropdown como tenemos en modo entidad
+agregar el movetool y usarla desde select
 no permitir la seleccion de imagen como elemento en trim/extend
 agregar en linetool los colores de la etiqueta de rubberband
+
+
+1. [Propiedades] Preparar PropertySingleView.js para secciones por tipo de entidad (ui/components/PropertySingleView.js): Hoy tiene 297 líneas (cerca del techo de 350). Antes de sumar propiedades nuevas (radio, texto, dimensiones), conviene extraer sus bloques base (Color, Opacidad, Grosor) para dejarlo debajo de 250 líneas y habilitar secciones componibles (*Section.js) según la Regla 8.
+2. [Núcleo / Capas] Eliminar manipulación directa del array entities en DeleteLayerCommand (services/commands/LayerCommands.js): Reemplazar cadService.entities.splice y .push por métodos oficiales de baja/restauración en CADService (Reglas 1 y 3). Abordar cuando se trabaje en el área de CADService.
+3. [Infraestructura] Desacoplar el redibujado directo de los gestores (services/LayerManager.js y services/PropertyManager.js): Sacar las llamadas directas a selectionRenderEngine y paper.view.update() hacia un suscriptor central de renderizado. Abordar solo cuando se revise el ciclo de renderizado global.
+4. [Color Picker — Opcional] Muestras personalizadas (ui/components/ColorSwatchManager.js): Si a futuro se decide guardar paletas personalizadas del usuario, crear un gestor independiente acoplado a ColorPickerPopover sin superar las 350 líneas.
+
+Área #8 — Selección (SelectionManager.js): Incorporar un método oficial (ej. purgeLayerSelection(layerId)) para limpiar entidades, edición directa, segmentos y handles cuando una capa se bloquea u oculta, reemplazando la mutación directa de arrays en LayerManager._purgeLockedLayerState.
+Área #12 — Input y HUD (HUDManager.js) y Área #5 — Dibujo: Desacoplar el callback visual renderMarkerFn de OsnapEngine.calculateOsnap(), haciendo que el motor devuelva solo { point, type } y que el marcador visual se actualice en un único punto centralizado.
+Área #15 — Núcleo (cadService.js / app.js): Confirmar que cadService.utils quede inyectado desde el arranque de la aplicación (sin depender de window.cadUtils) y limpiar métodos puente residuales en cadUtils.js.   

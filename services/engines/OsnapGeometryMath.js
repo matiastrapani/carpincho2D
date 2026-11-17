@@ -4,6 +4,7 @@
  */
 
 const GEOM_EPSILON = 1e-6;
+const ORIGIN_SNAP_EPSILON = 0.01;
 
 export function resolveFromPoint(activePath, ignoreContext) {
   if (ignoreContext?.fromPoint instanceof paper.Point) {
@@ -215,7 +216,8 @@ export function collectExtendedOsnapCandidates({
   draggedPath,
   isSelfPoint,
   isDynamicCurve = null,
-  getRasterContourPath
+  rasterContourMap = null,
+  getRasterContourPath = null
 }) {
   const usePerp = Boolean(snapFilters.perpendicular && fromPoint);
   const useTan = Boolean(snapFilters.tangent && fromPoint);
@@ -224,7 +226,7 @@ export function collectExtendedOsnapCandidates({
   if (!usePerp && !useTan && !useNear) return [];
 
   const candidates = [];
-  const isOriginPoint = (pt) => Boolean(fromPoint && pt && pt.getDistance(fromPoint) < 0.01);
+  const isOriginPoint = (pt) => Boolean(fromPoint && pt && pt.getDistance(fromPoint) < ORIGIN_SNAP_EPSILON);
 
   const evaluateTarget = (target, curveFilter = null) => {
     if (usePerp) {
@@ -250,14 +252,16 @@ export function collectExtendedOsnapCandidates({
     evaluateTarget(path, isDynamicCurve);
   });
 
-  if (typeof getRasterContourPath === 'function') {
-    rasterTargets.forEach((raster) => {
-      const contour = getRasterContourPath(raster);
-      if (!contour) return;
-      evaluateTarget(contour);
+  rasterTargets.forEach((raster) => {
+    const cachedContour = rasterContourMap?.get(raster) || null;
+    const contour = cachedContour || (typeof getRasterContourPath === 'function' ? getRasterContourPath(raster) : buildRasterContourPath(raster));
+    if (!contour) return;
+
+    evaluateTarget(contour);
+    if (!cachedContour) {
       contour.remove();
-    });
-  }
+    }
+  });
 
   return candidates;
 }
