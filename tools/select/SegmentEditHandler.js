@@ -67,14 +67,17 @@ export class SegmentEditHandler {
     const hudLayer = this.utils.hudLayer || paper.project?.layers?.['hudLayer'];
     if (!hudLayer) return;
 
-    const strokeWidth = 1 / paper.view.zoom;
+    const zoom = paper.view.zoom || 1;
+    const strokeWidth = (CAD_THEME.rubberBand?.strokeWidthPx ?? 1) / zoom;
+    const dashArray = (CAD_THEME.rubberBand?.dashArrayPx || [6, 4]).map((v) => v / zoom);
+
     if (!this.dragRubberBand) {
       const line = new paper.Path.Line({
         from: fromPt,
         to: toPt,
         strokeColor: CAD_THEME.selection.line.strokeColor,
         strokeWidth,
-        dashArray: CAD_THEME.rubberBand.dashArrayPx,
+        dashArray,
         data: { isAuxiliary: true },
         insert: false
       });
@@ -84,6 +87,7 @@ export class SegmentEditHandler {
       this.dragRubberBand.segments[0].point = fromPt;
       this.dragRubberBand.segments[1].point = toPt;
       this.dragRubberBand.strokeWidth = strokeWidth;
+      this.dragRubberBand.dashArray = dashArray;
     }
   }
 

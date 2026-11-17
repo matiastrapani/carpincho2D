@@ -16,36 +16,70 @@ export class ParametricGripHandler {
     const handlesGroup = this.utils.controlHandlesGroup;
     if (!handlesGroup) return null;
 
-    return handlesGroup.hitTest(point, {
+    const tolerance = 8 / paper.view.zoom;
+
+    const markerHit = handlesGroup.hitTest(point, {
       fill: true,
       stroke: true,
-      tolerance: 8 / paper.view.zoom,
-      match: (res) => res.item.data?.isParametricGrip
+      tolerance,
+      match: (res) => Boolean(res.item?.data?.isParametricGrip && !res.item.data.isParametricEdge)
     });
+    if (markerHit) return markerHit;
+
+    let closestEdge = null;
+    let minDistance = tolerance;
+
+    (handlesGroup.children || []).forEach((item) => {
+      if (!item?.data?.isParametricEdge || typeof item.getNearestLocation !== 'function') return;
+
+      const loc = item.getNearestLocation(point);
+      if (loc?.point) {
+        const dist = loc.point.getDistance(point);
+        if (dist <= minDistance) {
+          minDistance = dist;
+          closestEdge = item;
+        }
+      }
+    });
+
+    return closestEdge ? { item: closestEdge } : null;
   }
 
   handleHover(point) {
     const hitGrip = this.hitTest(point);
 
     if (hitGrip && hitGrip.item && hitGrip.item.data) {
+      if (this.service.hoveredEntity) {
+        this.utils.clearHoverHighlight();
+      }
       document.body.style.cursor = hitGrip.item.data.cursor || 'default';
-      const newHover = { 
-        entity: hitGrip.item.data.entity, 
-        gripId: hitGrip.item.data.gripId 
+      const newHover = {
+        entity: hitGrip.item.data.entity,
+        gripId: hitGrip.item.data.gripId
       };
 
-      if (!this.utils.hoveredParametricGrip || 
-          this.utils.hoveredParametricGrip.entity !== newHover.entity || 
+      if (!this.utils.hoveredParametricGrip ||
+          this.utils.hoveredParametricGrip.entity !== newHover.entity ||
           this.utils.hoveredParametricGrip.gripId !== newHover.gripId) {
         this.utils.hoveredParametricGrip = newHover;
-        if (this.utils.selectionRenderEngine.renderBezierHandles) this.utils.selectionRenderEngine.renderBezierHandles();
+        if (this.utils.selectionRenderEngine?.renderBezierHandles) {
+          this.utils.selectionRenderEngine.renderBezierHandles();
+        }
+        if (typeof paper !== 'undefined' && paper.view) {
+          paper.view.update();
+        }
       }
       return true;
-    } 
-    
+    }
+
     if (this.utils.hoveredParametricGrip) {
       this.utils.hoveredParametricGrip = null;
-      if (this.utils.selectionRenderEngine.renderBezierHandles) this.utils.selectionRenderEngine.renderBezierHandles();
+      if (this.utils.selectionRenderEngine?.renderBezierHandles) {
+        this.utils.selectionRenderEngine.renderBezierHandles();
+      }
+      if (typeof paper !== 'undefined' && paper.view) {
+        paper.view.update();
+      }
     }
     return false;
   }
@@ -143,6 +177,7 @@ export class ParametricGripHandler {
     this.gripStartPoint = null;
     if (this.utils) {
       this.utils.activeParametricGrip = null;
+      this.utils.hoveredParametricGrip = null;
     }
   }
 }

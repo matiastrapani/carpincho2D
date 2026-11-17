@@ -6,6 +6,10 @@ import { AddEntityCommand, ImportSVGCommand } from '../commands/cadCommands.js';
 
 export class CADIOService {
   constructor(cadService, cadUtils) {
+    if (!cadService || !cadUtils) {
+      throw new Error('CADIOService requiere cadService y cadUtils.');
+    }
+
     this.service = cadService;
     this.utils = cadUtils;
 
@@ -23,55 +27,57 @@ export class CADIOService {
     const raster = new paper.Raster(imageSrc);
 
     raster.on('load', () => {
-      const utils = this.utils || window.cadUtils;
-      const cadService = this.service || window.cadService;
-
-      raster.data.controller = new ImageController(raster);
-      raster.position = dropPosition || paper.view.center.clone();
+      const utils = this.utils;
+      const cadService = this.service;
+      const layerManager = cadService.layerManager || utils.layerManager || null;
 
       if (!raster.data) raster.data = {};
       raster.data.isImageEntity = true;
+      raster.position = dropPosition || paper.view.center.clone();
 
       // 1. Asignar nombre correlativo ("Imagen 1", "Imagen 2")
-      const imageName = utils?.generateNextEntityName ? utils.generateNextEntityName('Imagen') : 'Imagen';
+      const imageName = utils.generateNextEntityName ? utils.generateNextEntityName('Imagen') : 'Imagen';
       raster.name = imageName;
       raster.data.name = imageName;
 
-      // 2. Vincular propiedades por defecto
-      if (utils?.propertyManager) {
+      // 2. Vincular propiedades por defecto y capa activa
+      if (utils.propertyManager) {
         utils.propertyManager.applyDefaultSettings(raster);
+      }
+      if (layerManager && typeof layerManager.assignEntityToLayer === 'function') {
+        layerManager.assignEntityToLayer(raster);
       }
 
       raster.data.baseOpacity = raster.opacity;
-      raster.data.controller = new ImageController(raster);
+      raster.data.controller = new ImageController(raster, layerManager);
 
       raster.sendToBack();
-      if (utils?.gridGroup) utils.gridGroup.sendToBack();
+      if (utils.gridGroup) utils.gridGroup.sendToBack();
 
       // 3. Registrar comando en el historial para Undo / Redo
       const cmd = new AddEntityCommand(cadService, raster);
       cadService.executeCommand(cmd);
 
       cadService.selectEntity(raster, false);
-      if (utils?.selectionRenderEngine.updateEntitiesStroke) utils.selectionRenderEngine.updateEntitiesStroke();
-      if (utils?.selectionRenderEngine.renderBezierHandles) utils.selectionRenderEngine.renderBezierHandles();
-
-      if (window.cadUI && typeof window.cadUI.updatePropertyPanel === 'function') {
-        window.cadUI.updatePropertyPanel(raster);
+      if (utils.selectionRenderEngine?.updateEntitiesStroke) {
+        utils.selectionRenderEngine.updateEntitiesStroke();
+      }
+      if (utils.selectionRenderEngine?.renderBezierHandles) {
+        utils.selectionRenderEngine.renderBezierHandles();
       }
 
-      if (utils?.setPrompt) utils.setPrompt('Imagen importada al lienzo.');
+      if (utils.setPrompt) utils.setPrompt('Imagen importada al lienzo.');
     });
   }
 
   importSVGToCanvas(svgString, dropPosition) {
-    const utils = this.utils || window.cadUtils;
-    const cadService = this.service || window.cadService;
+    const utils = this.utils;
+    const cadService = this.service;
 
-    const layerManager = cadService?.layerManager || utils?.layerManager;
+    const layerManager = cadService.layerManager || utils.layerManager;
     const activeCadLayer = layerManager ? layerManager.getActiveLayer() : null;
 
-    const targetContainer = activeCadLayer?.paperGroup || utils?.drawLayer || paper.project.activeLayer;
+    const targetContainer = activeCadLayer?.paperGroup || utils.drawLayer || paper.project.activeLayer;
 
     if (targetContainer && typeof targetContainer.activate === 'function') {
       targetContainer.activate();
@@ -142,10 +148,10 @@ export class CADIOService {
           }
         }
 
-        if (utils?.selectionRenderEngine?.updateEntitiesStroke) utils.selectionRenderEngine.updateEntitiesStroke();
-        if (utils?.selectionRenderEngine?.renderBezierHandles) utils.selectionRenderEngine.renderBezierHandles();
+        if (utils.selectionRenderEngine?.updateEntitiesStroke) utils.selectionRenderEngine.updateEntitiesStroke();
+        if (utils.selectionRenderEngine?.renderBezierHandles) utils.selectionRenderEngine.renderBezierHandles();
         if (paper.view) paper.view.update();
-        if (utils?.setPrompt) utils.setPrompt('Dibujo SVG importado en la capa activa.');
+        if (utils.setPrompt) utils.setPrompt('Dibujo SVG importado en la capa activa.');
       }
     });
   }
@@ -195,8 +201,8 @@ export class CADIOService {
     }
 
     // B) Grupo de Grilla y Ejes Principales
-    if (window.cadUtils && window.cadUtils.gridGroup) {
-      const grid = window.cadUtils.gridGroup;
+    if (this.utils.gridGroup) {
+      const grid = this.utils.gridGroup;
       const parent = grid.parent;
       if (parent) {
         grid.remove();
@@ -205,8 +211,8 @@ export class CADIOService {
     }
 
     // C) Controles visuales y manejadores temporales
-    if (window.cadUtils && window.cadUtils.controlHandlesGroup) {
-      const handles = window.cadUtils.controlHandlesGroup;
+    if (this.utils.controlHandlesGroup) {
+      const handles = this.utils.controlHandlesGroup;
       const parent = handles.parent;
       if (parent) {
         handles.remove();
@@ -307,7 +313,6 @@ export class CADIOService {
       }
     }
   }
-
 
   // --- LIMPIEZA Y DESTRUCCIÓN DE LISTENERS ---
   cleanup() {
