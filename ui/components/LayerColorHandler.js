@@ -57,7 +57,7 @@ export class LayerColorHandler {
     this.close();
 
     const fallbackColor = this.getDefaultColor().toUpperCase();
-    const initialColor = layer.color ? layer.color.substring(0, 7).toUpperCase() : fallbackColor;
+    const initialColor = ColorMath.normalizeToHex(layer.color, fallbackColor);
     const initialOpacity = layer.opacity !== undefined ? layer.opacity : 1.0;
     let hasPreviewChanges = false;
 
@@ -75,23 +75,23 @@ export class LayerColorHandler {
       },
 
       onChangeEnd: (hexColor, alphaValue, flags = {}) => {
-        let committed = false;
+        const oldProps = {};
+        const newProps = {};
 
         if (flags.colorChanged && initialColor !== hexColor) {
-          this.service.executeCommand(
-            new UpdateLayerPropertyCommand(this.manager, layer.id, 'color', initialColor, hexColor)
-          );
-          committed = true;
+          oldProps.color = initialColor;
+          newProps.color = hexColor;
         }
 
         if (flags.opacityChanged && Math.abs(initialOpacity - alphaValue) > 0.001) {
-          this.service.executeCommand(
-            new UpdateLayerPropertyCommand(this.manager, layer.id, 'opacity', initialOpacity, alphaValue)
-          );
-          committed = true;
+          oldProps.opacity = initialOpacity;
+          newProps.opacity = alphaValue;
         }
 
-        if (committed) {
+        if (Object.keys(newProps).length > 0) {
+          this.service.executeCommand(
+            new UpdateLayerPropertyCommand(this.manager, layer.id, oldProps, newProps)
+          );
           this.onCommitChange?.();
         }
       },

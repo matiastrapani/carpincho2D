@@ -213,18 +213,18 @@ export class LayerRowBuilder {
     const opacityInput = row.querySelector('[data-field="opacity"]');
     if (!scrubContainer || !opacityInput) return;
 
-    let scrubStartOpacity = layer.opacity !== undefined ? Number(layer.opacity) : 1;
-
-    scrubContainer.addEventListener('pointerdown', () => {
-      scrubStartOpacity = layer.opacity !== undefined ? Number(layer.opacity) : 1;
-      this.onPreviewStart?.();
-    });
+    const getCurrentOpacity = () => (layer.opacity !== undefined ? Number(layer.opacity) : 1);
+    let scrubStartOpacity = getCurrentOpacity();
+    let isScrubbing = false;
 
     PropertyControls.attachScrubInput(
       scrubContainer,
       opacityInput,
       (pctVal) => {
-        this.onPreviewEnd?.();
+        if (isScrubbing) {
+          isScrubbing = false;
+          this.onPreviewEnd?.();
+        }
         const clampedPct = Math.max(0, Math.min(100, Math.round(pctVal)));
         const nextOpacity = clampedPct / 100;
 
@@ -233,13 +233,21 @@ export class LayerRowBuilder {
         } else {
           this.onFallbackRefresh?.();
         }
+        scrubStartOpacity = getCurrentOpacity();
       },
       {
         min: 0,
         max: 100,
         step: 1,
         precision: 0,
+        onScrubStart: () => {
+          scrubStartOpacity = getCurrentOpacity();
+        },
         onLiveChange: (pctVal) => {
+          if (!isScrubbing) {
+            isScrubbing = true;
+            this.onPreviewStart?.();
+          }
           const nextOpacity = Math.max(0, Math.min(100, pctVal)) / 100;
           this.onPreviewOpacity?.(layer.id, nextOpacity);
         }

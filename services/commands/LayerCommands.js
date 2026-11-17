@@ -164,28 +164,40 @@ export class DeleteLayerCommand {
 }
 
 export class UpdateLayerPropertyCommand {
-  constructor(layerManager, layerId, property, oldValue, newValue) {
+  constructor(layerManager, layerId, propertyOrOldProps, oldValueOrNewProps, newValue) {
     this.manager = layerManager;
     this.layerId = layerId;
-    this.property = property;
-    this.oldValue = oldValue;
-    this.newValue = newValue;
+
+    if (propertyOrOldProps && typeof propertyOrOldProps === 'object') {
+      this.oldProps = { ...propertyOrOldProps };
+      this.newProps = { ...(oldValueOrNewProps || {}) };
+      this.property = null;
+    } else {
+      this.property = propertyOrOldProps;
+      this.oldValue = oldValueOrNewProps;
+      this.newValue = newValue;
+      this.oldProps = null;
+      this.newProps = null;
+    }
   }
 
   execute() {
-    this.manager.updateLayerProperty(this.layerId, this.property, this.newValue);
+    if (this.newProps) {
+      Object.entries(this.newProps).forEach(([prop, val]) => {
+        this.manager.updateLayerProperty(this.layerId, prop, val);
+      });
+    } else {
+      this.manager.updateLayerProperty(this.layerId, this.property, this.newValue);
+    }
   }
 
   undo() {
-    this.manager.updateLayerProperty(this.layerId, this.property, this.oldValue);
-  }
-
-  _updateCanvas() {
-    if (this.panelUI.utils?.selectionRenderEngine?.updateEntitiesStroke) {
-      this.panelUI.utils.selectionRenderEngine.updateEntitiesStroke();
-    }
-    if (window.paper?.view) {
-      window.paper.view.update();
+    if (this.oldProps) {
+      Object.entries(this.oldProps).forEach(([prop, val]) => {
+        this.manager.updateLayerProperty(this.layerId, prop, val);
+      });
+    } else {
+      this.manager.updateLayerProperty(this.layerId, this.property, this.oldValue);
     }
   }
 }

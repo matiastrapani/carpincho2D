@@ -135,28 +135,31 @@ export class ColorMath {
   }
 
   static normalizeToHex(color, fallback = '#FFFFFF') {
-    if (!color) return fallback;
+    const safeFallback = (typeof fallback === 'string' ? fallback : '#FFFFFF').toUpperCase();
+    if (!color) return safeFallback;
+
     if (typeof color === 'string') {
       const trimmed = color.trim();
       if (trimmed.startsWith('#')) {
         if (trimmed.length === 4) {
-          return `#${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`;
+          return `#${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`.toUpperCase();
         }
         if (trimmed.length === 7 || trimmed.length === 9) {
-          return trimmed.slice(0, 7);
+          return trimmed.slice(0, 7).toUpperCase();
         }
-        return fallback;
+        return safeFallback;
       }
       const rgbMatch = trimmed.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
       if (rgbMatch) {
         const toHex = (n) => Math.max(0, Math.min(255, Number(n))).toString(16).padStart(2, '0');
         return `#${toHex(rgbMatch[1])}${toHex(rgbMatch[2])}${toHex(rgbMatch[3])}`.toUpperCase();
       }
-      return fallback;
+      return safeFallback;
     }
+
     if (typeof color.toCSS === 'function') {
-      return color.toCSS(true);
+      return color.toCSS(true).toUpperCase();
     }
-    return fallback;
-  }
+    return safeFallback;
+  } 
 }

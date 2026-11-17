@@ -108,7 +108,7 @@ export class PropertySingleView {
           <span class="text-[11px] text-zinc-400 w-[55px] shrink-0">Color</span>
           <div class="flex items-center flex-1 min-w-0 gap-1.5">
             <div class="tooltip-bottom flex items-center shrink-0" data-tooltip="Cambiar color">
-              <button type="button" id="propColorPicker" data-color="${hexColor}" style="background-color: ${hexColor}" class="w-[22px] h-[22px] rounded cursor-pointer border-0 outline-none p-0 shrink-0"></button>
+              <button type="button" id="propColorPicker" data-color="${hexColor}" style="background-color: ${hexColor}" class="w-[23px] h-[23px] rounded cursor-pointer border-0 outline-none p-0 shrink-0"></button>
             </div>
             <div class="relative flex-1 min-w-0 flex items-center">
               <select id="propColorModeSelect" class="w-full bg-[#17171c] hover:bg-[#27272a] text-zinc-200 text-[11px] px-2 py-1 rounded outline-none cursor-pointer appearance-none pr-5">

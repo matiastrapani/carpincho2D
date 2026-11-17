@@ -13,8 +13,10 @@
 
 
 ## 3. Historial Undo / Redo (Patrón Command)
+## 3. Historial Undo / Redo (Patrón Command)
 - Toda acción que cree, modifique, mueva, recorte o borre entidades o propiedades debe ejecutarse a través de una clase `Command` (`cadService.executeCommand(cmd)`).
 - Al borrar o deshacer (`undo`), los comandos deben limpiar el estado de selección usando los métodos oficiales de `SelectionManager` (`deselectEntity`, `deselectAllEditingEntities`), nunca manipulando arrays directamente con `.splice()` o `.push()`.
+- **Popovers y Diálogos con Vista Previa:** Todo selector flotante con actualización en vivo (como `ColorPickerPopover`) debe aislar su propio historial local (`Ctrl+Z` / `Ctrl+Y`), despachar **un único `Command` compuesto al confirmar o cerrar** (aunque modifique múltiples propiedades a la vez, como color y opacidad) y revertir al *snapshot* inicial al presionar `Escape` sin registrar pasos en el historial global de la aplicación.
 
 ## 4. Separación UI / Lógica CAD (Renderizado Visual y DOM)
 - Ningún panel HTML (`PropertyPanelUI`, `LayerPanelUI`) ni herramienta de UI puede modificar directamente propiedades geométricas o visuales de Paper.js (`entity.strokeColor = ...`, `entity.position = ...`).
@@ -39,9 +41,9 @@
 ## 8. Extensibilidad de Propiedades por Tipo de Entidad
 - **Modelo de Datos Plano (`entity.data`):** Toda propiedad específica de una entidad (`radius`, `width`, `height`, `fontSize`, `dashArray`, etc.) debe almacenarse como dato serializable en `entity.data`. Ningún estado geométrico o estilístico puede residir únicamente en nodos o propiedades internas de Paper.js.
 - **Vistas Componibles (Anti-Condicionales Monolíticos):** Prohibido agregar cadenas `if/else` por `entity.type` dentro de `PropertySingleView` o `PropertyBatchView`. Cada dominio de propiedades específicas debe encapsularse en un constructor de sección independiente (`*Section.js` < 250 líneas) registrado por tipo o capacidad de entidad.
-- **Contrato Obligatorio de Interacción Continua:** Todo control nuevo con actualización en tiempo real (sliders, scrubs, color pickers) debe usar `PropertyControls.attachScrubInput` (o equivalente estándar) cumpliendo estrictamente las 3 fases:
+- **Contrato Obligatorio de Interacción Continua:** Todo panel con controles de actualización en vivo debe proteger su método `refresh()` comenzando con `if (this._isPreviewing) return;` (no basta con filtrar solo en el callback de `subscribe`), evitando destruir el DOM y perder `setPointerCapture` durante el arrastre. Todo control continuo (sliders, scrubs, color pickers) debe usar `PropertyControls.attachScrubInput` (o equivalente estándar) cumpliendo estrictamente las 3 fases:
   1. `onScrubStart`: capturar *snapshot* clonado de `oldState` y activar `_isPreviewing = true`.
-  2. `onLiveChange`: previsualizar únicamente mediante `PropertyManager.previewEntitiesProperty(...)` (que actualiza `entity.data` y recalcula la geometría en Paper.js).
+  2. `onLiveChange`: previsualizar únicamente mediante el método oficial del gestor (`PropertyManager.previewEntitiesProperty(...)` o `LayerManager.previewLayerVisuals(...)`) sin reconstruir la UI.
   3. `onChange` / cancelación (`Escape` / `pointercancel`): restaurar `_isPreviewing = false` antes de despachar el `Command` o revertir el estado.
 - **Evaluación Genérica en Lote (`BatchSelectionAnalyzer`):** En selección múltiple, solo se renderizan las secciones compartidas por el 100% de las entidades seleccionadas. La comparación de valores iguales o mixtos (`?` / `-- Varios --`) debe resolverse mediante descriptores declarativos (`getValue`, `isEqual`), nunca agregando bucles específicos por propiedad.
 - **Invariantes Geométricos y Clonado:** La validación de rangos físicos (`radius > 0`, `width >= 0.1`, etc.) y el recálculo de geometría/handles ocurren en el Servicio o Comando, nunca solo en el HTML. Todo *snapshot* de propiedades compuestas (arrays u objetos) debe clonarse por valor, y toda nueva clave de `entity.data` debe soportarse en duplicación, guardado y exportación.

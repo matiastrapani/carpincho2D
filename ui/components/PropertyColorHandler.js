@@ -44,6 +44,20 @@ export class PropertyColorHandler {
       : document.getElementById(id);
   }
 
+  _syncCustomColorDOM(pickerTarget, selectId, hexColor, clearText = false) {
+    const picker = typeof pickerTarget === 'string'
+      ? this._el(pickerTarget)
+      : ((pickerTarget?.id ? this._el(pickerTarget.id) : null) || pickerTarget);
+    const select = this._el(selectId);
+
+    if (picker) {
+      picker.dataset.color = hexColor;
+      picker.style.backgroundColor = hexColor;
+      if (clearText) picker.textContent = '';
+    }
+    if (select) PropertyControls.updateSelectValueSilently(select, 'CUSTOM');
+  }
+
   _syncCustomOpacityDOM(selectId, inputId, containerId, alphaValue) {
     const selectEl = this._el(selectId);
     const inputEl = this._el(inputId);
@@ -60,6 +74,20 @@ export class PropertyColorHandler {
       span.classList.remove('text-zinc-500');
       span.classList.add('text-white');
     }
+  }
+
+  _cloneEntitySnapshot(entity) {
+    const rawOrigColor = entity.data?.origStrokeColor;
+    const rawStrokeColor = entity.strokeColor;
+    return {
+      colorByLayer: entity.data?.colorByLayer,
+      origStrokeColor: rawOrigColor != null ? this.getHexColor(rawOrigColor) : rawOrigColor,
+      strokeColor: rawStrokeColor != null ? this.getHexColor(rawStrokeColor) : rawStrokeColor,
+      opacityByLayer: entity.data?.opacityByLayer,
+      origOpacity: entity.data?.origOpacity,
+      baseOpacity: entity.data?.baseOpacity,
+      opacity: entity.opacity
+    };
   }
 
   _buildStateDiff(hexColor, alphaValue, flags, snapshot) {
@@ -99,8 +127,50 @@ export class PropertyColorHandler {
     }
   }
 
-  openForDefaults(triggerEl) {
+  _openPopoverSession({
+    initialColor,
+    initialOpacity,
+    triggerEl,
+    onLiveUpdate,
+    onCommit,
+    onRevert
+  }) {
     this.close();
+    let hasChanges = false;
+
+    this.activePopover = new ColorPickerPopover({
+      color: initialColor,
+      opacity: initialOpacity,
+      anchorEl: triggerEl,
+      presets: ColorPickerPopover.getPresets(),
+
+      onChange: (hexColor, alphaValue, flags = {}) => {
+        if (!flags.colorChanged && !flags.opacityChanged) return;
+        hasChanges = true;
+        this.onPreviewStateChange?.(true);
+        onLiveUpdate(hexColor, alphaValue, flags);
+      },
+
+      onChangeEnd: (hexColor, alphaValue, flags = {}) => {
+        this.onPreviewStateChange?.(false);
+        onCommit(hexColor, alphaValue, flags);
+      },
+
+      onCancel: () => {
+        this.onPreviewStateChange?.(false);
+        if (!hasChanges) return;
+        onRevert();
+        this.onRefresh();
+      },
+
+      onClose: () => {
+        this.onPreviewStateChange?.(false);
+        this.activePopover = null;
+      }
+    });
+  }
+
+  openForDefaults(triggerEl) {
     const { defaultColor } = CAD_THEME.properties;
     const propManager = this.utils.propertyManager;
     const defaults = propManager.defaultSettings;
@@ -113,40 +183,30 @@ export class PropertyColorHandler {
       ? (activeLayer?.opacity ?? 1)
       : defaults.opacity;
 
-    const snapshot = { color: defaults.color, opacity: defaults.opacity };
-    let hasChanges = false;
+    const snapshot = {
+      color: defaults.color != null && defaults.color !== 'BYLAYER'
+        ? this.getHexColor(defaults.color)
+        : defaults.color,
+      opacity: defaults.opacity
+    };
 
-    this.activePopover = new ColorPickerPopover({
-      color: this.getHexColor(resolvedColor),
-      opacity: typeof resolvedOpacity === 'number' ? resolvedOpacity : 1,
-      anchorEl: triggerEl,
-      presets: ColorPickerPopover.getPresets(),
-
-      onChange: (hexColor, alphaValue, flags = {}) => {
+    this._openPopoverSession({
+      initialColor: this.getHexColor(resolvedColor),
+      initialOpacity: typeof resolvedOpacity === 'number' ? resolvedOpacity : 1,
+      triggerEl,
+      onLiveUpdate: (hexColor, alphaValue, flags) => {
         const previewPatch = {};
         if (flags.colorChanged) {
           previewPatch.color = hexColor;
-          const freshTrigger = (triggerEl?.id ? this._el(triggerEl.id) : null) || triggerEl;
-          if (freshTrigger) {
-            freshTrigger.dataset.color = hexColor;
-            freshTrigger.style.backgroundColor = hexColor;
-          }
-          const colorSelect = this._el('defColorSelect');
-          if (colorSelect) PropertyControls.updateSelectValueSilently(colorSelect, 'CUSTOM');
+          this._syncCustomColorDOM(triggerEl, 'defColorSelect', hexColor);
         }
         if (flags.opacityChanged) {
           previewPatch.opacity = alphaValue;
           this._syncCustomOpacityDOM('defOpacityModeSelect', 'defOpacityInput', 'defOpacityContainer', alphaValue);
         }
-        if (flags.colorChanged || flags.opacityChanged) {
-          hasChanges = true;
-          this.onPreviewStateChange?.(true);
-          propManager.previewDefaultSetting(previewPatch);
-        }
+        propManager.previewDefaultSetting(previewPatch);
       },
-
-      onChangeEnd: (hexColor, alphaValue, flags = {}) => {
-        this.onPreviewStateChange?.(false);
+      onCommit: (hexColor, alphaValue, flags) => {
         const oldState = {};
         const newState = {};
         if (flags.colorChanged) {
@@ -159,23 +219,11 @@ export class PropertyColorHandler {
         }
         if (Object.keys(newState).length > 0) this.onDispatchDefault(oldState, newState);
       },
-
-      onCancel: () => {
-        this.onPreviewStateChange?.(false);
-        if (!hasChanges) return;
-        propManager.previewDefaultSetting(snapshot);
-        this.onRefresh();
-      },
-
-      onClose: () => {
-        this.onPreviewStateChange?.(false);
-        this.activePopover = null;
-      }
+      onRevert: () => propManager.previewDefaultSetting(snapshot)
     });
   }
 
   openForEntity(entity, triggerEl) {
-    this.close();
     const { defaultColor } = CAD_THEME.properties;
     const propManager = this.utils.propertyManager;
     const activeLayer = this.getLayer(entity.data?.layerId || '0');
@@ -189,68 +237,38 @@ export class PropertyColorHandler {
       ? (activeLayer?.opacity ?? 1)
       : (entity.data?.origOpacity ?? entity.opacity ?? 1);
 
-    const snapshot = {
-      colorByLayer: entity.data?.colorByLayer,
-      origStrokeColor: entity.data?.origStrokeColor,
-      strokeColor: entity.strokeColor,
-      opacityByLayer: entity.data?.opacityByLayer,
-      origOpacity: entity.data?.origOpacity,
-      baseOpacity: entity.data?.baseOpacity,
-      opacity: entity.opacity
-    };
-    let hasChanges = false;
+    const snapshot = this._cloneEntitySnapshot(entity);
 
-    this.activePopover = new ColorPickerPopover({
-      color: this.getHexColor(resolvedColor),
-      opacity: typeof resolvedOpacity === 'number' ? resolvedOpacity : 1,
-      anchorEl: triggerEl,
-      presets: ColorPickerPopover.getPresets(),
-
-      onChange: (hexColor, alphaValue, flags = {}) => {
+    this._openPopoverSession({
+      initialColor: this.getHexColor(resolvedColor),
+      initialOpacity: typeof resolvedOpacity === 'number' ? resolvedOpacity : 1,
+      triggerEl,
+      onLiveUpdate: (hexColor, alphaValue, flags) => {
         const { newState } = this._buildStateDiff(hexColor, alphaValue, flags, snapshot);
         if (flags.colorChanged) {
-          const picker = this._el('propColorPicker');
-          const select = this._el('propColorModeSelect');
-          if (picker) {
-            picker.dataset.color = hexColor;
-            picker.style.backgroundColor = hexColor;
-          }
-          if (select) PropertyControls.updateSelectValueSilently(select, 'CUSTOM');
+          this._syncCustomColorDOM('propColorPicker', 'propColorModeSelect', hexColor);
         }
         if (flags.opacityChanged) {
           this._syncCustomOpacityDOM('propOpacityModeSelect', 'propOpacityInput', 'propOpacityContainer', alphaValue);
         }
         if (Object.keys(newState).length > 0) {
-          hasChanges = true;
-          this.onPreviewStateChange?.(true);
           propManager.previewEntitiesProperty(entity, newState);
         }
       },
-
-      onChangeEnd: (hexColor, alphaValue, flags = {}) => {
-        this.onPreviewStateChange?.(false);
+      onCommit: (hexColor, alphaValue, flags) => {
         const { newState, oldState } = this._buildStateDiff(hexColor, alphaValue, flags, snapshot);
         if (Object.keys(newState).length > 0) this.onDispatchEntity(newState, entity, oldState);
       },
-
-      onCancel: () => {
-        this.onPreviewStateChange?.(false);
-        if (!hasChanges) return;
-        propManager.previewEntitiesProperty(entity, snapshot);
-        this.onRefresh();
-      },
-
-      onClose: () => {
-        this.onPreviewStateChange?.(false);
-        this.activePopover = null;
-      }
+      onRevert: () => propManager.previewEntitiesProperty(entity, snapshot)
     });
   }
 
   openForBatch(triggerEl) {
-    this.close();
     const entities = this.getSelectedEntities();
-    if (entities.length === 0) return;
+    if (entities.length === 0) {
+      this.close();
+      return;
+    }
 
     const { defaultColor } = CAD_THEME.properties;
     const propManager = this.utils.propertyManager;
@@ -276,65 +294,32 @@ export class PropertyColorHandler {
       ? sharedOpacity
       : (defaults.opacity !== 'BYLAYER' && typeof defaults.opacity === 'number' ? defaults.opacity : (activeLayer?.opacity ?? 1));
 
-    const snapshots = entities.map((ent) => ({
-      colorByLayer: ent.data?.colorByLayer,
-      origStrokeColor: ent.data?.origStrokeColor,
-      strokeColor: ent.strokeColor,
-      opacityByLayer: ent.data?.opacityByLayer,
-      origOpacity: ent.data?.origOpacity,
-      baseOpacity: ent.data?.baseOpacity,
-      opacity: ent.opacity
-    }));
-    let hasChanges = false;
+    const snapshots = entities.map((ent) => this._cloneEntitySnapshot(ent));
 
-    this.activePopover = new ColorPickerPopover({
-      color: initialColor,
-      opacity: initialOpacity,
-      anchorEl: triggerEl,
-      presets: ColorPickerPopover.getPresets(),
-
-      onChange: (hexColor, alphaValue, flags = {}) => {
+    this._openPopoverSession({
+      initialColor,
+      initialOpacity,
+      triggerEl,
+      onLiveUpdate: (hexColor, alphaValue, flags) => {
         const { newState } = this._buildStateDiff(hexColor, alphaValue, flags, snapshots[0]);
         if (flags.colorChanged) {
-          const picker = this._el('propBatchColorPicker');
-          const select = this._el('propBatchColorModeSelect');
-          if (picker) {
-            picker.dataset.color = hexColor;
-            picker.style.backgroundColor = hexColor;
-            picker.textContent = '';
-          }
-          if (select) PropertyControls.updateSelectValueSilently(select, 'CUSTOM');
+          this._syncCustomColorDOM('propBatchColorPicker', 'propBatchColorModeSelect', hexColor, true);
         }
         if (flags.opacityChanged) {
           this._syncCustomOpacityDOM(null, 'propBatchOpacityInput', null, alphaValue);
         }
         if (Object.keys(newState).length > 0) {
-          hasChanges = true;
-          this.onPreviewStateChange?.(true);
           propManager.previewEntitiesProperty(entities, newState);
         }
       },
-
-      onChangeEnd: (hexColor, alphaValue, flags = {}) => {
-        this.onPreviewStateChange?.(false);
+      onCommit: (hexColor, alphaValue, flags) => {
         const { newState } = this._buildStateDiff(hexColor, alphaValue, flags, snapshots[0]);
         if (Object.keys(newState).length > 0) {
           const oldStates = snapshots.map((s) => this._buildStateDiff(hexColor, alphaValue, flags, s).oldState);
           this.onDispatchEntity(newState, null, oldStates);
         }
       },
-
-      onCancel: () => {
-        this.onPreviewStateChange?.(false);
-        if (!hasChanges) return;
-        propManager.previewEntitiesProperty(entities, snapshots);
-        this.onRefresh();
-      },
-
-      onClose: () => {
-        this.onPreviewStateChange?.(false);
-        this.activePopover = null;
-      }
+      onRevert: () => propManager.previewEntitiesProperty(entities, snapshots)
     });
   }
 }

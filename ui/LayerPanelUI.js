@@ -82,6 +82,8 @@ export class LayerPanelUI {
   }
 
   refresh() {
+    if (this._isPreviewing) return;
+
     const list = this.container?.querySelector('#layerListContainer');
     if (!list) return;
 
