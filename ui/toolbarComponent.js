@@ -271,6 +271,14 @@ export class CADToolbarComponent {
           <button id="btnExtend" class="cad-button cad-button-square" data-tooltip="Extender">
             <span class="iconify text-2xl leading-none shrink-0" data-icon="custom:extend"></span>
           </button>
+
+          <button id="btnOffset" class="cad-button cad-button-square" data-tooltip="Desfasar">
+            <span class="iconify text-2xl leading-none shrink-0" data-icon="custom:offset"></span>
+          </button>
+
+          <button id="btnFillet" class="cad-button cad-button-square" data-tooltip="Empalme">
+            <span class="iconify text-2xl leading-none shrink-0" data-icon="custom:fillet"></span>
+          </button>
         </div>
       </div>
     `;

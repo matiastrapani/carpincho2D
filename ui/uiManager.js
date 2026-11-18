@@ -133,6 +133,8 @@ export class CADUIManager {
       { id: 'btnSelect', tool: 'select' },
       { id: 'btnTrim', tool: 'trim' },
       { id: 'btnExtend', tool: 'extend' },
+      { id: 'btnOffset', tool: 'offset' },
+      { id: 'btnFillet', tool: 'fillet' },
       { id: 'btn-circle-tool', tool: 'circle' }
     ];
 

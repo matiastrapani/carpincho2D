@@ -13,6 +13,8 @@ import { BezierTool } from './tools/BezierTool.js';
 import { PointTool } from './tools/PointTool.js';
 import { TrimTool } from './tools/TrimTool.js';
 import { ExtendTool } from './tools/ExtendTool.js';
+import { OffsetTool } from './tools/OffsetTool.js';
+import { FilletTool } from './tools/FilletTool.js';
 import { ToolManager } from './tools/ToolManager.js';
 
 import { DeleteCommand, AddLineCommand, AddEntityCommand, ImportSVGCommand } from './services/commands/cadCommands.js';
@@ -132,6 +134,8 @@ export class CADUtils {
     // Modificación y Edición
     this.toolManager.registerTool('trim', new TrimTool(this.service, this));
     this.toolManager.registerTool('extend', new ExtendTool(this.service, this));
+    this.toolManager.registerTool('offset', new OffsetTool(this.service, this, paper));
+    this.toolManager.registerTool('fillet', new FilletTool(this.service, this, paper));
   }
 
   setConsoleManager(consoleManager) {
@@ -243,6 +247,24 @@ export class CADUtils {
     if (upperVal === 'CLEAR') { this.clearCanvas(); return; }
     if (upperVal === 'EXTEND' || upperVal === 'EX') { this.setTool('extend'); return; }
     if (upperVal === 'CIRCLE' || upperVal === 'C') { this.setTool('circle'); return; }
+    if (upperVal === 'OFFSET' || upperVal === 'O') { this.setTool('offset'); return; }
+    if (upperVal === 'FILLET' || upperVal === 'F') { this.setTool('fillet'); return; }
+
+    if (this.currentToolMode === 'offset') {
+      const offsetTool = this.toolManager?.activeTool;
+      if (offsetTool && typeof offsetTool.applyDistanceFromCommand === 'function') {
+        offsetTool.applyDistanceFromCommand(val);
+      }
+      return;
+    }
+
+    if (this.currentToolMode === 'fillet') {
+      const filletTool = this.toolManager?.activeTool;
+      if (filletTool && typeof filletTool.applyRadiusFromCommand === 'function') {
+        filletTool.applyRadiusFromCommand(val);
+      }
+      return;
+    }
 
     if (this.activePath && ['line', 'polyline', 'spline', 'bezier'].includes(this.currentToolMode)) {
       const originPt = (this.currentToolMode === 'line')
@@ -374,7 +396,7 @@ export class CADUtils {
     this.currentToolMode = toolName;
     this.closeAllMenus();
 
-    const preserveSelectionTools = ['divide_count', 'divide_dist', 'trim'];
+    const preserveSelectionTools = ['divide_count', 'divide_dist', 'trim', 'offset'];
     const shouldPreserveSelection = preserveSelectionTools.includes(toolName);
     const preservedEntities = shouldPreserveSelection
       ? this.service.selectedEntities.filter(ent => ent && !ent.data?.isPointEntity)
@@ -448,7 +470,9 @@ export class CADUtils {
       'bezier': 'btnCurveGroup',
       'circle': 'btn-circle-tool',
       'trim': 'btnTrim',
-      'extend': 'btnExtend'
+      'extend': 'btnExtend',
+      'offset': 'btnOffset',
+      'fillet': 'btnFillet'
     };
 
     const activeBtnId = toolBtnMap[toolName];
@@ -459,7 +483,7 @@ export class CADUtils {
 
     const canvas = document.getElementById('cadCanvas');
     if (canvas) {
-      canvas.className = `tool-${['select', 'pan', 'trim', 'extend'].includes(toolName) ? toolName : 'draw'}`;
+      canvas.className = `tool-${['select', 'pan', 'trim', 'extend', 'offset', 'fillet'].includes(toolName) ? toolName : 'draw'}`;
     }
 
     if (['select', 'trim', 'divide_count', 'divide_dist'].includes(toolName)) {

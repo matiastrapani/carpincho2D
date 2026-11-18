@@ -225,3 +225,98 @@ export class ImportSVGCommand {
     }
   }
 }
+
+export class FilletCommand {
+  constructor(cadService, modifications = [], createdEntities = []) {
+    this.cadService = cadService;
+    this.modifications = modifications;
+    this.createdEntities = Array.isArray(createdEntities)
+      ? createdEntities.filter(Boolean)
+      : (createdEntities ? [createdEntities] : []);
+  }
+
+  _applyPathState(path, state) {
+    if (!path || !state) return;
+    const snapshot = state.segments || state;
+
+    if (typeof state.closed === 'boolean') {
+      path.closed = state.closed;
+    }
+
+    while (path.segments.length > snapshot.length) {
+      path.removeSegment(path.segments.length - 1);
+    }
+    while (path.segments.length < snapshot.length) {
+      path.addSegment(new paper.Point(0, 0));
+    }
+    snapshot.forEach((seg, idx) => {
+      path.segments[idx].point = seg.point.clone();
+      path.segments[idx].handleIn = seg.handleIn.clone();
+      path.segments[idx].handleOut = seg.handleOut.clone();
+    });
+  }
+
+  execute() {
+    const utils = this.cadService.utils || window.cadUtils;
+    const layerManager = utils?.layerManager;
+    const drawLayer = utils?.drawLayer || paper.project.activeLayer;
+
+    this.modifications.forEach(({ entity, afterState, afterSegments }) => {
+      const targetState = afterState || afterSegments;
+      if (entity && targetState) {
+        this._applyPathState(entity, targetState);
+      }
+    });
+
+    this.createdEntities.forEach((ent) => {
+      if (!this.cadService.entities.includes(ent)) {
+        this.cadService.entities.push(ent);
+      }
+
+      if (layerManager) {
+        const targetLayerId = String(ent.data?.layerId || layerManager.activeLayerId || '0');
+        layerManager.assignEntityToLayer(ent, targetLayerId);
+      } else if (!ent.parent || ent.layer !== drawLayer) {
+        drawLayer.addChild(ent);
+      }
+    });
+
+    layerManager?.syncZOrder();
+
+    if (utils?.selectionRenderEngine) {
+      utils.selectionRenderEngine.updateEntitiesStroke();
+      utils.selectionRenderEngine.renderBezierHandles();
+    }
+    if (typeof paper !== 'undefined' && paper.view) {
+      paper.view.update();
+    }
+  }
+
+  undo() {
+    const utils = this.cadService.utils || window.cadUtils;
+
+    this.modifications.forEach(({ entity, beforeState, beforeSegments }) => {
+      const targetState = beforeState || beforeSegments;
+      if (entity && targetState) {
+        this._applyPathState(entity, targetState);
+      }
+    });
+
+    this.createdEntities.forEach((ent) => {
+      const idx = this.cadService.entities.indexOf(ent);
+      if (idx !== -1) {
+        this.cadService.entities.splice(idx, 1);
+      }
+      this.cadService.deselectEntity(ent);
+      ent.remove();
+    });
+
+    if (utils?.selectionRenderEngine) {
+      utils.selectionRenderEngine.updateEntitiesStroke();
+      utils.selectionRenderEngine.renderBezierHandles();
+    }
+    if (typeof paper !== 'undefined' && paper.view) {
+      paper.view.update();
+    }
+  }
+}
