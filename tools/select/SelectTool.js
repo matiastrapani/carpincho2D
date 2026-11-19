@@ -41,7 +41,6 @@ export class SelectTool extends BaseTool {
       selectionBoxRect: null,
       pivotPoint: null,
       isPivotFromPoint: false,
-      dragRubberBand: null,
       pendingMenuHits: null,
       pendingMenuEvent: null,
       pendingMenuPoint: null,
@@ -301,7 +300,7 @@ export class SelectTool extends BaseTool {
       }
 
       this.utils.hud.updateHUD(finalTargetPivot);
-      this._updateDragRubberBand(pivotPoint, finalTargetPivot);
+      this.utils.hud.updateDragRubberBand(pivotPoint, finalTargetPivot);
       const globalDelta = finalTargetPivot.subtract(pivotPoint);
 
       this.dragState.entityStartPositions.forEach((item) => {
@@ -472,9 +471,7 @@ export class SelectTool extends BaseTool {
     if (this.dragState.selectionBoxRect) {
       this.dragState.selectionBoxRect.remove();
     }
-    if (this.dragState.dragRubberBand) {
-      this.dragState.dragRubberBand.remove();
-    }
+    this.utils.hud.clearDragRubberBand();
     this.handleModule.reset();
     this.parametricHandler.reset();
     this.segmentEditHandler.reset();

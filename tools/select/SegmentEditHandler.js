@@ -13,10 +13,7 @@ export class SegmentEditHandler {
   }
 
   reset() {
-    if (this.dragRubberBand) {
-      this.dragRubberBand.remove();
-    }
-    this.dragRubberBand = null;
+    this.utils?.hud?.clearDragRubberBand?.();
     this.dragAnchorSegment = null;
     this.pivotPoint = null;
     this.mouseStartPt = null;
@@ -222,7 +219,7 @@ export class SegmentEditHandler {
 
       const currentPivotPos = startPt.add(globalDelta);
       this.utils.hud.updateHUD(currentPivotPos);
-      this._updateDragRubberBand(startPt, currentPivotPos);
+      this.utils.hud.updateDragRubberBand(startPt, currentPivotPos);
       this.utils.renderPivotMarker(currentPivotPos);
     }
 

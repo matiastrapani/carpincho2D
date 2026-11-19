@@ -15,6 +15,7 @@ export class HUDManager {
     this.feedbackTextAngle = null;
 
     this.snapMarkersGroup = null;
+    this.dragRubberBand = null;
     
     this.lastSnapPoint = null;
     this.lastSnapType = null;
@@ -357,6 +358,49 @@ export class HUDManager {
     }
   }
 
+  /**
+   * Renderiza o actualiza la línea guía discontinua durante el arrastre con escala constante en pantalla
+   */
+  updateDragRubberBand(fromPt, toPt) {
+    if (!fromPt || !toPt) return;
+
+    const hudLayer = this.utils?.hudLayer || paper.project?.layers?.['hudLayer'];
+    if (!hudLayer) return;
+
+    const zoom = paper.view.zoom || 1;
+    const strokeWidth = (CAD_THEME.rubberBand?.strokeWidthPx ?? 1) / zoom;
+    const dashArray = (CAD_THEME.rubberBand?.dashArrayPx || [6, 4]).map((v) => v / zoom);
+
+    if (!this.dragRubberBand) {
+      const line = new paper.Path.Line({
+        from: fromPt,
+        to: toPt,
+        strokeColor: CAD_THEME.selection.line.strokeColor,
+        strokeWidth,
+        dashArray,
+        data: { isAuxiliary: true },
+        insert: false
+      });
+      hudLayer.addChild(line);
+      this.dragRubberBand = line;
+    } else {
+      this.dragRubberBand.segments[0].point = fromPt;
+      this.dragRubberBand.segments[1].point = toPt;
+      this.dragRubberBand.strokeWidth = strokeWidth;
+      this.dragRubberBand.dashArray = dashArray;
+    }
+  }
+
+  /**
+   * Elimina la línea guía discontinua del arrastre activo
+   */
+  clearDragRubberBand() {
+    if (this.dragRubberBand) {
+      this.dragRubberBand.remove();
+      this.dragRubberBand = null;
+    }
+  }
+
   clear() {
     if (this.snapMarkersGroup) {
       this.snapMarkersGroup.removeChildren();
@@ -373,6 +417,7 @@ export class HUDManager {
     window.removeEventListener('pointermove', this._pointerMoveHandler, { passive: true });
 
     this.clear();
+    this.clearDragRubberBand();
     if (this.feedbackGroup) {
       this.feedbackGroup.remove();
       this.feedbackGroup = null;

@@ -13,10 +13,7 @@ export class HandleSelectionHandler {
   }
 
   reset() {
-    if (this.dragRubberBand) {
-      this.dragRubberBand.remove();
-    }
-    this.dragRubberBand = null;
+    this.utils?.hud?.clearDragRubberBand?.();
     this.activeHandleData = null;
     this.mouseStartPt = null;
     this.handleDragStartPt = null;
@@ -206,7 +203,7 @@ export class HandleSelectionHandler {
     }
 
     this.utils.hud.updateHUD(finalPoint);
-    this._updateDragRubberBand(startPt, finalPoint);
+    this.utils.hud.updateDragRubberBand(startPt, finalPoint);
     this._applyDeltaToSelection(finalPoint.subtract(startPt));
     this.utils.selectionRenderEngine.renderBezierHandles();
   }
