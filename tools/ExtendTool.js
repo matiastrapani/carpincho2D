@@ -14,6 +14,7 @@ export class ExtendTool extends BaseTool {
     this.extendData = null;
     this.lastMouseEvent = null;
     this.mode = 'smooth'; // 'smooth' o 'line'
+    this.cursorMode = 'extend';
   }
 
   onActivate() {

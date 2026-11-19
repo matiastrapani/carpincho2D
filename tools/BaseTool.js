@@ -9,6 +9,10 @@ export class BaseTool {
     this.service = cadService;
     this.utils = cadUtils;
     this.promptText = 'Command:';
+    this.preservesSelection = false; // false | 'curves' | 'all'
+    this.preservesEditMode = false;
+    this.clearsHudOnActivate = false;
+    this.cursorMode = 'draw';
   }
 
   onActivate() {
@@ -24,6 +28,22 @@ export class BaseTool {
   onMouseDrag(event) {}
   onMouseMove(event) {}
   onMouseUp(event) {}
+
+  getSelectionPreserveMode(toolName) {
+    return this.preservesSelection;
+  }
+
+  shouldPreserveEditMode(toolName) {
+    return Boolean(this.preservesEditMode);
+  }
+
+  shouldClearHudOnActivate(toolName) {
+    return Boolean(this.clearsHudOnActivate);
+  }
+
+  getCursorMode(toolName) {
+    return this.cursorMode || 'draw';
+  }  
 
   // Captura solo la tecla ESC para salir
   onKeyDown(event) {

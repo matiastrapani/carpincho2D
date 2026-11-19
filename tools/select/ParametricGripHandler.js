@@ -13,11 +13,16 @@ export class ParametricGripHandler {
     this.gripStartPoint = null;
   }
 
+  _getPaper() {
+    return this.utils?.paper || (typeof paper !== 'undefined' ? paper : null);
+  }
+
   hitTest(point) {
     const handlesGroup = this.utils.controlHandlesGroup;
     if (!handlesGroup) return null;
 
-    const tolerance = 8 / paper.view.zoom;
+    const zoom = this._getPaper()?.view?.zoom || 1;
+    const tolerance = 8 / zoom;
 
     const markerHit = handlesGroup.hitTest(point, {
       fill: true,
@@ -48,6 +53,7 @@ export class ParametricGripHandler {
 
   handleHover(point) {
     const hitGrip = this.hitTest(point);
+    const paperInst = this._getPaper();
 
     if (hitGrip && hitGrip.item && hitGrip.item.data) {
       if (this.service.hoveredEntity) {
@@ -66,8 +72,8 @@ export class ParametricGripHandler {
         if (this.utils.selectionRenderEngine?.renderBezierHandles) {
           this.utils.selectionRenderEngine.renderBezierHandles();
         }
-        if (typeof paper !== 'undefined' && paper.view) {
-          paper.view.update();
+        if (paperInst?.view) {
+          paperInst.view.update();
         }
       }
       return true;
@@ -78,8 +84,8 @@ export class ParametricGripHandler {
       if (this.utils.selectionRenderEngine?.renderBezierHandles) {
         this.utils.selectionRenderEngine.renderBezierHandles();
       }
-      if (typeof paper !== 'undefined' && paper.view) {
-        paper.view.update();
+      if (paperInst?.view) {
+        paperInst.view.update();
       }
     }
     return false;
@@ -134,8 +140,9 @@ export class ParametricGripHandler {
     if (this.utils.selectionRenderEngine?.renderBezierHandles) {
       this.utils.selectionRenderEngine.renderBezierHandles();
     }
-    if (window.paper?.view) {
-      paper.view.update();
+    const paperInst = this._getPaper();
+    if (paperInst?.view) {
+      paperInst.view.update();
     }
 
     return true;

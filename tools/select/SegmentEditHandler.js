@@ -15,6 +15,10 @@ export class SegmentEditHandler {
     this.reset();
   }
 
+  _getPaper() {
+    return this.utils?.paper || (typeof paper !== 'undefined' ? paper : null);
+  }
+
   reset() {
     this.utils?.hud?.clearDragRubberBand?.();
     this.session?.reset();
@@ -30,15 +34,16 @@ export class SegmentEditHandler {
   _updateDragRubberBand(fromPt, toPt) {
     if (!fromPt || !toPt) return;
 
-    const hudLayer = this.utils.hudLayer || paper.project?.layers?.['hudLayer'];
-    if (!hudLayer) return;
+    const paperInst = this._getPaper();
+    const hudLayer = this.utils.hudLayer || paperInst?.project?.layers?.['hudLayer'];
+    if (!hudLayer || !paperInst) return;
 
-    const zoom = paper.view.zoom || 1;
+    const zoom = paperInst.view?.zoom || 1;
     const strokeWidth = (CAD_THEME.rubberBand?.strokeWidthPx ?? 1) / zoom;
     const dashArray = (CAD_THEME.rubberBand?.dashArrayPx || [6, 4]).map((v) => v / zoom);
 
     if (!this.dragRubberBand) {
-      const line = new paper.Path.Line({
+      const line = new paperInst.Path.Line({
         from: fromPt,
         to: toPt,
         strokeColor: CAD_THEME.selection.line.strokeColor,
@@ -57,13 +62,12 @@ export class SegmentEditHandler {
     }
   }
 
-
   tryEnterEditModeOnDoubleClick(targetEntity, isShift, now) {
     const isDoubleClick = (now - this.lastClickTime) < 350 && this.lastClickEntity === targetEntity;
     this.lastClickTime = now;
     this.lastClickEntity = targetEntity;
 
-    const paperInst = this.utils.paper || paper;
+    const paperInst = this._getPaper();
     if (!isDoubleClick || !paperInst || !(targetEntity instanceof paperInst.Path) || targetEntity.data?.isPointEntity) {
       return false;
     }
@@ -99,7 +103,7 @@ export class SegmentEditHandler {
     this.service.deselectAllHandles();
     this.service.deselectAllSegments();
 
-    const paperInst = this.utils.paper || paper;
+    const paperInst = this._getPaper();
 
     this.service.editingEntities.forEach((entity) => {
       if (!entity || entity.visible === false) return;
@@ -137,10 +141,11 @@ export class SegmentEditHandler {
   }
 
   onMouseDown(event, targetItem, hitEntity) {
+    const paperInst = this._getPaper();
     const isAlreadyInEditMode = this.service.editingEntities.includes(targetItem);
     const isEntityFullySelected = this.service.selectedEntities.includes(targetItem);
 
-    if (!isAlreadyInEditMode || isEntityFullySelected || !(targetItem instanceof paper.Path) || targetItem.data?.isPointEntity) {
+    if (!isAlreadyInEditMode || isEntityFullySelected || !paperInst || !(targetItem instanceof paperInst.Path) || targetItem.data?.isPointEntity) {
       return false;
     }
 
@@ -274,14 +279,17 @@ export class SegmentEditHandler {
       return true;
     }
 
-    const mouseBox = new paper.Rectangle(
-      point.subtract(new paper.Point(8 / zoom, 8 / zoom)),
-      new paper.Size(16 / zoom, 16 / zoom)
+    const paperInst = this._getPaper();
+    if (!paperInst) return false;
+
+    const mouseBox = new paperInst.Rectangle(
+      point.subtract(new paperInst.Point(8 / zoom, 8 / zoom)),
+      new paperInst.Size(16 / zoom, 16 / zoom)
     );
 
     let hitCurve = null;
     for (const ent of this.service.editingEntities) {
-      if (ent instanceof paper.Path && ent.curves && !ent.data?.isPointEntity) {
+      if (ent instanceof paperInst.Path && ent.curves && !ent.data?.isPointEntity) {
         if (ent.bounds && !ent.bounds.intersects(mouseBox)) continue;
         const loc = ent.getNearestLocation(point);
         if (loc?.point && loc.point.getDistance(point) <= (8 / zoom)) {

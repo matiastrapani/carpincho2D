@@ -11,8 +11,6 @@
 - Ninguna entidad perteneciente a una capa **bloqueada** (`locked: true`) u **oculta** (`visible: false`) puede ser seleccionada, editada ni incluida en selección por recuadro.
 - Si una capa se oculta o bloquea, el panel de propiedades debe filtrar automáticamente esas entidades sin borrarlas del lienzo.
 
-
-## 3. Historial Undo / Redo (Patrón Command)
 ## 3. Historial Undo / Redo (Patrón Command)
 - Toda acción que cree, modifique, mueva, recorte o borre entidades o propiedades debe ejecutarse a través de una clase `Command` (`cadService.executeCommand(cmd)`).
 - Al borrar o deshacer (`undo`), los comandos deben limpiar el estado de selección usando los métodos oficiales de `SelectionManager` (`deselectEntity`, `deselectAllEditingEntities`), nunca manipulando arrays directamente con `.splice()` o `.push()`.
@@ -47,3 +45,10 @@
   3. `onChange` / cancelación (`Escape` / `pointercancel`): restaurar `_isPreviewing = false` antes de despachar el `Command` o revertir el estado.
 - **Evaluación Genérica en Lote (`BatchSelectionAnalyzer`):** En selección múltiple, solo se renderizan las secciones compartidas por el 100% de las entidades seleccionadas. La comparación de valores iguales o mixtos (`?` / `-- Varios --`) debe resolverse mediante descriptores declarativos (`getValue`, `isEqual`), nunca agregando bucles específicos por propiedad.
 - **Invariantes Geométricos y Clonado:** La validación de rangos físicos (`radius > 0`, `width >= 0.1`, etc.) y el recálculo de geometría/handles ocurren en el Servicio o Comando, nunca solo en el HTML. Todo *snapshot* de propiedades compuestas (arrays u objetos) debe clonarse por valor, y toda nueva clave de `entity.data` debe soportarse en duplicación, guardado y exportación.
+
+## 9. Arquitectura y Ciclo de Vida de Herramientas
+- **Contrato Declarativo (`BaseTool`):** Prohibido agregar listas de nombres de herramientas (`if (toolName === '...')`) en `CADUtils` o `ToolManager`. Toda herramienta declara sus políticas mediante propiedades o métodos de `BaseTool` (`preservesSelection`, `preservesEditMode`, `clearsHudOnActivate`, `getCursorMode()`).
+- **Composición de Handlers (Cero Duplicación):** Ninguna herramienta nueva puede reimplementar detección de colisiones, selección por ventana/cruce, menús de superposición o arrastre compuesto. Debe reutilizar los submódulos oficiales (`BoxSelectHandler`, `SelectionMenuHandler`, `HandleSelectionHandler`, `SegmentEditHandler`, `MixedDragSession`).
+- **Estándar de Selección CAD dentro de Herramientas:** En herramientas de modificación con selección previa (`Move`, `Copy`, `Rotate`, `Scale`), la selección de **entidades** es acumulativa (clic o recuadro suma, clic en el vacío conserva la selección y `Shift` resta estrictamente), mientras que la selección de **nodos, aristas y tiradores** en modo edición mantiene siempre el comportamiento convencional (clic reemplaza, clic en el vacío limpia y `Shift` alterna).
+- **Ciclo de Vida, Guías y Reversión:** Toda herramienta debe implementar `cancel()` y `cleanup()` para remover guías visuales auxiliares (rubber bands, cajas elásticas, marcadores de pivote/OSNAP), revertir cualquier transformación en curso si se cancela (`Escape` / clic derecho) antes de despachar el `Command`, y retornar a `SelectTool` mediante `exitToSelect()`.
+- **Resolución Segura de Paper.js:** Prohibido invocar `paper` o `window.paper` directamente en herramientas o submódulos nuevos; acceder siempre mediante la instancia encapsulada en `cadUtils` (`this.utils.paper` / `_getPaper()`).

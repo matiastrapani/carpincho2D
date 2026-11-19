@@ -68,15 +68,21 @@ export class HandleSelectionHandler {
     }
   }
 
+  _getPaper() {
+    return this.utils?.paper || (typeof paper !== 'undefined' ? paper : null);
+  }
+
   _updateDragRubberBand(fromPt, toPt) {
     if (!fromPt || !toPt) return;
 
-    const hudLayer = this.utils.hudLayer || paper.project?.layers?.['hudLayer'];
-    if (!hudLayer) return;
+    const paperInst = this._getPaper();
+    const hudLayer = this.utils.hudLayer || paperInst?.project?.layers?.['hudLayer'];
+    if (!hudLayer || !paperInst) return;
 
-    const strokeWidth = 1 / paper.view.zoom;
+    const zoom = paperInst.view?.zoom || 1;
+    const strokeWidth = 1 / zoom;
     if (!this.dragRubberBand) {
-      const line = new paper.Path.Line({
+      const line = new paperInst.Path.Line({
         from: fromPt,
         to: toPt,
         strokeColor: CAD_THEME.selection.line.strokeColor,
@@ -97,7 +103,7 @@ export class HandleSelectionHandler {
   hitTest(point) {
     if (!this.utils.controlHandlesGroup) return null;
 
-    const zoom = paper.view.zoom;
+    const zoom = this._getPaper()?.view?.zoom || 1;
     return this.utils.controlHandlesGroup.hitTest(point, {
       fill: true,
       stroke: true,

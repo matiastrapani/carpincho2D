@@ -21,6 +21,11 @@ export class SelectTool extends BaseTool {
     this.selectionMenuHandler = new SelectionMenuHandler(cadService, cadUtils);
     this.dragHandler = new SelectionDragHandler(cadService, cadUtils);
     this.activeModule = null;
+
+    this.preservesSelection = 'all';
+    this.preservesEditMode = true;
+    this.clearsHudOnActivate = true;
+    this.cursorMode = 'select';
   }
 
   _refreshView() {

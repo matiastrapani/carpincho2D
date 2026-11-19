@@ -131,6 +131,7 @@ export class CADUIManager {
     const simpleTools = [
       { id: 'btnPan', tool: 'pan' },
       { id: 'btnSelect', tool: 'select' },
+      { id: 'btnMove', tool: 'move' },
       { id: 'btnTrim', tool: 'trim' },
       { id: 'btnExtend', tool: 'extend' },
       { id: 'btn-circle-tool', tool: 'circle' }

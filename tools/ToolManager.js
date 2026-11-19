@@ -34,10 +34,27 @@ export class ToolManager {
     // 1. Limpiar la interfaz (submenús desplegados y botones activos)
     this.updateToolButtonsUI(name);
 
-    // 2. Resguardar selección activa si la herramienta entrante opera sobre objetos preseleccionados
-    const preserveTools = ['trim', 'divide_count', 'divide_dist'];
-    const preservedSelection = (preserveTools.includes(name) && this.service.selectedEntities)
-      ? [...this.service.selectedEntities]
+    // 2. Consultar políticas declarativas de la herramienta entrante
+    const nextTool = this.tools[name] || null;
+    const isPanMode = name === 'pan';
+    const selectionMode = isPanMode
+      ? 'all'
+      : (nextTool?.getSelectionPreserveMode?.(name) ?? nextTool?.preservesSelection ?? false);
+    const preservesEditMode = isPanMode ||
+      Boolean(nextTool?.shouldPreserveEditMode?.(name) ?? nextTool?.preservesEditMode);
+
+    const preservedSelection = (selectionMode && this.service.selectedEntities)
+      ? this.service.selectedEntities.filter(
+          (ent) => ent && (selectionMode === 'all' || !ent.data?.isPointEntity)
+        )
+      : null;
+
+    const preservedEditState = preservesEditMode
+      ? {
+          editingEntities: [...(this.service.editingEntities || [])],
+          selectedSegments: [...(this.service.selectedSegments || [])],
+          selectedHandles: [...(this.service.selectedHandles || [])]
+        }
       : null;
 
     // 3. Limpieza de la herramienta saliente (invocación automática de cleanup)
@@ -49,14 +66,19 @@ export class ToolManager {
       }
     }
 
-    // 4. Restaurar la selección resguardada en el servicio
+    // 4. Restaurar la selección y el estado de edición resguardados en el servicio
     if (preservedSelection && preservedSelection.length > 0) {
       this.service.selectedEntities = preservedSelection;
+    }
+    if (preservedEditState) {
+      this.service.editingEntities = preservedEditState.editingEntities;
+      this.service.selectedSegments = preservedEditState.selectedSegments;
+      this.service.selectedHandles = preservedEditState.selectedHandles;
     }
 
     // 5. Cambiar a la nueva herramienta y ejecutar su onActivate
     this.activeToolName = name;
-    this.activeTool = this.tools[name] || null;
+    this.activeTool = nextTool;
 
     if (this.activeTool && typeof this.activeTool.onActivate === 'function') {
       this.activeTool.onActivate();

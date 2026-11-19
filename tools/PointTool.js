@@ -16,6 +16,14 @@ export class PointTool extends BaseTool {
     this.divisionCount = null;
   }
 
+  getSelectionPreserveMode(toolName) {
+    return (toolName === 'divide_count' || toolName === 'divide_dist') ? 'curves' : false;
+  }
+
+  shouldClearHudOnActivate(toolName) {
+    return toolName === 'divide_count' || toolName === 'divide_dist';
+  }
+  
   // --- HELPER DE CONFIGURACIÓN POR DEFECTO PARA PUNTOS ---
   getPointDefaultOpts() {
     const activeLayerId = String(this.utils.layerManager?.getActiveLayer()?.id || this.utils.layerManager?.activeLayerId || '0');

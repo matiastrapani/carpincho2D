@@ -64,3 +64,13 @@ icono mouse en tooltip
   - **Contexto:** Durante el refactor de `cadUtils.js`, inyectar explícitamente las dependencias en `SelectionRenderEngine` (`cadService`, `cadUtils`, `paper`) en lugar de leer `window.cadUtils`, `window.cadService` o el global `paper`.
   - **Archivos afectados:** `services/renderers/SelectionRenderEngine.js`, `services/renderers/BezierHandlesRenderer.js`, `services/renderers/ParametricGripRenderer.js` y el punto de inicialización en `cadUtils.js`.
   - **Criterio de aceptación:** Ninguno de los 3 renderers referencia `window.*` ni `paper` implícito, recibiendo la instancia `paper` mediante el objeto `context` de renderizado y manteniendo los 3 archivos ≤ 350 líneas.
+
+
+más adelante podemos mover MixedDragSession, BoxSelectHandler y SelectionMenuHandler a una carpeta tools/shared/ cuando también los consuman CopyTool, RotateTool o PointTool).
+Resolver osnap interseccion
+ver la seleccion de imagenes y colores de seleccion
+
+Implementar CopyTool (tools/CopyTool.js): Construir la herramienta de copia componiendo CommandSelectionHandler y clonado de entidades (entity.clone()), permitiendo múltiples copias consecutivas hasta Enter o Escape registradas mediante Command.
+Soportar entrada por consola en MoveTool (onCommandInput): Permitir ingresar coordenadas o distancia numérica sobre el vector activo durante la fase PICK_DEST_POINT.
+Extraer SegmentEditHandler.selectEdgeAt: Mover _selectEditModeEdge desde CommandSelectionHandler hacia SegmentEditHandler para unificar la selección de tramos en modo edición.
+Migrar DivisionSelectionHandler.js a BoxSelectHandler y _getPaper(): Reemplazar la caja de selección propia de división por BoxSelectHandler con filtro de entidades editables y eliminar dependencias al paper global.

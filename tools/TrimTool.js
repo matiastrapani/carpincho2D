@@ -9,6 +9,10 @@ export class TrimTool extends BaseTool {
   constructor(cadService, cadUtils) {
     super(cadService, cadUtils);
     this.selector = new TrimSelectionHandler(cadService, cadUtils);
+
+    this.preservesSelection = 'curves';
+    this.clearsHudOnActivate = true;
+    this.cursorMode = 'trim';
   }
 
   onActivate() {

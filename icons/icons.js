@@ -176,8 +176,52 @@ export const CUSTOM_ICONS = {
     <path d="M5.8125 9.45699V18.833H15.1855V9.45699H5.8125Z" stroke-width="5" stroke-miterlimit="79.8403" stroke="currentColor" fill="none"/>
     <path d="M80.8125 9.45699V18.833H90.1855V9.45699H80.8125Z" stroke-width="5" stroke-miterlimit="79.8403" stroke="currentColor" fill="none"/>
     `
-  }
+  },
+
+  'custom:move': {
+    width: 96,
+    height: 96,
+    body: `
+    <path stroke-width="5" stroke-miterlimit="79.8403" stroke="currentColor" fill="none" d="
+    M35.3496 61.1114L56.6973 39.7515M35.3496 61.1114V86.1101H10.3496V61.1114H35.3496ZM42.6289 39.2351H57.2155V53.8218M60.3496 11.1113V36.11H85.3496V11.1113H60.3496Z" />
+    `
+  },
+
+  'custom:copy': {
+    width: 96,
+    height: 96,
+    body: `
+    <path stroke-width="5" stroke-miterlimit="79.8403" stroke="currentColor" fill="none" d="
+    M60.3496 33.1101H44.7227V58.1088H69.7227V45.61M60.3496 33.1101H69.7227V45.61M60.3496 33.1101V20.6113H85.3496V45.61H69.7227M10.3496 8.11011V33.1088H35.3496V8.11011H10.3496ZM60.3496 64.3608V89.3595H85.3496V64.3608H60.3496ZM10.3496 58.1113V83.11H35.3496V58.1113H10.3496Z" />
+    `
+  },
+
+
+  'custom:fillet': {
+    width: 96,
+    height: 96,
+    body: `
+    <path stroke-width="5" stroke-miterlimit="79.8403" stroke="currentColor" fill="none" d="M44.0703 14.5645H83.6569V49.9778" />
+    <path stroke-width="8" stroke-miterlimit="79.8403" stroke="currentColor" fill="none" d="M18.0293 16.1245H43.6426C64.8692 16.1245 82.096 33.3244 82.096 54.5111V77.0578" />
+    <path stroke-width="5" stroke-miterlimit="79.8403" stroke="currentColor" fill="none" d="M18.0296 11.4448H8.65625V20.818H18.0296V16.1245V11.4448Z" />
+    <path stroke-width="5" stroke-miterlimit="79.8403" stroke="currentColor" fill="none" d="M82.0964 77.0579H77.416V86.4446H86.7894V77.0579H82.0964Z" />
+    `
+  },
+
+  'custom:offset': {
+    width: 96,
+    height: 96,
+    body: `
+    <path stroke-width="5" stroke-miterlimit="79.8403" stroke="currentColor" fill="none" d="M8.65625 8.31144V17.6848H18.043V8.31144H8.65625Z" />
+    <path stroke-width="5" stroke-miterlimit="79.8403" stroke="currentColor" fill="none" d="M77.416 77.0579V86.4446H86.7894V77.0579H77.416Z" />
+    <path stroke-width="8" stroke-miterlimit="79.8403" stroke="currentColor" fill="none" d="M19.6016 13.0045C54.0949 13.0045 82.0951 41.0045 82.0951 75.4978" "/>
+    <path stroke-width="5" stroke-miterlimit="79.8403" stroke="currentColor" fill="none" d="M19.6016 39.5645C39.4282 39.5645 55.5352 55.6711 55.5352 75.4978" />
+    <path stroke-width="5" stroke-miterlimit="79.8403" stroke="currentColor" fill="none" d="M49.2832 77.0579V86.4446H58.6566V77.0579H49.2832Z" />
+    <path stroke-width="5" stroke-miterlimit="79.8403" stroke="currentColor" fill="none" d="M8.65625 36.4449V45.8181H18.043V36.4449H8.65625Z" />
+    `
+  },
 };
+
 
 // íconos Lucide exactos (grilla 24x24)
 export const LUCIDE_PATHS = {

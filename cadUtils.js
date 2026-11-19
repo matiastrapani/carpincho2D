@@ -11,10 +11,11 @@ import { CircleTool } from './tools/CircleTool.js';
 import { SplineTool } from './tools/SplineTool.js';
 import { BezierTool } from './tools/BezierTool.js';
 import { PointTool } from './tools/PointTool.js';
+
 import { TrimTool } from './tools/TrimTool.js';
 import { ExtendTool } from './tools/ExtendTool.js';
 import { ToolManager } from './tools/ToolManager.js';
-
+import { MoveTool } from './tools/MoveTool.js';
 import { DeleteCommand, AddLineCommand, AddEntityCommand, ImportSVGCommand } from './services/commands/cadCommands.js';
 import { HUDManager } from './ui/HUDManager.js';
 import { CanvasViewportManager } from './services/CanvasViewportManager.js';
@@ -28,8 +29,9 @@ import { CAD_THEME } from './config/cadTheme.js';
 
 export class CADUtils {
   constructor(canvasId, service) {
-    // 1. Referencias al DOM y Servicio Core
+    // 1. Referencias al DOM, Paper.js y Servicio Core
     this.canvasElement = document.getElementById(canvasId);
+    this.paper = typeof paper !== 'undefined' ? paper : null;
     this.service = service;
     this.service.utils = this;
 
@@ -130,6 +132,7 @@ export class CADUtils {
     this.toolManager.registerTool('divide_dist', pointToolInstance);
 
     // Modificación y Edición
+    this.toolManager.registerTool('move', new MoveTool(this.service, this));
     this.toolManager.registerTool('trim', new TrimTool(this.service, this));
     this.toolManager.registerTool('extend', new ExtendTool(this.service, this));
   }
@@ -238,6 +241,7 @@ export class CADUtils {
     if (upperVal === 'POLYLINE' || upperVal === 'PL' || upperVal === 'P') { this.setTool('polyline'); return; }
     if (upperVal === 'SPLINE' || upperVal === 'S') { this.setTool('spline'); return; }
     if (upperVal === 'BEZIER' || upperVal === 'B') { this.setTool('bezier'); return; }
+    if (upperVal === 'MOVE' || upperVal === 'M') { this.setTool('move'); return; }
     if (upperVal === 'TRIM' || upperVal === 'TR' || upperVal === 'T') { this.setTool('trim'); return; }
     if (upperVal === 'PAN') { this.setTool('pan'); return; }
     if (upperVal === 'CLEAR') { this.clearCanvas(); return; }
@@ -374,26 +378,35 @@ export class CADUtils {
     this.currentToolMode = toolName;
     this.closeAllMenus();
 
-    const preserveSelectionTools = ['divide_count', 'divide_dist', 'trim'];
-    const shouldPreserveSelection = preserveSelectionTools.includes(toolName);
-    const preservedEntities = shouldPreserveSelection
-      ? this.service.selectedEntities.filter(ent => ent && !ent.data?.isPointEntity)
+    const targetTool = this.toolManager.tools[toolName] || null;
+    const isPanMode = toolName === 'pan';
+    const selectionMode = isPanMode
+      ? 'all'
+      : (targetTool?.getSelectionPreserveMode?.(toolName) ?? targetTool?.preservesSelection ?? false);
+    const preservesEditMode = isPanMode ||
+      Boolean(targetTool?.shouldPreserveEditMode?.(toolName) ?? targetTool?.preservesEditMode);
+    const clearsHud = Boolean(targetTool?.shouldClearHudOnActivate?.(toolName) ?? targetTool?.clearsHudOnActivate);
+
+    const preservedEntities = selectionMode
+      ? this.service.selectedEntities.filter(
+          (ent) => ent && (selectionMode === 'all' || !ent.data?.isPointEntity)
+        )
       : [];
 
-    if (toolName !== 'select' && toolName !== 'pan') {
+    if (!preservesEditMode) {
       this.service.editingEntities = [];
       this.service.deselectAllSegments();
-      if (!shouldPreserveSelection) {
+      if (!selectionMode) {
         this.service.deselectAllEntities();
       }
     }
 
-    if (toolName !== 'select' && toolName !== 'pan') {
+    if (toolName !== 'select' && !isPanMode) {
       this.lastActiveToolMode = toolName;
     }
 
     if (this.consoleManager) {
-      if (toolName === 'select' || toolName === 'pan') {
+      if (toolName === 'select' || isPanMode) {
         this.consoleManager.setPrompt('Command:');
       } else {
         if (previousTool !== toolName) {
@@ -405,14 +418,15 @@ export class CADUtils {
 
     this.toolManager.setTool(toolName);
 
-    if (shouldPreserveSelection && preservedEntities.length > 0) {
+    if (selectionMode && preservedEntities.length > 0) {
       this.service.selectedEntities = [...preservedEntities];
 
-      if (toolName === 'divide_count' || toolName === 'divide_dist') {
+      if (typeof targetTool?.onSelectionPreserved === 'function') {
+        targetTool.onSelectionPreserved(preservedEntities, toolName);
+      } else if (toolName === 'divide_count' || toolName === 'divide_dist') {
         this.divisionSelectedEntities = [...preservedEntities];
-        const activeTool = this.toolManager.activeTool;
-        if (activeTool && typeof activeTool.askForDivisionValue === 'function') {
-          activeTool.askForDivisionValue();
+        if (typeof targetTool?.askForDivisionValue === 'function') {
+          targetTool.askForDivisionValue();
         }
       }
     }
@@ -447,6 +461,7 @@ export class CADUtils {
       'spline': 'btnCurveGroup',
       'bezier': 'btnCurveGroup',
       'circle': 'btn-circle-tool',
+      'move': 'btnMove',
       'trim': 'btnTrim',
       'extend': 'btnExtend'
     };
@@ -457,13 +472,16 @@ export class CADUtils {
       if (activeBtn) activeBtn.classList.add('active');
     }
 
-    const canvas = document.getElementById('cadCanvas');
+    const canvas = this.canvasElement || document.getElementById('cadCanvas');
     if (canvas) {
-      canvas.className = `tool-${['select', 'pan', 'trim', 'extend'].includes(toolName) ? toolName : 'draw'}`;
+      const cursorMode = isPanMode
+        ? 'pan'
+        : (targetTool?.getCursorMode?.(toolName) || 'draw');
+      canvas.className = `tool-${cursorMode}`;
     }
 
-    if (['select', 'trim', 'divide_count', 'divide_dist'].includes(toolName)) {
-      if (this.hud) this.hud.clear();
+    if (clearsHud && this.hud) {
+      this.hud.clear();
     }
 
     const iconMap = {

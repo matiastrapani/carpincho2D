@@ -227,15 +227,6 @@ export class CADToolbarComponent {
             </button>
           </div>
 
-          <!-- Importar Imagen -->
-          <div class="relative">
-            <button id="btnImportImage" class="cad-button cad-button-square" data-tooltip="Importar imagen">
-              <span class="iconify text-2xl leading-none shrink-0" data-icon="custom:image"></span>
-            </button>
-            <input type="file" id="inputImageFile" accept="image/*" style="display: none;" />
-          </div>
-
-          <div class="tool-divider"></div>
 
           <!-- Curvas Flyout -->
           <div class="relative">
@@ -261,8 +252,20 @@ export class CADToolbarComponent {
             </div>
           </div>
 
+          <!-- Importar Imagen -->
+          <div class="relative">
+            <button id="btnImportImage" class="cad-button cad-button-square" data-tooltip="Importar imagen">
+              <span class="iconify text-2xl leading-none shrink-0" data-icon="custom:image"></span>
+            </button>
+            <input type="file" id="inputImageFile" accept="image/*" style="display: none;" />
+          </div>
+
           <!-- Edición -->
           <div class="tool-divider"></div>
+
+          <button id="btnMove" class="cad-button cad-button-square" data-tooltip="Mover">
+            <span class="iconify text-2xl leading-none shrink-0" data-icon="custom:move"></span>
+          </button>
 
           <button id="btnTrim" class="cad-button cad-button-square" data-tooltip="Recortar">
             <span class="iconify text-2xl leading-none shrink-0" data-icon="custom:trim"></span>

@@ -107,7 +107,7 @@ export class BoxSelectHandler {
     return matched;
   }
 
-  finishBox(endPoint, isShift = false) {
+  finishBox(endPoint, isShift = false, { additive = false } = {}) {
     if (!this.selectionBoxRect || !this.selectionStartPoint) {
       this.clean();
       return;
@@ -117,10 +117,12 @@ export class BoxSelectHandler {
     const zoom = paperInst?.view?.zoom || 1;
     const startPt = this.selectionStartPoint;
     const dragDistance = startPt.getDistance(endPoint);
+    const hasEditingEntities = this.service.editingEntities.length > 0;
+    const isAdditiveObjectMode = Boolean(additive) && !hasEditingEntities;
 
     // Clic simple en canvas (sin arrastre)
     if (dragDistance < 3 / zoom) {
-      if (!isShift) {
+      if (!isAdditiveObjectMode && !isShift) {
         this.service.deselectAllEntities();
         this.service.deselectAllSegments();
       }
@@ -130,9 +132,8 @@ export class BoxSelectHandler {
 
     const boxBounds = this.selectionBoxRect.bounds;
     const isWindowSelection = endPoint.x >= startPt.x;
-    const hasEditingEntities = this.service.editingEntities.length > 0;
 
-    // A. CUADRO EN MODO EDICIÓN DE NODOS
+    // A. CUADRO EN MODO EDICIÓN DE NODOS (siempre selección convencional)
     if (hasEditingEntities) {
       if (!isShift) {
         this.service.deselectAllSegments();
@@ -162,22 +163,28 @@ export class BoxSelectHandler {
           }
 
           selectedInThisEntity.forEach((seg) => {
-            this.service.selectSegment(seg, true);
+            if (!this.service.selectedSegments.includes(seg)) {
+              this.service.selectSegment(seg, true);
+            }
           });
         }
       });
     }
 
-    // B. CUADRO EN MODO SELECCIÓN DE OBJETOS
-    if (this.service.editingEntities.length === 0) {
+    // B. CUADRO EN MODO SELECCIÓN DE OBJETOS (aditivo/sustractivo dentro de herramientas)
+    if (!hasEditingEntities) {
       const entitiesToSelect = this.getEntitiesInBox(boxBounds, isWindowSelection);
 
-      if (!isShift) {
+      if (!isAdditiveObjectMode && !isShift) {
         this.service.deselectAllEntities();
       }
 
       entitiesToSelect.forEach((ent) => {
-        if (!this.service.selectedEntities.includes(ent)) {
+        if (isAdditiveObjectMode && isShift) {
+          if (this.service.selectedEntities.includes(ent)) {
+            this.service.deselectEntity(ent);
+          }
+        } else if (!this.service.selectedEntities.includes(ent)) {
           this.service.selectEntity(ent, true);
         }
       });
