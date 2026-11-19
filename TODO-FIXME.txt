@@ -57,3 +57,10 @@ agregar en linetool los colores de la etiqueta de rubberband
 Área #15 — Núcleo (cadService.js / app.js): Confirmar que cadService.utils quede inyectado desde el arranque de la aplicación (sin depender de window.cadUtils) y limpiar métodos puente residuales en cadUtils.js.
 
 bloqueo y visibilidad global por entidades selecciondas
+tooltip de mas de un renglon
+icono mouse en tooltip
+
+- [ ] **Desacoplar `SelectionRenderEngine` y sub-renderers de globales (`window.cadUtils`, `window.cadService`, `paper`):**
+  - **Contexto:** Durante el refactor de `cadUtils.js`, inyectar explícitamente las dependencias en `SelectionRenderEngine` (`cadService`, `cadUtils`, `paper`) en lugar de leer `window.cadUtils`, `window.cadService` o el global `paper`.
+  - **Archivos afectados:** `services/renderers/SelectionRenderEngine.js`, `services/renderers/BezierHandlesRenderer.js`, `services/renderers/ParametricGripRenderer.js` y el punto de inicialización en `cadUtils.js`.
+  - **Criterio de aceptación:** Ninguno de los 3 renderers referencia `window.*` ni `paper` implícito, recibiendo la instancia `paper` mediante el objeto `context` de renderizado y manteniendo los 3 archivos ≤ 350 líneas.

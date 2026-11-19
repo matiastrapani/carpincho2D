@@ -267,6 +267,29 @@ export class SelectionMenuHandler {
     }
   }
 
+  handleHover(point, zoom) {
+    const hits = this.getSortedHits(point, 6 / zoom);
+    const targetItem = hits.length > 0 ? hits[0].entity : null;
+
+    if (targetItem) {
+      const isEditingOrSelected =
+        this.service.editingEntities.includes(targetItem) ||
+        this.service.selectedEntities.includes(targetItem);
+
+      if (!isEditingOrSelected) {
+        if (this.service.hoveredEntity !== targetItem) {
+          this.utils.clearHoverHighlight();
+          this.service.hoveredEntity = targetItem;
+          this.utils.selectionRenderEngine?.updateEntitiesStroke?.();
+        }
+      } else if (this.service.hoveredEntity) {
+        this.utils.clearHoverHighlight();
+      }
+    } else if (this.service.hoveredEntity) {
+      this.utils.clearHoverHighlight();
+    }
+  }
+
   _selectHit(hit) {
     const callback = this.onSelectCallback;
     if (!callback) return;
@@ -275,7 +298,36 @@ export class SelectionMenuHandler {
     callback(hit);
   }
 
+  hasScheduledOpen() {
+    return Boolean(this._openTimer);
+  }
+
+  cancelScheduledOpen() {
+    if (this._openTimer) {
+      clearTimeout(this._openTimer);
+      this._openTimer = null;
+    }
+  }
+
+  scheduleOpen(delayMs, menuData, onSelect, shouldAbort = null) {
+    this.cancelScheduledOpen();
+    if (!menuData) return;
+
+    this._openTimer = setTimeout(() => {
+      this._openTimer = null;
+      if (typeof shouldAbort === 'function' && shouldAbort()) return;
+
+      const { event: menuEvent, hits, point, shift } = menuData;
+      this.open(menuEvent, hits, (chosenHit) => {
+        if (typeof onSelect === 'function') {
+          onSelect(chosenHit, point, shift);
+        }
+      });
+    }, delayMs);
+  }
+
   close() {
+    this.cancelScheduledOpen();
     document.removeEventListener('pointerdown', this._onDocPointerDown, true);
 
     if (this.menuEl) {

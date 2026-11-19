@@ -3,59 +3,28 @@
  */
 
 import { CAD_THEME } from '../../config/cadTheme.js';
-import { MoveCommand } from '../../services/commands/cadCommands.js';
+import { MixedDragSession } from './MixedDragSession.js';
 
 export class SegmentEditHandler {
   constructor(cadService, cadUtils) {
     this.service = cadService;
     this.utils = cadUtils;
+    this.session = new MixedDragSession(cadService, cadUtils);
+    this.lastClickTime = 0;
+    this.lastClickEntity = null;
     this.reset();
   }
 
   reset() {
     this.utils?.hud?.clearDragRubberBand?.();
+    this.session?.reset();
     this.dragAnchorSegment = null;
     this.pivotPoint = null;
-    this.mouseStartPt = null;
-    this.selectedSegmentsStartData = null;
-    this.selectedHandlesStartData = null;
-    this.selectedEntitiesStartData = null;
   }
 
-  _captureDragStartState() {
-    this.selectedSegmentsStartData = this.service.selectedSegments
-      .filter((s) => s && s.path && !this.service.selectedEntities.includes(s.path))
-      .map((s) => ({
-        segment: s,
-        path: s.path,
-        segmentIndex: s.index,
-        initialPt: s.point.clone(),
-        initialHandleIn: s.handleIn.clone(),
-        initialHandleOut: s.handleOut.clone()
-      }));
-
-    this.selectedHandlesStartData = this.service.selectedHandles
-      .filter((h) => h && h.segment && h.segment.path &&
-        !this.service.selectedEntities.includes(h.segment.path) &&
-        !this.service.selectedSegments.includes(h.segment))
-      .map((h) => ({
-        segment: h.segment,
-        path: h.segment.path,
-        segmentIndex: h.segment.index,
-        handleType: h.type,
-        initialVector: h.segment[h.type].clone()
-      }));
-
-    this.selectedEntitiesStartData = this.service.selectedEntities.map((ent) => ({
-      entity: ent,
-      isPath: ent instanceof paper.Path && !ent.data?.isPointEntity,
-      initialPos: ent.data?.isPointEntity ? ent.bounds.center.clone() : ent.position.clone(),
-      initialSegments: (ent instanceof paper.Path && !ent.data?.isPointEntity) ? ent.segments.map((s) => ({
-        point: s.point.clone(),
-        handleIn: s.handleIn.clone(),
-        handleOut: s.handleOut.clone()
-      })) : null
-    }));
+  resetClickHistory() {
+    this.lastClickTime = 0;
+    this.lastClickEntity = null;
   }
 
   _updateDragRubberBand(fromPt, toPt) {
@@ -88,6 +57,74 @@ export class SegmentEditHandler {
     }
   }
 
+
+  tryEnterEditModeOnDoubleClick(targetEntity, isShift, now) {
+    const isDoubleClick = (now - this.lastClickTime) < 350 && this.lastClickEntity === targetEntity;
+    this.lastClickTime = now;
+    this.lastClickEntity = targetEntity;
+
+    const paperInst = this.utils.paper || paper;
+    if (!isDoubleClick || !paperInst || !(targetEntity instanceof paperInst.Path) || targetEntity.data?.isPointEntity) {
+      return false;
+    }
+
+    const isTargetInSelection = this.service.selectedEntities.includes(targetEntity);
+    const targetsToEdit = isTargetInSelection
+      ? [...this.service.selectedEntities]
+      : [targetEntity];
+    const append = isShift && this.service.editingEntities.length > 0;
+
+    if (!isTargetInSelection && !isShift) {
+      this.service.deselectAllEntities();
+    }
+
+    this.enterEditMode(targetsToEdit, { append });
+    this.resetClickHistory();
+    return true;
+  }
+
+  tryDoubleClickSelected(isShift, now) {
+    if (!this.lastClickEntity || !this.service.selectedEntities.includes(this.lastClickEntity)) {
+      return false;
+    }
+    return this.tryEnterEditModeOnDoubleClick(this.lastClickEntity, isShift, now);
+  }
+
+  selectAllSegments(event) {
+    if (!this.service.editingEntities || this.service.editingEntities.length === 0) {
+      return false;
+    }
+
+    event.preventDefault();
+    this.service.deselectAllHandles();
+    this.service.deselectAllSegments();
+
+    const paperInst = this.utils.paper || paper;
+
+    this.service.editingEntities.forEach((entity) => {
+      if (!entity || entity.visible === false) return;
+
+      const layerId = String(entity.data?.layerId || '0');
+      const layer = this.utils.layerManager?.layers?.get(layerId);
+      if (layer && (layer.locked || layer.visible === false)) return;
+
+      if (paperInst && entity instanceof paperInst.Path && !entity.data?.isPointEntity) {
+        entity.segments.forEach((seg) => this.service.selectSegment(seg, true));
+      } else if (paperInst && entity instanceof paperInst.CompoundPath && entity.children) {
+        entity.children.forEach((child) => {
+          if (child instanceof paperInst.Path && child.segments) {
+            child.segments.forEach((seg) => this.service.selectSegment(seg, true));
+          }
+        });
+      }
+    });
+
+    this.utils.selectionRenderEngine?.renderBezierHandles?.();
+    this.utils.selectionRenderEngine?.updateEntitiesStroke?.();
+    if (paperInst?.view) paperInst.view.update();
+    return true;
+  }
+
   enterEditMode(targetOrList, options = {}) {
     const edited = this.service.selectionManager.enterEditMode(targetOrList, options);
     if (edited.length === 0) return false;
@@ -112,6 +149,7 @@ export class SegmentEditHandler {
 
     const seg1 = location.curve.segment1;
     const seg2 = location.curve.segment2;
+    const pairSegments = [seg1, seg2].filter(Boolean);
     const isShift = event.event.shiftKey;
 
     const isSegmentFullySelected = seg1 && seg2 &&
@@ -119,13 +157,10 @@ export class SegmentEditHandler {
       this.service.selectedSegments.includes(seg2);
 
     if (isShift) {
-      if (isSegmentFullySelected) {
-        if (seg1) this.service.deselectSegment(seg1);
-        if (seg2) this.service.deselectSegment(seg2);
-      } else {
-        if (seg1) this.service.selectSegment(seg1, true);
-        if (seg2) this.service.selectSegment(seg2, true);
-      }
+      pairSegments.forEach((seg) => {
+        if (isSegmentFullySelected) this.service.deselectSegment(seg);
+        else this.service.selectSegment(seg, true);
+      });
       this.utils.selectionRenderEngine.renderBezierHandles();
       return true;
     }
@@ -134,15 +169,14 @@ export class SegmentEditHandler {
       this.service.deselectAllEntities();
       this.service.deselectAllSegments();
       this.service.deselectAllHandles();
-      if (seg1) this.service.selectSegment(seg1, true);
-      if (seg2) this.service.selectSegment(seg2, true);
+      pairSegments.forEach((seg) => this.service.selectSegment(seg, true));
     }
 
     let activePivotSeg = seg1;
     let minDist = seg1 ? seg1.point.getDistance(event.point) : Infinity;
     const poolSegments = this.service.selectedSegments.length > 0
       ? this.service.selectedSegments
-      : [seg1, seg2].filter(Boolean);
+      : pairSegments;
 
     poolSegments.forEach((s) => {
       const d = s.point.getDistance(event.point);
@@ -154,197 +188,66 @@ export class SegmentEditHandler {
 
     this.dragAnchorSegment = activePivotSeg;
     this.pivotPoint = activePivotSeg ? activePivotSeg.point.clone() : event.point.clone();
-    this.mouseStartPt = event.point.clone();
 
-    this._captureDragStartState();
+    this.session.begin(event.point, event.event);
     this.utils.selectionRenderEngine.updateEntitiesStroke();
     this.utils.selectionRenderEngine.renderBezierHandles();
-    if (this.pivotPoint) {
-      this.utils.renderPivotMarker(this.pivotPoint);
-    }
     return true;
   }
 
   onMouseDrag(event) {
-    if (!this.service.selectedSegments.length || !this.mouseStartPt || !this.selectedSegmentsStartData) {
+    const startMousePt = this.session.mouseStartPt;
+    if (!this.service.selectedSegments.length || !startMousePt || !this.session.segmentsStart) {
       return false;
     }
 
-    const isShift = event.event ? event.event.shiftKey : false;
-    const targetMousePt = this.utils.applyOrthoConstraint(this.mouseStartPt, event.point, isShift);
-
-    const pivotSegData = this.selectedSegmentsStartData.find((s) => s.segment === this.dragAnchorSegment)
-      || this.selectedSegmentsStartData[0];
-
-    let globalDelta = targetMousePt.subtract(this.mouseStartPt);
-
-    if (pivotSegData && pivotSegData.initialPt) {
-      const startPt = pivotSegData.initialPt;
-      const projectedPivot = startPt.add(globalDelta);
-      const effectiveOrtho = Boolean(this.service?.isOrthoEnabled) !== Boolean(isShift);
-      const isHorizontal = Math.abs(event.point.x - this.mouseStartPt.x) >
-                           Math.abs(event.point.y - this.mouseStartPt.y);
-      const projectOrthoGrid = (pt) => (isHorizontal
-        ? new paper.Point(pt.x, startPt.y)
-        : new paper.Point(startPt.x, pt.y));
-
-      const movedEntities = (this.selectedEntitiesStartData || []).map((i) => i.entity).filter(Boolean);
-      const activeSegments = this.selectedSegmentsStartData.map((item) => item.segment).filter(Boolean);
-      const activeHandles = (this.selectedHandlesStartData || []).map((item) => ({
-        segment: item.segment,
-        type: item.handleType
-      }));
-
-      const osnap = this.service.calculateOsnap(
-        projectedPivot,
-        (pt, type) => {
-          const markerPt = (type === 'grid' && effectiveOrtho) ? projectOrthoGrid(pt) : pt;
-          this.utils.hud.renderSnapMarker(markerPt, type);
-        },
-        null,
-        {
-          fromPoint: startPt,
-          ignoreEntities: movedEntities,
-          ignoreSegments: activeSegments,
-          ignoreHandles: activeHandles
-        }
-      );
-
-      if (osnap && osnap.type) {
-        const snappedPt = (osnap.type === 'grid' && effectiveOrtho)
-          ? projectOrthoGrid(osnap.point)
-          : osnap.point;
-        globalDelta = snappedPt.subtract(startPt);
-      }
-
-      const currentPivotPos = startPt.add(globalDelta);
-      this.utils.hud.updateHUD(currentPivotPos);
-      this.utils.hud.updateDragRubberBand(startPt, currentPivotPos);
-      this.utils.renderPivotMarker(currentPivotPos);
+    if (!this.session.hasExceededThreshold(event)) {
+      return true;
     }
 
-    this.selectedSegmentsStartData.forEach((item) => {
-      if (item.segment) item.segment.point = item.initialPt.add(globalDelta);
-    });
+    const isShift = event.event ? event.event.shiftKey : false;
+    const pivotSegData =
+      this.session.segmentsStart.find((s) => s.segment === this.dragAnchorSegment) ||
+      this.session.segmentsStart[0];
 
-    (this.selectedHandlesStartData || []).forEach((item) => {
-      if (item.segment) item.segment[item.handleType] = item.initialVector.add(globalDelta);
-    });
+    let globalDelta;
+    if (pivotSegData && pivotSegData.initialPt) {
+      const startPt = pivotSegData.initialPt;
+      const rawTargetPivot = startPt.add(event.point.subtract(startMousePt));
+      const currentPivotPos = this.session.resolveSnappedPoint(startPt, rawTargetPivot, isShift);
+      globalDelta = currentPivotPos.subtract(startPt);
+      this.utils.renderPivotMarker(currentPivotPos);
+    } else {
+      const targetMousePt = this.utils.applyOrthoConstraint(startMousePt, event.point, isShift);
+      globalDelta = targetMousePt.subtract(startMousePt);
+    }
 
-    (this.selectedEntitiesStartData || []).forEach((item) => {
-      if (!item.entity) return;
-      if (item.isPath && item.initialSegments) {
-        item.entity.segments.forEach((seg, idx) => {
-          if (item.initialSegments[idx]) {
-            seg.point = item.initialSegments[idx].point.add(globalDelta);
-          }
-        });
-      } else if (item.initialPos) {
-        item.entity.position = item.initialPos.add(globalDelta);
-      }
-    });
-
+    this.session.applyDelta(globalDelta);
     this.utils.selectionRenderEngine.renderBezierHandles();
     return true;
   }
 
   onMouseUp() {
-    if (!this.selectedSegmentsStartData || this.selectedSegmentsStartData.length === 0) {
+    if (!this.session.segmentsStart || this.session.segmentsStart.length === 0) {
       return false;
     }
 
-    let hasMoved = false;
-
-    const entitiesData = (this.selectedEntitiesStartData || []).filter((i) => i.entity).map((item) => {
-      const isPath = item.isPath;
-      const finalPos = isPath ? null : (item.entity.data?.isPointEntity ? item.entity.bounds.center.clone() : item.entity.position.clone());
-      const finalSegments = isPath ? item.entity.segments.map((s) => ({
-        point: s.point.clone(),
-        handleIn: s.handleIn.clone(),
-        handleOut: s.handleOut.clone()
-      })) : null;
-
-      if (isPath && finalSegments.some((s, idx) =>
-        !s.point.equals(item.initialSegments[idx].point) ||
-        !s.handleIn.equals(item.initialSegments[idx].handleIn) ||
-        !s.handleOut.equals(item.initialSegments[idx].handleOut))) {
-        hasMoved = true;
-      } else if (!isPath && finalPos && item.initialPos && !finalPos.equals(item.initialPos)) {
-        hasMoved = true;
-      }
-
-      return {
-        entity: item.entity,
-        isPath,
-        initialPos: item.initialPos ? item.initialPos.clone() : null,
-        finalPos,
-        initialSegments: item.initialSegments,
-        finalSegments
-      };
-    });
-
-    const segmentsData = this.selectedSegmentsStartData.filter((i) => i.segment && i.path).map((item) => {
-      const finalPt = item.segment.point.clone();
-      const finalHandleIn = item.segment.handleIn.clone();
-      const finalHandleOut = item.segment.handleOut.clone();
-      if (!finalPt.equals(item.initialPt)) hasMoved = true;
-      return { ...item, finalPt, finalHandleIn, finalHandleOut };
-    });
-
-    const handlesData = (this.selectedHandlesStartData || []).filter((i) => i.segment && i.path).map((item) => {
-      const finalVector = item.segment[item.handleType].clone();
-      if (!finalVector.equals(item.initialVector)) hasMoved = true;
-      return { ...item, finalVector };
-    });
-
-    if (hasMoved) {
-      this.service.executeCommand(new MoveCommand(this.service, {
-        type: 'mixed',
-        entities: entitiesData,
-        segments: segmentsData,
-        handles: handlesData
-      }));
+    if (!this.session.isConfirmed) {
+      this.reset();
+      return true;
     }
 
+    this.session.commitMoveCommand();
     this.reset();
     return true;
   }
 
   isDragging() {
-    return Boolean(
-      this.mouseStartPt &&
-      this.selectedSegmentsStartData &&
-      this.selectedSegmentsStartData.length > 0
-    );
+    return Boolean(this.session?.isConfirmed);
   }
 
   cancelDrag() {
-    (this.selectedSegmentsStartData || []).forEach((item) => {
-      if (!item.segment) return;
-      item.segment.point = item.initialPt.clone();
-      item.segment.handleIn = item.initialHandleIn.clone();
-      item.segment.handleOut = item.initialHandleOut.clone();
-    });
-
-    (this.selectedHandlesStartData || []).forEach((item) => {
-      if (item.segment) item.segment[item.handleType] = item.initialVector.clone();
-    });
-
-    (this.selectedEntitiesStartData || []).forEach((item) => {
-      if (!item.entity) return;
-      if (item.isPath && item.initialSegments) {
-        item.entity.segments.forEach((seg, idx) => {
-          if (item.initialSegments[idx]) {
-            seg.point = item.initialSegments[idx].point.clone();
-            seg.handleIn = item.initialSegments[idx].handleIn.clone();
-            seg.handleOut = item.initialSegments[idx].handleOut.clone();
-          }
-        });
-      } else if (item.initialPos) {
-        item.entity.position = item.initialPos.clone();
-      }
-    });
-
+    this.session.cancel();
     this.reset();
   }
 

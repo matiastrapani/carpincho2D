@@ -10,19 +10,48 @@ export class BoxSelectHandler {
     this.selectionBoxRect = null;
   }
 
+  _getPaper() {
+    return this.utils?.paper || (typeof paper !== 'undefined' ? paper : null);
+  }
+
+  _getHudLayer() {
+    const paperInst = this._getPaper();
+    return this.utils?.hudLayer || paperInst?.project?.layers?.find((l) => l.name === 'hudLayer') || null;
+  }
+
+  _createBoxRect(fromPt, toPt, isWindowSelection = true) {
+    const paperInst = this._getPaper();
+    if (!paperInst) return null;
+
+    const zoom = paperInst.view?.zoom || 1;
+    const rect = new paperInst.Path.Rectangle({
+      from: fromPt,
+      to: toPt,
+      strokeWidth: 1 / zoom,
+      strokeColor: '#008800',
+      dashArray: isWindowSelection ? null : [2 / zoom, 2 / zoom],
+      fillColor: new paperInst.Color(0, 0.53, 0, 0.15),
+      insert: false
+    });
+    rect.guide = true;
+
+    const hudLayer = this._getHudLayer();
+    if (hudLayer) {
+      hudLayer.addChild(rect);
+    } else if (paperInst.project?.activeLayer) {
+      paperInst.project.activeLayer.addChild(rect);
+    }
+
+    return rect;
+  }
+
   startBox(point) {
     this.selectionStartPoint = point.clone();
     if (this.selectionBoxRect) {
       this.selectionBoxRect.remove();
     }
 
-    this.selectionBoxRect = new paper.Path.Rectangle({
-      from: this.selectionStartPoint,
-      to: point,
-      strokeWidth: 1 / paper.view.zoom,
-      strokeColor: '#008800',
-      fillColor: new paper.Color(0, 0.53, 0, 0.15)
-    });
+    this.selectionBoxRect = this._createBoxRect(this.selectionStartPoint, point, true);
   }
 
   updateBox(currentPoint) {
@@ -35,14 +64,47 @@ export class BoxSelectHandler {
     const startPt = this.selectionStartPoint;
     const isWindowSelection = currentPoint.x >= startPt.x;
 
-    this.selectionBoxRect = new paper.Path.Rectangle({
-      from: startPt,
-      to: currentPoint,
-      strokeWidth: 1 / paper.view.zoom,
-      strokeColor: '#008800',
-      dashArray: isWindowSelection ? null : [2 / paper.view.zoom, 2 / paper.view.zoom],
-      fillColor: new paper.Color(0, 0.53, 0, 0.15)
-    });
+    this.selectionBoxRect = this._createBoxRect(startPt, currentPoint, isWindowSelection);
+  }
+
+  getEntitiesInBox(boxBounds, isWindowSelection, filterFn = null) {
+    const paperInst = this._getPaper();
+    const layerManager = this.utils?.layerManager;
+    const entities = this.service.entities || [];
+    const matched = [];
+
+    for (let i = 0; i < entities.length; i++) {
+      const entity = entities[i];
+      if (!entity || !entity.bounds || entity.visible === false) continue;
+
+      const layerId = String(entity.data?.layerId || '0');
+      const layer = layerManager?.layers?.get(layerId);
+      if (layer && (layer.locked || layer.visible === false)) continue;
+
+      if (typeof filterFn === 'function' && !filterFn(entity)) continue;
+
+      let shouldSelect = false;
+
+      if (this._checkIsPoint(entity)) {
+        shouldSelect = boxBounds.contains(entity.position || entity.bounds.center);
+      } else if (paperInst && entity instanceof paperInst.Path) {
+        shouldSelect = this._isPathSelectedByBox(entity, boxBounds, isWindowSelection);
+      } else if (paperInst && entity instanceof paperInst.CompoundPath) {
+        if (entity.children) {
+          shouldSelect = entity.children.some((child) => this._isPathSelectedByBox(child, boxBounds, isWindowSelection));
+        }
+      } else {
+        shouldSelect = isWindowSelection
+          ? boxBounds.contains(entity.bounds)
+          : (boxBounds.contains(entity.bounds) || boxBounds.intersects(entity.bounds));
+      }
+
+      if (shouldSelect) {
+        matched.push(entity);
+      }
+    }
+
+    return matched;
   }
 
   finishBox(endPoint, isShift = false) {
@@ -51,11 +113,13 @@ export class BoxSelectHandler {
       return;
     }
 
+    const paperInst = this._getPaper();
+    const zoom = paperInst?.view?.zoom || 1;
     const startPt = this.selectionStartPoint;
     const dragDistance = startPt.getDistance(endPoint);
 
     // Clic simple en canvas (sin arrastre)
-    if (dragDistance < 3 / paper.view.zoom) {
+    if (dragDistance < 3 / zoom) {
       if (!isShift) {
         this.service.deselectAllEntities();
         this.service.deselectAllSegments();
@@ -69,22 +133,19 @@ export class BoxSelectHandler {
     const hasEditingEntities = this.service.editingEntities.length > 0;
 
     // A. CUADRO EN MODO EDICIÓN DE NODOS
-    // A. CUADRO EN MODO EDICIÓN DE NODOS
     if (hasEditingEntities) {
       if (!isShift) {
         this.service.deselectAllSegments();
       }
 
-      let segmentsSelectedCount = 0;
-
-      this.service.editingEntities.forEach(entity => {
-        if (entity instanceof paper.Path && entity.segments && !entity.data?.isPointEntity) {
+      this.service.editingEntities.forEach((entity) => {
+        if (paperInst && entity instanceof paperInst.Path && entity.segments && !entity.data?.isPointEntity) {
           if (entity.bounds && !boxBounds.intersects(entity.bounds)) return;
 
           const selectedInThisEntity = new Set();
 
           // 1. Nodos cuyo punto está totalmente dentro del recuadro (Window y Crossing)
-          entity.segments.forEach(seg => {
+          entity.segments.forEach((seg) => {
             if (boxBounds.contains(seg.point)) {
               selectedInThisEntity.add(seg);
             }
@@ -92,7 +153,7 @@ export class BoxSelectHandler {
 
           // 2. Si es Selección por Cruzamiento (Derecha -> Izquierda), incluir los nodos de los tramos que cruzan la caja
           if (!isWindowSelection && entity.curves) {
-            entity.curves.forEach(curve => {
+            entity.curves.forEach((curve) => {
               if (this._curveIntersectsBox(curve, boxBounds)) {
                 if (curve.segment1) selectedInThisEntity.add(curve.segment1);
                 if (curve.segment2) selectedInThisEntity.add(curve.segment2);
@@ -100,9 +161,8 @@ export class BoxSelectHandler {
             });
           }
 
-          selectedInThisEntity.forEach(seg => {
+          selectedInThisEntity.forEach((seg) => {
             this.service.selectSegment(seg, true);
-            segmentsSelectedCount++;
           });
         }
       });
@@ -110,55 +170,17 @@ export class BoxSelectHandler {
 
     // B. CUADRO EN MODO SELECCIÓN DE OBJETOS
     if (this.service.editingEntities.length === 0) {
-      const entitiesToSelect = [];
-      const entities = this.service.entities || [];
-      const count = entities.length;
+      const entitiesToSelect = this.getEntitiesInBox(boxBounds, isWindowSelection);
 
-      for (let i = 0; i < count; i++) {
-        const entity = entities[i];
-        if (!entity || !entity.bounds || entity.visible === false) continue;
-
-        const layerId = String(entity.data?.layerId || '0');
-        const layerManager = this.utils?.layerManager || window.cadUtils?.layerManager;
-        const layer = layerManager?.layers?.get(layerId);
-
-        // Si la capa está bloqueada u oculta, ignorar antes de calcular geometría
-        if (layer && (layer.locked || layer.visible === false)) continue;
-
-        let shouldSelect = false;
-
-        if (this._checkIsPoint(entity)) {
-          shouldSelect = boxBounds.contains(entity.position || entity.bounds.center);
-        } else if (entity instanceof paper.Path) {
-          shouldSelect = this._isPathSelectedByBox(entity, boxBounds, isWindowSelection);
-        } else if (entity instanceof paper.CompoundPath) {
-          if (entity.children) {
-            shouldSelect = entity.children.some(child => this._isPathSelectedByBox(child, boxBounds, isWindowSelection));
-          }
-        } else {
-          shouldSelect = isWindowSelection 
-            ? boxBounds.contains(entity.bounds) 
-            : (boxBounds.contains(entity.bounds) || boxBounds.intersects(entity.bounds));
-        }
-
-        if (shouldSelect) {
-          const layerId = String(entity.data?.layerId || '0');
-          const layerManager = this.utils?.layerManager || window.cadUtils?.layerManager;
-          const layer = layerManager?.layers?.get(layerId);
-
-          if (!layer || !layer.locked) {
-            entitiesToSelect.push(entity);
-          }
-        }
+      if (!isShift) {
+        this.service.deselectAllEntities();
       }
 
-      if (isShift) {
-        const currentSet = new Set(this.service.selectedEntities);
-        entitiesToSelect.forEach(e => currentSet.add(e));
-        this.service.selectedEntities = Array.from(currentSet);
-      } else {
-        this.service.selectedEntities = entitiesToSelect;
-      }
+      entitiesToSelect.forEach((ent) => {
+        if (!this.service.selectedEntities.includes(ent)) {
+          this.service.selectEntity(ent, true);
+        }
+      });
     }
 
     if (this.utils?.selectionRenderEngine?.updateEntitiesStroke) this.utils.selectionRenderEngine.updateEntitiesStroke();

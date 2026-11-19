@@ -2,25 +2,22 @@
  * tools/submodules/HandleSelectionHandler.js
  */
 
-import { CAD_THEME } from '../../config/cadTheme.js';
-import { MoveCommand } from '../../services/commands/cadCommands.js';
+import { MixedDragSession } from './MixedDragSession.js';
 
 export class HandleSelectionHandler {
   constructor(cadService, cadUtils) {
     this.service = cadService;
     this.utils = cadUtils;
+    this.session = new MixedDragSession(cadService, cadUtils);
     this.reset();
   }
 
   reset() {
     this.utils?.hud?.clearDragRubberBand?.();
+    this.session?.reset();
     this.activeHandleData = null;
-    this.mouseStartPt = null;
     this.handleDragStartPt = null;
     this.grabOffset = null;
-    this.selectedSegmentsStartData = null;
-    this.selectedHandlesStartData = null;
-    this.selectedEntitiesStartData = null;
   }
 
   _updateSelectionOnMouseDown(seg, rawType, armHandleType, isShift) {
@@ -127,7 +124,6 @@ export class HandleSelectionHandler {
 
     const isShift = event.event.shiftKey;
     const rawType = handleData.type;
-    this.mouseStartPt = event.point.clone();
 
     this._updateSelectionOnMouseDown(seg, rawType, handleData.handleType, isShift);
 
@@ -144,7 +140,7 @@ export class HandleSelectionHandler {
       this.activeHandleData = { segment: seg, type: rawType };
     }
 
-    this._captureDragStartState();
+    this.session.begin(event.point, event.event);
     this.utils.selectionRenderEngine.updateEntitiesStroke();
     this.utils.selectionRenderEngine.renderBezierHandles();
   }
@@ -158,208 +154,33 @@ export class HandleSelectionHandler {
       return;
     }
 
+    if (!this.session.hasExceededThreshold(event)) {
+      return;
+    }
+
     const isShift = event.event ? event.event.shiftKey : false;
     const rawTargetPoint = event.point.add(this.grabOffset);
     const startPt = this.handleDragStartPt;
-    const constrainedTarget = startPt
-      ? this.utils.applyOrthoConstraint(startPt, rawTargetPoint, isShift)
+    const finalPoint = startPt
+      ? this.session.resolveSnappedPoint(startPt, rawTargetPoint, isShift)
       : rawTargetPoint;
 
-    const effectiveOrtho = Boolean(this.service?.isOrthoEnabled) !== Boolean(isShift);
-    const isHorizontal = startPt
-      ? Math.abs(rawTargetPoint.x - startPt.x) > Math.abs(rawTargetPoint.y - startPt.y)
-      : false;
-    const projectOrthoGrid = (pt) => (isHorizontal
-      ? new paper.Point(pt.x, startPt.y)
-      : new paper.Point(startPt.x, pt.y));
-
-    const movedEntities = (this.selectedEntitiesStartData || []).map((i) => i.entity).filter(Boolean);
-    const activeSegments = (this.selectedSegmentsStartData || []).map((item) => item.segment).filter(Boolean);
-    const activeHandles = (this.selectedHandlesStartData || []).map((item) => ({
-      segment: item.segment,
-      type: item.handleType
-    }));
-
-    const osnap = this.service.calculateOsnap(
-      constrainedTarget,
-      (snapPt, type) => {
-        const markerPt = (type === 'grid' && effectiveOrtho && startPt) ? projectOrthoGrid(snapPt) : snapPt;
-        this.utils.hud.renderSnapMarker(markerPt, type);
-      },
-      null,
-      {
-        fromPoint: startPt,
-        ignoreEntities: movedEntities,
-        ignoreSegments: activeSegments,
-        ignoreHandles: activeHandles
-      }
-    );
-
-    let finalPoint = constrainedTarget;
-    if (osnap && osnap.type) {
-      finalPoint = (osnap.type === 'grid' && effectiveOrtho && startPt)
-        ? projectOrthoGrid(osnap.point)
-        : osnap.point;
-    }
-
-    this.utils.hud.updateHUD(finalPoint);
-    this.utils.hud.updateDragRubberBand(startPt, finalPoint);
-    this._applyDeltaToSelection(finalPoint.subtract(startPt));
+    this.session.applyDelta(finalPoint.subtract(startPt));
     this.utils.selectionRenderEngine.renderBezierHandles();
   }
 
   onMouseUp() {
-    if (!this.activeHandleData || !this.handleDragStartPt) {
+    if (!this.activeHandleData || !this.handleDragStartPt || !this.session.isConfirmed) {
       this.reset();
       return;
     }
 
-    let hasMoved = false;
-
-    const entitiesData = (this.selectedEntitiesStartData || []).filter((i) => i.entity).map((item) => {
-      const isPath = item.isPath;
-      const finalPos = isPath ? null : (item.entity.data?.isPointEntity ? item.entity.bounds.center.clone() : item.entity.position.clone());
-      const finalSegments = isPath ? item.entity.segments.map((s) => ({
-        point: s.point.clone(),
-        handleIn: s.handleIn.clone(),
-        handleOut: s.handleOut.clone()
-      })) : null;
-
-      if (isPath && finalSegments.some((s, idx) =>
-        !s.point.equals(item.initialSegments[idx].point) ||
-        !s.handleIn.equals(item.initialSegments[idx].handleIn) ||
-        !s.handleOut.equals(item.initialSegments[idx].handleOut))) {
-        hasMoved = true;
-      } else if (!isPath && finalPos && item.initialPos && !finalPos.equals(item.initialPos)) {
-        hasMoved = true;
-      }
-
-      return {
-        entity: item.entity,
-        isPath,
-        initialPos: item.initialPos ? item.initialPos.clone() : null,
-        finalPos,
-        initialSegments: item.initialSegments,
-        finalSegments
-      };
-    });
-
-    const segmentsData = (this.selectedSegmentsStartData || []).filter((i) => i.segment && i.path).map((item) => {
-      const finalPt = item.segment.point.clone();
-      const finalHandleIn = item.segment.handleIn.clone();
-      const finalHandleOut = item.segment.handleOut.clone();
-      if (!finalPt.equals(item.initialPt)) hasMoved = true;
-      return { ...item, finalPt, finalHandleIn, finalHandleOut };
-    });
-
-    const handlesData = (this.selectedHandlesStartData || []).filter((i) => i.segment && i.path).map((item) => {
-      const finalVector = item.segment[item.handleType].clone();
-      if (!finalVector.equals(item.initialVector)) hasMoved = true;
-      return { ...item, finalVector };
-    });
-
-    if (hasMoved) {
-      this.service.executeCommand(new MoveCommand(this.service, {
-        type: 'mixed',
-        entities: entitiesData,
-        segments: segmentsData,
-        handles: handlesData
-      }));
-    }
-
+    this.session.commitMoveCommand();
     this.reset();
   }
 
-  _applyDeltaToSelection(totalDelta) {
-    (this.selectedSegmentsStartData || []).forEach((item) => {
-      if (item.segment) {
-        item.segment.point = item.initialPt.add(totalDelta);
-      }
-    });
-
-    (this.selectedHandlesStartData || []).forEach((item) => {
-      if (item.segment) {
-        item.segment[item.handleType] = item.initialVector.add(totalDelta);
-      }
-    });
-
-    (this.selectedEntitiesStartData || []).forEach((item) => {
-      if (!item.entity) return;
-      if (item.isPath && item.initialSegments) {
-        item.entity.segments.forEach((seg, idx) => {
-          if (item.initialSegments[idx]) {
-            seg.point = item.initialSegments[idx].point.add(totalDelta);
-          }
-        });
-      } else if (item.initialPos) {
-        item.entity.position = item.initialPos.add(totalDelta);
-      }
-    });
-  }
-
-  _captureDragStartState() {
-    this.selectedSegmentsStartData = this.service.selectedSegments
-      .filter((s) => s && s.path && !this.service.selectedEntities.includes(s.path))
-      .map((s) => ({
-        segment: s,
-        path: s.path,
-        segmentIndex: s.index,
-        initialPt: s.point.clone(),
-        initialHandleIn: s.handleIn.clone(),
-        initialHandleOut: s.handleOut.clone()
-      }));
-
-    this.selectedHandlesStartData = this.service.selectedHandles
-      .filter((h) => h && h.segment && h.segment.path &&
-        !this.service.selectedEntities.includes(h.segment.path) &&
-        !this.service.selectedSegments.includes(h.segment))
-      .map((h) => ({
-        segment: h.segment,
-        path: h.segment.path,
-        segmentIndex: h.segment.index,
-        handleType: h.type,
-        initialVector: h.segment[h.type].clone()
-      }));
-
-    this.selectedEntitiesStartData = this.service.selectedEntities.map((ent) => ({
-      entity: ent,
-      isPath: ent instanceof paper.Path && !ent.data?.isPointEntity,
-      initialPos: ent.data?.isPointEntity ? ent.bounds.center.clone() : ent.position.clone(),
-      initialSegments: (ent instanceof paper.Path && !ent.data?.isPointEntity) ? ent.segments.map((s) => ({
-        point: s.point.clone(),
-        handleIn: s.handleIn.clone(),
-        handleOut: s.handleOut.clone()
-      })) : null
-    }));
-  }
-
   cancelDrag() {
-    (this.selectedSegmentsStartData || []).forEach((item) => {
-      if (!item.segment) return;
-      item.segment.point = item.initialPt.clone();
-      item.segment.handleIn = item.initialHandleIn.clone();
-      item.segment.handleOut = item.initialHandleOut.clone();
-    });
-
-    (this.selectedHandlesStartData || []).forEach((item) => {
-      if (item.segment) item.segment[item.handleType] = item.initialVector.clone();
-    });
-
-    (this.selectedEntitiesStartData || []).forEach((item) => {
-      if (!item.entity) return;
-      if (item.isPath && item.initialSegments) {
-        item.entity.segments.forEach((seg, idx) => {
-          if (item.initialSegments[idx]) {
-            seg.point = item.initialSegments[idx].point.clone();
-            seg.handleIn = item.initialSegments[idx].handleIn.clone();
-            seg.handleOut = item.initialSegments[idx].handleOut.clone();
-          }
-        });
-      } else if (item.initialPos) {
-        item.entity.position = item.initialPos.clone();
-      }
-    });
-
+    this.session.cancel();
     this.reset();
   }
 }

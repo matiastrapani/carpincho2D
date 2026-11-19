@@ -179,8 +179,10 @@ export class DeleteCommand {
   restoreDelete() {
     if (!this.deleteData) return;
 
-    const drawLayer = window.cadUtils?.drawLayer || paper.project.activeLayer;
-    const nodesLayer = window.cadUtils?.nodesLayer;
+    const utils = this.cadService.utils;
+    const layerManager = utils?.layerManager;
+    const drawLayer = utils?.drawLayer || paper.project.activeLayer;
+    const pointsLayer = utils?.pointsLayer;
 
     if (this.deleteData.type === 'handle') {
       const { segment, handleType, originalVector } = this.deleteData;
@@ -189,50 +191,57 @@ export class DeleteCommand {
         if (handleType === 'handleOut') segment.handleOut = originalVector.clone();
       }
     } else if (this.deleteData.type === 'segments') {
-      this.deleteData.pathsAffected.forEach(item => {
-        const targetLayer = item.path.data?.isPointEntity ? (nodesLayer || drawLayer) : drawLayer;
-        if (!item.path.parent || item.path.layer !== targetLayer) {
-          targetLayer.addChild(item.path);
+      this.deleteData.pathsAffected.forEach((item) => {
+        if (layerManager) {
+          const targetLayerId = String(item.path.data?.layerId || layerManager.activeLayerId || '0');
+          layerManager.assignEntityToLayer(item.path, targetLayerId);
+        } else {
+          const fallbackLayer = item.path.data?.isPointEntity ? (pointsLayer || drawLayer) : drawLayer;
+          if (!item.path.parent || item.path.layer !== fallbackLayer) {
+            fallbackLayer.addChild(item.path);
+          }
         }
+
         if (!this.cadService.entities.includes(item.path)) {
           this.cadService.entities.push(item.path);
         }
 
-        item.path.segments = item.originalSegmentsState.map(s => new paper.Segment({
+        item.path.segments = item.originalSegmentsState.map((s) => new paper.Segment({
           point: s.point.clone(),
           handleIn: s.handleIn.clone(),
           handleOut: s.handleOut.clone()
         }));
       });
     } else if (this.deleteData.type === 'entities') {
-      this.deleteData.entities.forEach(ent => {
-        const isPoint = ent.data?.isPointEntity;
-        const targetLayer = isPoint ? (nodesLayer || drawLayer) : drawLayer;
-
-        if (!ent.parent || ent.layer !== targetLayer) {
-          targetLayer.addChild(ent);
+      this.deleteData.entities.forEach((ent) => {
+        if (layerManager) {
+          const targetLayerId = String(ent.data?.layerId || layerManager.activeLayerId || '0');
+          layerManager.assignEntityToLayer(ent, targetLayerId);
+        } else {
+          const fallbackLayer = ent.data?.isPointEntity ? (pointsLayer || drawLayer) : drawLayer;
+          if (!ent.parent || ent.layer !== fallbackLayer) {
+            fallbackLayer.addChild(ent);
+          }
         }
+
         if (!this.cadService.entities.includes(ent)) {
           this.cadService.entities.push(ent);
         }
       });
     }
 
-    if (nodesLayer && drawLayer) {
-      nodesLayer.insertAbove(drawLayer);
+    if (layerManager) {
+      layerManager.syncZOrder();
     }
 
-    this.cadService.entities.forEach(ent => {
-      if (ent && ent.data?.isPointEntity) {
-        ent.bringToFront();
-      }
-    });
-
-    if (window.cadUtils) {
-      window.cadUtils.selectionRenderEngine.updateEntitiesStroke();
-      window.cadUtils.selectionRenderEngine.renderBezierHandles();
+    const renderEngine = this.cadService.selectionRenderEngine || utils?.selectionRenderEngine;
+    if (renderEngine) {
+      renderEngine.updateEntitiesStroke();
+      renderEngine.renderBezierHandles();
     }
-    paper.view.update();
+    if (typeof paper !== 'undefined' && paper.view) {
+      paper.view.update();
+    }
   }
 }
 
@@ -243,33 +252,58 @@ export class DivideCommand {
   }
 
   execute() {
-    this.pointsCreated.forEach(pt => {
+    const utils = this.cadService.utils;
+    const layerManager = utils?.layerManager;
+    const fallbackLayer = utils?.pointsLayer || utils?.drawLayer || paper.project.activeLayer;
+
+    this.pointsCreated.forEach((pt) => {
+      if (!pt) return;
+
+      if (layerManager) {
+        const targetLayerId = String(pt.data?.layerId || layerManager.activeLayerId || '0');
+        layerManager.assignEntityToLayer(pt, targetLayerId);
+      } else if (!pt.parent) {
+        fallbackLayer.addChild(pt);
+      }
+
       if (!this.cadService.entities.includes(pt)) {
         this.cadService.entities.push(pt);
       }
-      if (!pt.parent) {
-        paper.project.activeLayer.addChild(pt);
-      }
     });
-    if (this.cadService?.selectionRenderEngine?.renderBezierHandles) {
-      this.cadService.selectionRenderEngine.renderBezierHandles();
+
+    if (layerManager) {
+      layerManager.syncZOrder();
     }
-    paper.view.update();
+
+    const renderEngine = this.cadService.selectionRenderEngine || utils?.selectionRenderEngine;
+    if (renderEngine?.renderBezierHandles) {
+      renderEngine.renderBezierHandles();
+    }
+    if (typeof paper !== 'undefined' && paper.view) {
+      paper.view.update();
+    }
   }
 
   undo() {
-    this.pointsCreated.forEach(pt => {
+    this.pointsCreated.forEach((pt) => {
+      if (!pt) return;
+
       const idx = this.cadService.entities.indexOf(pt);
       if (idx !== -1) {
         this.cadService.entities.splice(idx, 1);
       }
+
+      this.cadService.deselectEntity(pt);
       pt.remove();
     });
-    this.cadService.deselectAllEntities();
-    if (this.cadService?.selectionRenderEngine?.renderBezierHandles) {
-      this.cadService.selectionRenderEngine.renderBezierHandles();
+
+    const renderEngine = this.cadService.selectionRenderEngine || this.cadService.utils?.selectionRenderEngine;
+    if (renderEngine?.renderBezierHandles) {
+      renderEngine.renderBezierHandles();
     }
-    paper.view.update();
+    if (typeof paper !== 'undefined' && paper.view) {
+      paper.view.update();
+    }
   }
 }
 

@@ -2,11 +2,15 @@
  * services/renderers/SelectionRenderEngine.js - Renderizado visual de tiradores Bézier, grips paramétricos y grosores dinámicos
  */
 import { CAD_THEME } from '../../config/cadTheme.js';
+import { BezierHandlesRenderer } from './BezierHandlesRenderer.js';
+import { ParametricGripRenderer } from './ParametricGripRenderer.js';
 
 export class SelectionRenderEngine {
   constructor(cadService) {
     this._cadService = cadService;
     this.controlHandlesGroup = null;
+    this.bezierHandlesRenderer = new BezierHandlesRenderer();
+    this.parametricGripRenderer = new ParametricGripRenderer();
   }
 
   // Getter dinámico para evitar que `service` quede undefined si cadService se instancia después
@@ -111,11 +115,15 @@ export class SelectionRenderEngine {
     if (paper.view) paper.view.update();
   }
 
+  _getSelectionStyleConfig(entity) {
+    if (typeof CAD_THEME === 'undefined' || !CAD_THEME?.selection) return {};
+    return entity?.data?.isCircleEntity
+      ? (CAD_THEME.selection.circle || {})
+      : (CAD_THEME.selection.line || {});
+  }
+
   _getSelectionMultiplier(entity) {
-    const styleConfig = entity?.data?.isCircleEntity
-      ? (typeof CAD_THEME !== 'undefined' && CAD_THEME?.selection?.circle ? CAD_THEME.selection.circle : {})
-      : (typeof CAD_THEME !== 'undefined' && CAD_THEME?.selection?.line ? CAD_THEME.selection.line : {});
-    return styleConfig.widthMultiplier || 1.5;
+    return this._getSelectionStyleConfig(entity).widthMultiplier || 1.5;
   }
 
   _getResolvedStrokeWidth(entity, mult = 1, zoom = 1) {
@@ -125,6 +133,15 @@ export class SelectionRenderEngine {
       : (entity?.data?.baseStrokeWidth !== undefined ? entity.data.baseStrokeWidth : 0);
 
     return effectiveBaseWidth === 0 ? (1 * mult) / zoom : effectiveBaseWidth * mult;
+  }
+
+  _filterUnlockedEntities(entities, layerManager) {
+    return (entities || []).filter((ent) => {
+      if (!ent || !ent.parent) return false;
+      const lId = String(ent.data?.layerId || '0');
+      const layer = layerManager?.layers?.get(lId);
+      return !layer || !layer.locked;
+    });
   }
 
   updateEntitiesStroke() {
@@ -213,9 +230,7 @@ export class SelectionRenderEngine {
           ent.fillColor = ent.data.origFillColor;
         }
 
-        const styleConfig = ent.data.isCircleEntity 
-          ? (typeof CAD_THEME !== 'undefined' && CAD_THEME?.selection?.circle ? CAD_THEME.selection.circle : {}) 
-          : (typeof CAD_THEME !== 'undefined' && CAD_THEME?.selection?.line ? CAD_THEME.selection.line : {});
+        const styleConfig = this._getSelectionStyleConfig(ent);
 
         const effectiveColor = propertyManager 
           ? propertyManager.getResolvedColor(ent) 
@@ -276,316 +291,52 @@ export class SelectionRenderEngine {
 
     if (service.editingEntities && service.editingEntities.length > 0) {
       service.editingEntities = service.editingEntities.filter(
-        ent => ent && ent.parent && service.entities?.includes(ent)
+        (ent) => ent && ent.parent && service.entities?.includes(ent)
       );
 
       if (service.editingEntities.length === 0) {
-        if (typeof service.deselectAllSegments === 'function') {
-          service.deselectAllSegments();
-        } else {
-          service.selectedSegments = [];
-        }
-        if (typeof service.deselectAllCurves === 'function') {
-          service.deselectAllCurves();
-        } else if (Array.isArray(service.selectedCurves)) {
-          service.selectedCurves = [];
-        }
-        if (typeof service.deselectAllHandles === 'function') {
-          service.deselectAllHandles();
-        } else {
-          service.selectedHandles = [];
-        }
+        if (typeof service.deselectAllSegments === 'function') service.deselectAllSegments();
+        else service.selectedSegments = [];
+
+        if (typeof service.deselectAllCurves === 'function') service.deselectAllCurves();
+        else if (Array.isArray(service.selectedCurves)) service.selectedCurves = [];
+
+        if (typeof service.deselectAllHandles === 'function') service.deselectAllHandles();
+        else service.selectedHandles = [];
       }
     }
 
     const zoom = paper.view.zoom;
     const cfg = (typeof CAD_THEME !== 'undefined' && CAD_THEME?.handles) ? CAD_THEME.handles : {};
+    const activeEntities = this._filterUnlockedEntities(service.editingEntities, layerManager);
+    const selectableEntities = this._filterUnlockedEntities(service.selectedEntities, layerManager);
 
-    const activeEntities = (service.editingEntities || []).filter(ent => {
-      if (!ent || !ent.parent) return false;
-      const lId = String(ent.data?.layerId || '0');
-      const layer = layerManager?.layers?.get(lId);
-      return !layer || !layer.locked;
+    const styleHelpers = {
+      getSelectionStyleConfig: (ent) => this._getSelectionStyleConfig(ent),
+      getSelectionMultiplier: (ent) => this._getSelectionMultiplier(ent),
+      getResolvedStrokeWidth: (ent, mult, z) => this._getResolvedStrokeWidth(ent, mult, z)
+    };
+
+    this.bezierHandlesRenderer.renderEditingEntities(activeEntities, this.controlHandlesGroup, {
+      service,
+      zoom,
+      cfg,
+      propertyManager,
+      hoveredCurve,
+      hoveredHandle,
+      ...styleHelpers
     });
 
-    // 1. OVERLAY BASE DE ENTIDADES EN MODO EDICIÓN
-    activeEntities.forEach(entity => {
-      if (!entity.visible) return;
+    this.bezierHandlesRenderer.renderSelectionOverlays(
+      selectableEntities,
+      activeEntities,
+      this.controlHandlesGroup,
+      { zoom, ...styleHelpers }
+    );
 
-      if (entity instanceof paper.Path && entity.segments && entity.segments.length >= 2 && !entity.data?.isPointEntity) {
-        const isEntitySelected = Boolean(service.selectedEntities?.includes(entity));
-        const styleConfig = entity.data?.isCircleEntity
-          ? (typeof CAD_THEME !== 'undefined' && CAD_THEME?.selection?.circle ? CAD_THEME.selection.circle : {})
-          : (typeof CAD_THEME !== 'undefined' && CAD_THEME?.selection?.line ? CAD_THEME.selection.line : {});
-
-        const effectiveColor = propertyManager
-          ? propertyManager.getResolvedColor(entity)
-          : (entity.data?.origStrokeColor || '#00e5ff');
-
-        const highlightMult = this._getSelectionMultiplier(entity);
-
-        const editOverlay = entity.clone({ insert: false });
-        editOverlay.data = {};
-        editOverlay.guide = true;
-
-        if (isEntitySelected) {
-          editOverlay.opacity = 1.0;
-          editOverlay.strokeColor = styleConfig.strokeColor || '#ffff00';
-          editOverlay.strokeWidth = this._getResolvedStrokeWidth(entity, highlightMult, zoom);
-        } else {
-          editOverlay.strokeColor = effectiveColor;
-          editOverlay.strokeWidth = this._getResolvedStrokeWidth(entity, 1, zoom);
-        }
-
-        this.controlHandlesGroup.addChild(editOverlay);
-      }
-    });
-
-    // 2. RENDERIZADO DE NODOS BÉZIER, SEGMENTOS SELECCIONADOS/HOVER Y VÉRTICES
-    activeEntities.forEach(entity => {
-      if (!entity.visible) return;
-
-      if (entity instanceof paper.Path && entity.segments && entity.segments.length >= 2 && !entity.data?.isPointEntity) {
-        const isEntitySelected = Boolean(service.selectedEntities?.includes(entity));
-        const highlightMult = this._getSelectionMultiplier(entity);
-        const highlightWidth = this._getResolvedStrokeWidth(entity, highlightMult, zoom);
-
-        const resolvedBaseColor = propertyManager
-          ? propertyManager.getResolvedColor(entity)
-          : (entity.data?.origStrokeColor || '#00e5ff');
-
-        const handleBaseColor = isEntitySelected
-          ? (cfg.anchorStrokeSelected || '#ffff00')
-          : resolvedBaseColor;
-
-        if (entity.curves && !isEntitySelected) {
-          const selectedChains = [];
-          let currentChain = [];
-
-          entity.curves.forEach((curve) => {
-            const isCurveSelected = service.selectedSegments?.includes(curve.segment1) && 
-                                    service.selectedSegments?.includes(curve.segment2);
-
-            if (isCurveSelected) {
-              if (currentChain.length === 0) {
-                currentChain.push(curve.segment1, curve.segment2);
-              } else {
-                if (currentChain[currentChain.length - 1] === curve.segment1) {
-                  currentChain.push(curve.segment2);
-                } else {
-                  selectedChains.push(currentChain);
-                  currentChain = [curve.segment1, curve.segment2];
-                }
-              }
-            } else {
-              if (currentChain.length > 0) {
-                selectedChains.push(currentChain);
-                currentChain = [];
-              }
-            }
-          });
-
-          if (currentChain.length > 0) {
-            selectedChains.push(currentChain);
-          }
-
-          if (entity.closed && selectedChains.length > 1) {
-            const firstChain = selectedChains[0];
-            const lastChain = selectedChains[selectedChains.length - 1];
-            if (lastChain[lastChain.length - 1] === firstChain[0]) {
-              selectedChains[0] = lastChain.concat(firstChain.slice(1));
-              selectedChains.pop();
-            }
-          }
-
-          selectedChains.forEach(chainSegments => {
-            const strokeColor = cfg.anchorStrokeSelected || '#ffff00';
-
-            let isClosedLoop = false;
-            let segmentsToRender = chainSegments;
-
-            if (chainSegments.length > 2 && chainSegments[0] === chainSegments[chainSegments.length - 1]) {
-              isClosedLoop = true;
-              segmentsToRender = chainSegments.slice(0, chainSegments.length - 1);
-            }
-
-            const highlightedPath = new paper.Path({
-              segments: segmentsToRender.map(s => new paper.Segment(s.point, s.handleIn, s.handleOut)),
-              strokeColor: strokeColor,
-              strokeWidth: highlightWidth,
-              strokeJoin: entity.strokeJoin || 'miter',
-              strokeCap: entity.strokeCap || 'butt',
-              miterLimit: entity.miterLimit || 3,
-              closed: isClosedLoop,
-              insert: false
-            });
-
-            highlightedPath.guide = true;
-            this.controlHandlesGroup.addChild(highlightedPath);
-          });
-
-          if (hoveredCurve && hoveredCurve.path === entity) {
-            const c = hoveredCurve;
-            const isHoveredSelected = service.selectedSegments?.includes(c.segment1) && 
-                                      service.selectedSegments?.includes(c.segment2);
-
-            if (!isHoveredSelected) {
-              const hoveredCurvePath = new paper.Path({
-                segments: [
-                  new paper.Segment(c.segment1.point, c.segment1.handleIn, c.segment1.handleOut),
-                  new paper.Segment(c.segment2.point, c.segment2.handleIn, c.segment2.handleOut)
-                ],
-                strokeColor: resolvedBaseColor,
-                strokeWidth: highlightWidth,
-                strokeJoin: entity.strokeJoin || 'miter',
-                strokeCap: entity.strokeCap || 'butt',
-                miterLimit: entity.miterLimit || 3,
-                insert: false
-              });
-
-              hoveredCurvePath.guide = true;
-              this.controlHandlesGroup.addChild(hoveredCurvePath);
-            }
-          }
-        }
-        
-        entity.segments.forEach(segment => {
-          const isSegSelected = !isEntitySelected && service.selectedSegments?.includes(segment);
-
-          ['handleIn', 'handleOut'].forEach(handleType => {
-            if (!segment[handleType].isZero()) {
-              const handlePt = segment.point.add(segment[handleType]);
-
-              const isHandleSelected = !isEntitySelected && service.isSelectedHandle ? service.isSelectedHandle(segment, handleType) : false;
-              const isArmActive = isSegSelected && isHandleSelected;
-              const canHover = !isEntitySelected;
-
-              const isHandleHovered = canHover && !isHandleSelected && 
-                                      !!(hoveredHandle && 
-                                        hoveredHandle.segment === segment && 
-                                        hoveredHandle.type === handleType);
-
-              const isArmHovered = canHover && !isArmActive && 
-                                   !!(hoveredHandle && 
-                                     hoveredHandle.segment === segment && 
-                                     hoveredHandle.type === 'arm' && 
-                                     hoveredHandle.handleType === handleType);
-
-              const armColor = isArmActive 
-                ? (cfg.bezierArmStrokeSelected || '#ffff00') 
-                : handleBaseColor;
-
-              let armWidth = cfg.bezierArmStrokeWidthPx ?? 0.5;
-              if (isArmActive) {
-                armWidth = cfg.bezierArmStrokeWidthSelectedPx ?? cfg.anchorStrokeWidthSelectedPx ?? 1.0;
-              } else if (isArmHovered) {
-                armWidth = cfg.bezierArmStrokeWidthHoverPx ?? 1.0;
-              }
-
-              const arm = new paper.Path.Line({
-                from: segment.point,
-                to: handlePt,
-                strokeColor: armColor,
-                strokeWidth: armWidth / zoom
-              });
-              arm.data = { type: 'arm', handleType: handleType, segment: segment };
-
-              const handleStrokeColor = isHandleSelected 
-                ? (cfg.bezierHandleStrokeSelected || '#ffff00') 
-                : handleBaseColor;
-
-              let handleStrokeWidth = cfg.bezierHandleStrokeWidthPx || 1.0;
-              if (isHandleSelected) {
-                handleStrokeWidth = cfg.anchorStrokeWidthSelectedPx || 1.5;
-              } else if (isHandleHovered) {
-                handleStrokeWidth = cfg.bezierHandleStrokeWidthHoverPx || 1.8;
-              }
-
-              const sizePx = isHandleSelected 
-                ? (cfg.bezierHandleSizePx + 1.0) 
-                : (isHandleHovered ? cfg.bezierHandleSizePx + 0.5 : cfg.bezierHandleSizePx);
-
-              const handleSquare = new paper.Path.Rectangle({
-                point: [handlePt.x - sizePx / (2 * zoom), handlePt.y - sizePx / (2 * zoom)],
-                size: [sizePx / zoom, sizePx / zoom],
-                fillColor: cfg.bezierHandleFill || '#10141D',
-                strokeColor: handleStrokeColor,
-                strokeWidth: handleStrokeWidth / zoom
-              });
-              handleSquare.data = { type: handleType, segment: segment };
-
-              this.controlHandlesGroup.addChild(arm);
-              this.controlHandlesGroup.addChild(handleSquare);
-            }
-          });
-
-          const isAnchorHovered = !isEntitySelected && !isSegSelected && 
-                                  !!(hoveredHandle && 
-                                    hoveredHandle.segment === segment && 
-                                    hoveredHandle.type === 'anchor');
-
-          const baseSide = isSegSelected 
-            ? (cfg.anchorSizeSelectedPx || 7.5) 
-            : (isAnchorHovered ? (cfg.anchorSizeNormalPx || 7.0) + 0.5 : (cfg.anchorSizeNormalPx || 7.0));
-
-          let strokeW = isSegSelected 
-            ? (cfg.anchorStrokeWidthSelectedPx || 1.5) 
-            : (isAnchorHovered ? (cfg.anchorStrokeWidthHoverPx || 1.8) : (cfg.anchorStrokeWidthNormalPx || 1.0));
-
-          const anchorSquare = new paper.Path.Rectangle({
-            point: [segment.point.x - (baseSide / zoom) / 2, segment.point.y - (baseSide / zoom) / 2],
-            size: [baseSide / zoom, baseSide / zoom],
-            fillColor: isSegSelected ? (cfg.anchorFillSelected || '#10141D') : (cfg.anchorFillNormal || '#10141D'),
-            strokeColor: isSegSelected ? (cfg.anchorStrokeSelected || '#ffff00') : handleBaseColor,
-            strokeWidth: strokeW / zoom
-          });
-          anchorSquare.data = { type: 'anchor', segment: segment };
-          this.controlHandlesGroup.addChild(anchorSquare);
-        });
-      }
-    });
-
-    // 3. OVERLAY DE ENTIDADES EN MODO ENTIDAD, CONTORNOS Y GRIPS PARAMÉTRICOS
-    const selectableEntities = (service.selectedEntities || []).filter(ent => {
-      if (!ent || !ent.parent) return false;
-      const lId = String(ent.data?.layerId || '0');
-      const layer = layerManager?.layers?.get(lId);
-      return !layer || !layer.locked;
-    });
-
-    selectableEntities.forEach(entity => {
-      if (!entity.visible) return;
-
-      // Los puntos viven en pointsLayer (por encima de nodesLayer), así que solo proyectamos curvas/rasters
-      if (!activeEntities.includes(entity) && !entity.data?.isPointEntity) {
-        if (entity instanceof paper.Path || entity instanceof paper.CompoundPath) {
-          const styleConfig = entity.data?.isCircleEntity
-            ? (typeof CAD_THEME !== 'undefined' && CAD_THEME?.selection?.circle ? CAD_THEME.selection.circle : {})
-            : (typeof CAD_THEME !== 'undefined' && CAD_THEME?.selection?.line ? CAD_THEME.selection.line : {});
-
-          const mult = this._getSelectionMultiplier(entity);
-
-          const selOverlay = entity.clone({ insert: false });
-          selOverlay.data = {};
-          selOverlay.guide = true;
-          selOverlay.opacity = 1.0;
-          selOverlay.strokeColor = styleConfig.strokeColor || '#ffff00';
-          selOverlay.strokeWidth = this._getResolvedStrokeWidth(entity, mult, zoom);
-          this.controlHandlesGroup.addChild(selOverlay);
-        } else if (entity instanceof paper.Raster && !entity.data?.controller) {
-          const rasterOutline = new paper.Path.Rectangle({
-            rectangle: entity.bounds,
-            strokeColor: '#ffff00',
-            strokeWidth: 1.5 / zoom,
-            insert: false
-          });
-          rasterOutline.guide = true;
-          this.controlHandlesGroup.addChild(rasterOutline);
-        }
-      }
-
-      if (entity.data && entity.data.controller) {
-        this._renderParametricController(entity, {
+    selectableEntities.forEach((entity) => {
+      if (entity.visible && entity.data?.controller) {
+        this.parametricGripRenderer.render(entity, this.controlHandlesGroup, {
           zoom,
           cfg,
           propertyManager,
@@ -595,139 +346,6 @@ export class SelectionRenderEngine {
       }
     });
 
-    // Garantizar al final del render que pointsLayer (y los puntos seleccionados) quede siempre por encima de nodesLayer
     this._getOrCreatePointsLayer();
-  }
-
-  _renderParametricController(entity, { zoom, cfg, propertyManager, hoveredParametricGrip, activeParametricGrip }) {
-    const controller = entity.data.controller;
-    const { grips, outlineSegments } = controller.getGrips();
-
-    const rawColor = propertyManager
-      ? propertyManager.getResolvedColor(entity)
-      : (entity.data?.origStrokeColor || '#00e5ff');
-
-    const entityColor = new paper.Color(rawColor);
-    entityColor.alpha = 1.0;
-    const activeColor = cfg.anchorStrokeSelected || '#ffff00';
-
-    if (outlineSegments && outlineSegments.length === 4) {
-      const [nw, ne, se, sw] = outlineSegments;
-      const edges = [
-        { id: 'n', from: nw, to: ne, cursor: 'ns-resize' },
-        { id: 'e', from: ne, to: se, cursor: 'ew-resize' },
-        { id: 's', from: se, to: sw, cursor: 'ns-resize' },
-        { id: 'w', from: sw, to: nw, cursor: 'ew-resize' }
-      ];
-
-      edges.forEach((edge) => {
-        const isEdgeHovered = Boolean(
-          hoveredParametricGrip &&
-          hoveredParametricGrip.entity === entity &&
-          hoveredParametricGrip.gripId === edge.id
-        );
-        const isEdgeActive = Boolean(
-          activeParametricGrip &&
-          activeParametricGrip.entity === entity &&
-          activeParametricGrip.gripId === edge.id
-        );
-
-        const edgeStrokeColor = isEdgeActive ? activeColor : entityColor;
-        const edgeStrokeWidthPx = isEdgeActive
-          ? (cfg.anchorStrokeWidthSelectedPx || 1.5)
-          : (isEdgeHovered ? (cfg.anchorStrokeWidthHoverPx || 1.8) : (cfg.anchorStrokeWidthNormalPx || 1.0));
-
-        const edgeLine = new paper.Path.Line({
-          from: edge.from,
-          to: edge.to,
-          strokeColor: edgeStrokeColor,
-          strokeWidth: edgeStrokeWidthPx / zoom,
-          insert: false
-        });
-        edgeLine.guide = true;
-        edgeLine.data = {
-          isParametricGrip: true,
-          isParametricEdge: true,
-          gripId: edge.id,
-          entity: entity,
-          cursor: edge.cursor
-        };
-        this.controlHandlesGroup.addChild(edgeLine);
-      });
-    } else if (outlineSegments && outlineSegments.length > 1) {
-      const boundingOutline = new paper.Path({
-        segments: outlineSegments,
-        closed: true,
-        strokeColor: entityColor,
-        strokeWidth: (cfg.anchorStrokeWidthNormalPx || 1.0) / zoom,
-        insert: false
-      });
-      boundingOutline.guide = true;
-      this.controlHandlesGroup.addChild(boundingOutline);
-    }
-
-    grips.forEach((grip) => {
-      const isCenter = grip.id === 'center';
-      const isHovered = Boolean(
-        hoveredParametricGrip &&
-        hoveredParametricGrip.entity === entity &&
-        hoveredParametricGrip.gripId === grip.id
-      );
-      const isActiveGrip = Boolean(
-        activeParametricGrip &&
-        activeParametricGrip.entity === entity &&
-        activeParametricGrip.gripId === grip.id
-      );
-
-      const normalSide = isCenter ? 8.0 : (cfg.anchorSizeNormalPx || 7.0);
-      const selectedSide = isCenter ? 9.0 : (cfg.anchorSizeSelectedPx || 7.5);
-
-      let sizePx = normalSide;
-      let strokeW = cfg.anchorStrokeWidthNormalPx || 1.0;
-      let strokeColor = entityColor;
-      const fillColor = cfg.anchorFillNormal || '#10141D';
-
-      if (isActiveGrip) {
-        sizePx = selectedSide;
-        strokeW = cfg.anchorStrokeWidthSelectedPx || 1.5;
-        strokeColor = activeColor;
-      } else if (isHovered) {
-        sizePx = normalSide + 0.5;
-        strokeW = cfg.anchorStrokeWidthHoverPx || 1.8;
-      }
-
-      const size = sizePx / zoom;
-
-      let gripMarker;
-      if (isCenter) {
-        gripMarker = new paper.CompoundPath({
-          children: [
-            new paper.Path.Circle({ center: grip.point, radius: size / 1.5 }),
-            new paper.Path.Line(grip.point.subtract([size, 0]), grip.point.add([size, 0])),
-            new paper.Path.Line(grip.point.subtract([0, size]), grip.point.add([0, size]))
-          ],
-          strokeColor: strokeColor,
-          strokeWidth: strokeW / zoom,
-          fillColor: null
-        });
-      } else {
-        gripMarker = new paper.Path.Rectangle({
-          point: [grip.point.x - size / 2, grip.point.y - size / 2],
-          size: [size, size],
-          fillColor: fillColor,
-          strokeColor: strokeColor,
-          strokeWidth: strokeW / zoom
-        });
-      }
-
-      gripMarker.data = {
-        isParametricGrip: true,
-        gripId: grip.id,
-        entity: entity,
-        cursor: grip.cursor
-      };
-
-      this.controlHandlesGroup.addChild(gripMarker);
-    });
   }
 }

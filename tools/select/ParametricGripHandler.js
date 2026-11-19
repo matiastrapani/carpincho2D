@@ -1,6 +1,7 @@
 /**
  * tools/select/ParametricGripHandler.js - Gestor de interacción y transformaciones con Grips Paramétricos
  */
+
 import { TransformEntityCommand } from '../../services/commands/cadCommands.js';
 
 export class ParametricGripHandler {

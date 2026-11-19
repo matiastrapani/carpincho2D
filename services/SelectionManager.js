@@ -4,8 +4,9 @@
 import { DeleteCommand } from './commands/cadCommands.js';
 
 export class SelectionManager {
-  constructor(cadService) {
+  constructor(cadService, cadUtils = null) {
     this.service = cadService;
+    this._utils = cadUtils;
     this._selectedEntities = [];
     this.selectedSegments = [];
     this.editingEntities = [];
@@ -27,32 +28,66 @@ export class SelectionManager {
     this._notify();
   }
 
+  _getUtils() {
+    return this._utils || this.service?.utils || null;
+  }
+
+  _getLayerManager() {
+    return this._getUtils()?.layerManager || null;
+  }
+
+  _getRenderEngine() {
+    return this.service?.selectionRenderEngine || this._getUtils()?.selectionRenderEngine || null;
+  }
+
+  _getPaper() {
+    return this._getUtils()?.paper || (typeof paper !== 'undefined' ? paper : null);
+  }
+
+  _isLayerEditable(entity) {
+    if (!entity) return false;
+    const layerId = String(entity.data?.layerId || '0');
+    const layer = this._getLayerManager()?.layers?.get(layerId);
+    return !layer || (!layer.locked && layer.visible !== false);
+  }
+
+  _refreshRender({ stroke = true, handles = true, updateView = false } = {}) {
+    const renderEngine = this._getRenderEngine();
+    if (renderEngine) {
+      if (stroke && typeof renderEngine.updateEntitiesStroke === 'function') {
+        renderEngine.updateEntitiesStroke();
+      }
+      if (handles && typeof renderEngine.renderBezierHandles === 'function') {
+        renderEngine.renderBezierHandles();
+      }
+    }
+    if (updateView) {
+      const paperInst = this._getPaper();
+      if (paperInst?.view) paperInst.view.update();
+    }
+  }
+
   _notify() {
-    this._listeners.forEach(fn => fn(this._selectedEntities));
-    if (window.propertyPanelUI && typeof window.propertyPanelUI.refresh === 'function') {
-      window.propertyPanelUI.refresh();
-    }
-    if (window.cadUI && typeof window.cadUI.updatePropertyPanel === 'function') {
-      const last = this._selectedEntities[this._selectedEntities.length - 1] || null;
-      window.cadUI.updatePropertyPanel(last);
-    }
+    this._listeners.forEach((fn) => fn(this._selectedEntities));
   }
 
   selectEntity(entity, addToSelection = false) {
     if (!entity) return;
-    if (this.utils?.canvasViewportManager) {
-      this.utils.canvasViewportManager.previousViewState = null;
+
+    const viewportManager = this._getUtils()?.canvasViewportManager;
+    if (viewportManager) {
+      viewportManager.previousViewState = null;
     }
-    const layerId = String(entity.data?.layerId || '0');
-    const layerManager = this.service.utils?.layerManager || window.cadUtils?.layerManager;
-    const layer = layerManager?.layers?.get(layerId);
-    if (layer && (layer.locked || layer.visible === false)) return;
+
+    if (!this._isLayerEditable(entity)) return;
 
     if (!addToSelection) {
-      this.deselectAllEntities();
+      this._selectedEntities = [];
+      this.selectedSegments = [];
+      this.deselectAllHandles();
     }
 
-    if (!this.selectedEntities.includes(entity)) {
+    if (!this._selectedEntities.includes(entity)) {
       if (!entity.data) entity.data = {};
 
       if (!entity.data.origStrokeColor && entity.strokeColor) {
@@ -65,56 +100,45 @@ export class SelectionManager {
         entity.data.origStrokeWidth = entity.strokeWidth;
       }
 
-      this.selectedEntities.push(entity);
+      this._selectedEntities.push(entity);
       entity.selected = false;
     }
 
-    if (window.cadUtils) {
-      window.cadUtils.selectionRenderEngine.updateEntitiesStroke();
-      window.cadUtils.selectionRenderEngine.renderBezierHandles();
-    }
+    this._refreshRender();
     this._notify();
   }
 
   deselectAllEntities() {
-    this.selectedEntities = [];
+    this._selectedEntities = [];
     this.selectedSegments = [];
     this.deselectAllHandles();
 
-    if (window.cadUtils) {
-      window.cadUtils.selectionRenderEngine.updateEntitiesStroke();
-      window.cadUtils.selectionRenderEngine.renderBezierHandles();
-    }
-
+    this._refreshRender();
+    this._notify();
   }
 
   selectHandle(segment, type, addToSelection = false) {
     if (!segment || !segment.path || !type) return;
-
-    const layerId = String(segment.path.data?.layerId || '0');
-    const layerManager = this.service.utils?.layerManager || window.cadUtils?.layerManager;
-    const layer = layerManager?.layers?.get(layerId);
-    if (layer && (layer.locked || layer.visible === false)) return;
+    if (!this._isLayerEditable(segment.path)) return;
 
     if (!addToSelection) {
-      this._clearSelectedEntitiesOnly();
+      this._clearSelectedEntitiesOnly(false);
       this.deselectAllHandles();
     }
 
-    const exists = this.selectedHandles.some(h => h.segment === segment && h.type === type);
+    const exists = this.selectedHandles.some((h) => h.segment === segment && h.type === type);
     if (!exists) {
       this.selectedHandles.push({ segment, type });
     }
-    if (window.cadUtils) {
-      window.cadUtils.selectionRenderEngine.renderBezierHandles();
-    }
+
+    this._refreshRender({ stroke: false, handles: true });
+    this._notify();
   }
 
   deselectHandle(segment, type) {
-    this.selectedHandles = this.selectedHandles.filter(h => !(h.segment === segment && h.type === type));
-    if (window.cadUtils) {
-      window.cadUtils.selectionRenderEngine.renderBezierHandles();
-    }
+    this.selectedHandles = this.selectedHandles.filter((h) => !(h.segment === segment && h.type === type));
+    this._refreshRender({ stroke: false, handles: true });
+    this._notify();
   }
 
   deselectAllHandles() {
@@ -126,54 +150,49 @@ export class SelectionManager {
   }
 
   deselectEntity(entity) {
-    const index = this.selectedEntities.indexOf(entity);
-    if (this.utils?.canvasViewportManager) {
-      this.utils.canvasViewportManager.previousViewState = null;
+    const index = this._selectedEntities.indexOf(entity);
+    const viewportManager = this._getUtils()?.canvasViewportManager;
+    if (viewportManager) {
+      viewportManager.previousViewState = null;
     }
     if (index !== -1) {
-      this.selectedEntities.splice(index, 1);
-    }
-    
-    if (entity instanceof paper.Path && entity.segments) {
-      entity.segments.forEach(seg => this.deselectSegment(seg));
+      this._selectedEntities.splice(index, 1);
     }
 
-    if (window.cadUtils) {
-      window.cadUtils.selectionRenderEngine.updateEntitiesStroke();
-      window.cadUtils.selectionRenderEngine.renderBezierHandles();
+    const paperInst = this._getPaper();
+    if (paperInst && entity instanceof paperInst.Path && entity.segments) {
+      entity.segments.forEach((seg) => {
+        const segIdx = this.selectedSegments.indexOf(seg);
+        if (segIdx !== -1) {
+          this.selectedSegments.splice(segIdx, 1);
+        }
+      });
     }
 
+    this._refreshRender();
     this._notify();
   }
 
   deselectAllEditingEntities() {
     this.editingEntities = [];
-    this.selectedEntities = [];
-    this.selectedSegments = [];
-    this.deselectAllHandles();
-
-    if (window.cadUtils) {
-      window.cadUtils.selectionRenderEngine.updateEntitiesStroke();
-      window.cadUtils.selectionRenderEngine.renderBezierHandles();
-    }
+    this.deselectAllEntities();
   }
 
   selectSegment(segment, addToSelection = false) {
     if (!segment || !segment.path) return;
-
-    const layerId = String(segment.path.data?.layerId || '0');
-    const layerManager = this.service.utils?.layerManager || window.cadUtils?.layerManager;
-    const layer = layerManager?.layers?.get(layerId);
-    if (layer && (layer.locked || layer.visible === false)) return;
+    if (!this._isLayerEditable(segment.path)) return;
 
     if (!addToSelection) {
-      this._clearSelectedEntitiesOnly();
+      this._clearSelectedEntitiesOnly(false);
       this.selectedSegments = [];
     }
 
     if (!this.selectedSegments.includes(segment)) {
       this.selectedSegments.push(segment);
     }
+
+    this._refreshRender({ stroke: false, handles: true });
+    this._notify();
   }
 
   deselectSegment(segment) {
@@ -182,9 +201,8 @@ export class SelectionManager {
       this.selectedSegments.splice(index, 1);
     }
 
-    if (window.cadUtils) {
-      window.cadUtils.selectionRenderEngine.renderBezierHandles();
-    }
+    this._refreshRender({ stroke: false, handles: true });
+    this._notify();
   }
 
   deselectAllSegments() {
@@ -206,8 +224,7 @@ export class SelectionManager {
       this.selectedSegments.length + this.selectedHandles.length;
 
     if (prevTotal !== nextTotal) {
-      window.cadUtils?.selectionRenderEngine?.updateEntitiesStroke();
-      window.cadUtils?.selectionRenderEngine?.renderBezierHandles();
+      this._refreshRender();
       this._notify();
     }
   }
@@ -217,7 +234,7 @@ export class SelectionManager {
     if (this.selectedSegments.length > 0) {
       const pathSegmentMap = new Map();
 
-      this.selectedSegments.forEach(seg => {
+      this.selectedSegments.forEach((seg) => {
         if (seg && seg.path) {
           if (!pathSegmentMap.has(seg.path)) {
             pathSegmentMap.set(seg.path, []);
@@ -226,47 +243,33 @@ export class SelectionManager {
         }
       });
 
-      const pathsAffected = [];
-
-      pathSegmentMap.forEach((segs, path) => {
-        const originalSegmentsState = path.segments.map(s => ({
+      const pathsAffected = Array.from(pathSegmentMap.entries()).map(([path, segs]) => ({
+        path,
+        indicesToDelete: segs
+          .map((s) => s.index)
+          .filter((idx) => idx !== undefined && idx !== -1)
+          .sort((a, b) => b - a),
+        originalSegmentsState: path.segments.map((s) => ({
           point: s.point.clone(),
           handleIn: s.handleIn.clone(),
           handleOut: s.handleOut.clone()
-        }));
+        }))
+      }));
 
-        const indicesToDelete = segs
-          .map(s => s.index)
-          .filter(idx => idx !== undefined && idx !== -1)
-          .sort((a, b) => b - a);
-
-        pathsAffected.push({
-          path: path,
-          indicesToDelete: indicesToDelete,
-          originalSegmentsState: originalSegmentsState
-        });
-      });
-
-      const deleteCmd = new DeleteCommand(this.service, {
+      this.service.executeCommand(new DeleteCommand(this.service, {
         type: 'segments',
-        pathsAffected: pathsAffected
-      });
-
-      this.service.executeCommand(deleteCmd);
+        pathsAffected
+      }));
       if (renderBezierFn) renderBezierFn();
       return;
     }
 
     // B. Borrado de ENTIDAD COMPLETA
     if (this.selectedEntities.length > 0) {
-      const entitiesToDelete = [...this.selectedEntities];
-
-      const deleteCmd = new DeleteCommand(this.service, {
+      this.service.executeCommand(new DeleteCommand(this.service, {
         type: 'entities',
-        entities: entitiesToDelete
-      });
-
-      this.service.executeCommand(deleteCmd);
+        entities: [...this.selectedEntities]
+      }));
       if (renderBezierFn) renderBezierFn();
     }
   }
@@ -274,19 +277,14 @@ export class SelectionManager {
   enterEditMode(entities = null, { append = false } = {}) {
     const sourceList = entities
       ? (Array.isArray(entities) ? entities : [entities])
-      : [...this.selectedEntities];
+      : [...this._selectedEntities];
 
-    const layerManager = this.service.utils?.layerManager || window.cadUtils?.layerManager;
+    const paperInst = this._getPaper();
     const editable = sourceList.filter((ent) => {
       if (!ent || !ent.parent || !ent.visible) return false;
-      if (!(ent instanceof paper.Path) || ent.data?.isPointEntity) return false;
+      if (!paperInst || !(ent instanceof paperInst.Path) || ent.data?.isPointEntity) return false;
       if (!ent.segments || ent.segments.length < 2) return false;
-
-      const layerId = String(ent.data?.layerId || '0');
-      const layer = layerManager?.layers?.get(layerId);
-      if (layer && (layer.locked || layer.visible === false)) return false;
-
-      return true;
+      return this._isLayerEditable(ent);
     });
 
     if (editable.length === 0) return [];
@@ -303,15 +301,10 @@ export class SelectionManager {
       }
     });
 
-    // Sacar de selectedEntities las entidades que entran en edición
-    // para habilitar la selección y arrastre directo de sus nodos y tramos
-    this.selectedEntities = this.selectedEntities.filter((ent) => !editable.includes(ent));
+    this._selectedEntities = this._selectedEntities.filter((ent) => !editable.includes(ent));
 
-    if (window.cadUtils) {
-      window.cadUtils.selectionRenderEngine?.updateEntitiesStroke();
-      window.cadUtils.selectionRenderEngine?.renderBezierHandles();
-    }
-    if (window.paper?.view) window.paper.view.update();
+    this._refreshRender({ updateView: true });
+    this._notify();
 
     return editable;
   }
@@ -323,24 +316,23 @@ export class SelectionManager {
     this.deselectAllSegments();
     this.deselectAllHandles();
 
-    if (window.cadUtils) {
-      window.cadUtils.hoveredHandle = null;
-      window.cadUtils.hoveredCurve = null;
-      window.cadUtils.selectionRenderEngine?.updateEntitiesStroke();
-      window.cadUtils.selectionRenderEngine?.renderBezierHandles();
+    const utils = this._getUtils();
+    if (utils) {
+      utils.hoveredHandle = null;
+      utils.hoveredCurve = null;
     }
-    if (window.paper?.view) window.paper.view.update();
+
+    this._refreshRender({ updateView: true });
+    this._notify();
 
     return true;
   }
 
-  _clearSelectedEntitiesOnly() {
-    if (this.selectedEntities.length === 0) return;
+  _clearSelectedEntitiesOnly(notify = true) {
+    if (this._selectedEntities.length === 0) return;
 
-    this.selectedEntities = [];
-    if (window.cadUtils) {
-      window.cadUtils.selectionRenderEngine?.updateEntitiesStroke();
-      window.cadUtils.selectionRenderEngine?.renderBezierHandles();
-    }
+    this._selectedEntities = [];
+    this._refreshRender();
+    if (notify) this._notify();
   }
 }

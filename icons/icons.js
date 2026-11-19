@@ -272,7 +272,18 @@ export const LUCIDE_PATHS = {
   'x': `
   <path d="M18 6 6 18"/>
   <path d="m6 6 12 12"/>
-  `
+  `,
+  
+  'mouse-left': `
+	<path d="M12 7.318V10m-7 0v5a7 7 0 0 0 14 0V9c0-3.527-2.608-6.515-6-7" />
+	<circle cx="7" cy="4" r="2" />
+  `,
+
+  'mouse-right': `
+  <path d="M12 7.318V10m7 0v5a7 7 0 0 1-14 0V9c0-3.527 2.608-6.515 6-7" />
+  <circle cx="17" cy="4" r="2" />
+  `,
+
 };
 
 const ICON_REGISTRY = { ...CUSTOM_ICONS };
