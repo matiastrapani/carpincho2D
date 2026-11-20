@@ -180,14 +180,14 @@ export class LayerRowBuilder {
 
       <!-- 6. Visibilidad -->
       <div class="flex items-center justify-center">
-        <button type="button" data-action="toggle-visibility" data-tooltip="${isActive ? 'La capa activa no se puede ocultar' : layer.visible ? 'Ocultar' : 'Mostrar'}" class="tooltip-top-right ${actionBtnBase} text-[9px] ${visBtnStyle}">
+        <button type="button" data-action="toggle-visibility" data-tooltip="${isActive ? 'La capa activa\n no se puede ocultar' : layer.visible ? 'Ocultar' : 'Mostrar'}" class="tooltip-align-right tooltip-top-right ${actionBtnBase} text-[9px] ${visBtnStyle}">
           <span class="iconify text-xs icon-crisp shrink-0" data-icon="${layer.visible ? 'lucide:eye' : 'lucide:eye-closed'}"></span> 
         </button>
       </div>
 
       <!-- 7. Bloqueo -->
       <div class="flex items-center justify-center">
-        <button type="button" data-action="toggle-lock" data-tooltip="${isActive ? 'La capa activa no se puede bloquear' : layer.locked ? 'Desbloquear' : 'Bloquear'}" class="tooltip-top-right ${actionBtnBase} text-[9px] ${lockBtnStyle}">
+        <button type="button" data-action="toggle-lock" data-tooltip="${isActive ? 'La capa activa\n no se puede bloquear' : layer.locked ? 'Desbloquear' : 'Bloquear'}" class="tooltip-align-right tooltip-top-right ${actionBtnBase} text-[9px] ${lockBtnStyle}">
           <span class="iconify text-[10px] icon-crisp shrink-0" data-icon="${layer.locked ? 'lucide:lock' : 'lucide:lock-open'}"></span> 
         </button>
       </div>

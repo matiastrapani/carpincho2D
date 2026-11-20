@@ -168,13 +168,18 @@ canvas.tool-trim { cursor: cell; }
   position: fixed;
   top: 0;
   left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 3px;
   background: var(--cad-bg-root);
   color: var(--cad-text-bright);
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   font-size: 11px;
   font-weight: 500;
-  line-height: 1.2;
-  padding: 4px 8px;
+  line-height: 1.25;
+  padding: 5px 8px;
   border-radius: 4px;
   white-space: nowrap;
   pointer-events: none;
@@ -184,9 +189,33 @@ canvas.tool-trim { cursor: cell; }
   z-index: 9999;
 }
 
+.cad-floating-tooltip.align-left {
+  align-items: flex-start;
+  text-align: left;
+}
+
+.cad-floating-tooltip.align-right {
+  align-items: flex-end;
+  text-align: right;
+}
+
 .cad-floating-tooltip.visible {
   opacity: 1;
   visibility: visible;
+}
+
+.cad-tooltip-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.cad-tooltip-line svg,
+.cad-tooltip-line .iconify {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
 }
 
 .gap-hud {

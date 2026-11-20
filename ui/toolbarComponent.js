@@ -128,7 +128,7 @@ export class CADToolbarComponent {
 
             <div class="flat-divider h-4 shrink-0 hidden sm:block"></div>
 
-            <button id="btnZoomReset" class="hidden md:flex cad-button rounded items-center gap-1.5 px-2 h-5 shrink-0 text-zinc-400 hover:text-zinc-100 tooltip-top cursor-pointer" data-tooltip="Restablecer vista a 100% (Origen 0,0)">
+            <button id="btnZoomReset" class="hidden md:flex cad-button rounded items-center gap-1.5 px-2 h-5 shrink-0 text-zinc-400 hover:text-zinc-100 tooltip-top cursor-pointer" data-tooltip="Restablecer vista a 100%\n (Origen 0,0)">
               <span class="text-zinc-500 font-medium text-[10px] leading-none pointer-events-none">ZOOM:</span>
               <span id="hudZoom" class="hud-value text-zinc-300 min-w-[32px] text-right font-medium text-[11px] leading-none pointer-events-none">100%</span>
             </button>
@@ -136,7 +136,7 @@ export class CADToolbarComponent {
             <div class="flat-divider h-4 shrink-0 hidden sm:block"></div>
 
             <div class="hidden md:flex items-center gap-1 h-5 shrink-0">
-              <button id="btnExtents" class="cad-button cad-button-square h-5 w-6 text-zinc-400 hover:text-zinc-100 tooltip-top shrink-0" data-tooltip="Ajustar a vista (extensión)">
+              <button id="btnExtents" class="cad-button cad-button-square h-5 w-6 text-zinc-400 hover:text-zinc-100 tooltip-top shrink-0" data-tooltip="Ajustar a vista\n(extensión)">
                 
                  <span id="btnSnapIcon" class="iconify text-zinc-200 text-sm shrink-0" data-icon="lucide:shrink"></span> 
               </button>
@@ -222,7 +222,7 @@ export class CADToolbarComponent {
 
           <!-- Círculos Flyout -->
           <div class="relative">
-            <button id="btn-circle-tool" class="cad-button cad-button-square" data-tooltip="Círculo (centro y radio)">
+            <button id="btn-circle-tool" class="cad-button cad-button-square tooltip-align-left" data-tooltip="Círculo\n(centro y radio)">
               <span class="iconify text-2xl leading-none shrink-0" data-icon="custom:circle"></span>
             </button>
           </div>

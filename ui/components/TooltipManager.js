@@ -5,6 +5,7 @@ export class TooltipManager {
   constructor(mountNode = document.body) {
     this.mountNode = mountNode;
     this.activeTarget = null;
+    this._currentRawText = null;
     this.gap = 6;
     this.viewportPadding = 6;
 
@@ -29,13 +30,24 @@ export class TooltipManager {
       const nextText = this.activeTarget.getAttribute('data-tooltip');
       if (!nextText) {
         this.hide();
-      } else if (this.tooltipEl.textContent !== nextText) {
-        this.tooltipEl.textContent = nextText;
-        this._positionTooltip(this.activeTarget);
+        return;
       }
+      this._syncAlignment(this.activeTarget);
+      if (this._currentRawText !== nextText) {
+        this._currentRawText = nextText;
+        this._renderContent(nextText);
+      }
+      this._positionTooltip(this.activeTarget);
     });
 
     this._bindEvents();
+  }
+
+  _syncAlignment(target) {
+    const isLeft = target.classList.contains('tooltip-align-left');
+    const isRight = !isLeft && target.classList.contains('tooltip-align-right');
+    this.tooltipEl.classList.toggle('align-left', isLeft);
+    this.tooltipEl.classList.toggle('align-right', isRight);
   }
 
   _bindEvents() {
@@ -60,10 +72,11 @@ export class TooltipManager {
 
   _handlePointerOut(e) {
     if (!this.activeTarget) return;
-    const related = e.relatedTarget instanceof Element ? e.relatedTarget : null;
+    const related = e.relatedTarget instanceof Node ? e.relatedTarget : null;
     if (related && this.activeTarget.contains(related)) return;
 
-    const nextTarget = related ? related.closest('[data-tooltip]') : null;
+    const relatedEl = related instanceof Element ? related : (related ? related.parentElement : null);
+    const nextTarget = relatedEl ? relatedEl.closest('[data-tooltip]') : null;
     if (nextTarget && nextTarget !== this.activeTarget) {
       const text = nextTarget.getAttribute('data-tooltip');
       if (text) {
@@ -89,13 +102,15 @@ export class TooltipManager {
 
   show(target, text) {
     this.activeTarget = target;
-    this.tooltipEl.textContent = text;
+    this._currentRawText = text;
+    this._syncAlignment(target);
+    this._renderContent(text);
     this.tooltipEl.classList.add('visible');
 
     this._attrObserver.disconnect();
     this._attrObserver.observe(target, {
       attributes: true,
-      attributeFilter: ['data-tooltip']
+      attributeFilter: ['data-tooltip', 'class']
     });
 
     this._positionTooltip(target);
@@ -103,6 +118,7 @@ export class TooltipManager {
 
   hide() {
     this.activeTarget = null;
+    this._currentRawText = null;
     this._attrObserver.disconnect();
     this.tooltipEl.classList.remove('visible');
   }
@@ -149,6 +165,63 @@ export class TooltipManager {
     top = Math.max(pad, Math.min(top, maxTop));
 
     this.tooltipEl.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`;
+  }
+
+  _renderContent(rawText) {
+    this.tooltipEl.replaceChildren();
+
+    const lines = String(rawText).split(/\r?\n|\\n/);
+    const tokenRegex = /<span\b([^>]*)><\/span>|<span\b([^>]*)\/>|\{icon:([a-zA-Z0-9:_-]+)\}/gi;
+
+    for (const line of lines) {
+      const lineEl = document.createElement('div');
+      lineEl.className = 'cad-tooltip-line';
+
+      if (line.length === 0) {
+        lineEl.textContent = '\u00A0';
+        this.tooltipEl.appendChild(lineEl);
+        continue;
+      }
+
+      let lastIndex = 0;
+      tokenRegex.lastIndex = 0;
+      let match;
+
+      while ((match = tokenRegex.exec(line)) !== null) {
+        if (match.index > lastIndex) {
+          lineEl.appendChild(document.createTextNode(line.slice(lastIndex, match.index)));
+        }
+
+        const rawSpanAttrs = match[1] !== undefined ? match[1] : match[2];
+        const shorthandIcon = match[3];
+
+        if (rawSpanAttrs !== undefined) {
+          const iconAttrMatch = rawSpanAttrs.match(/\bdata-icon\s*=\s*["']([^"']+)["']/i);
+          if (iconAttrMatch) {
+            const classAttrMatch = rawSpanAttrs.match(/\bclass\s*=\s*["']([^"']+)["']/i);
+            const iconSpan = document.createElement('span');
+            iconSpan.className = classAttrMatch ? classAttrMatch[1] : 'iconify';
+            iconSpan.setAttribute('data-icon', iconAttrMatch[1]);
+            lineEl.appendChild(iconSpan);
+          } else {
+            lineEl.appendChild(document.createTextNode(match[0]));
+          }
+        } else if (shorthandIcon) {
+          const iconSpan = document.createElement('span');
+          iconSpan.className = 'iconify';
+          iconSpan.setAttribute('data-icon', shorthandIcon);
+          lineEl.appendChild(iconSpan);
+        }
+
+        lastIndex = tokenRegex.lastIndex;
+      }
+
+      if (lastIndex < line.length) {
+        lineEl.appendChild(document.createTextNode(line.slice(lastIndex)));
+      }
+
+      this.tooltipEl.appendChild(lineEl);
+    }
   }
 
   cleanup() {
