@@ -3,11 +3,13 @@
  */
 
 import { TransformEntityCommand } from '../../services/commands/cadCommands.js';
+import { MixedDragSession } from './MixedDragSession.js';
 
 export class ParametricGripHandler {
   constructor(cadService, cadUtils) {
     this.service = cadService;
     this.utils = cadUtils;
+    this.session = new MixedDragSession(cadService, cadUtils);
     this.activeGripEntity = null;
     this.activeGripId = null;
     this.gripStartPoint = null;
@@ -15,6 +17,11 @@ export class ParametricGripHandler {
 
   _getPaper() {
     return this.utils?.paper || (typeof paper !== 'undefined' ? paper : null);
+  }
+
+  _isEntityEditableByGrips(entity) {
+    if (!entity) return false;
+    return Boolean(this.service.editingEntities?.includes(entity));
   }
 
   hitTest(point) {
@@ -28,7 +35,11 @@ export class ParametricGripHandler {
       fill: true,
       stroke: true,
       tolerance,
-      match: (res) => Boolean(res.item?.data?.isParametricGrip && !res.item.data.isParametricEdge)
+      match: (res) => Boolean(
+        res.item?.data?.isParametricGrip &&
+        !res.item.data.isParametricEdge &&
+        this._isEntityEditableByGrips(res.item.data.entity)
+      )
     });
     if (markerHit) return markerHit;
 
@@ -37,6 +48,7 @@ export class ParametricGripHandler {
 
     (handlesGroup.children || []).forEach((item) => {
       if (!item?.data?.isParametricEdge || typeof item.getNearestLocation !== 'function') return;
+      if (!this._isEntityEditableByGrips(item.data.entity)) return;
 
       const loc = item.getNearestLocation(point);
       if (loc?.point) {
@@ -99,9 +111,12 @@ export class ParametricGripHandler {
     this.activeGripEntity = itemData.entity;
     this.activeGripId = itemData.gripId;
     this.gripStartPoint = point.clone();
+    this.session.begin(point, event.event || null);
 
     this.utils.activeParametricGrip = { entity: itemData.entity, gripId: itemData.gripId };
-    if (this.utils.selectionRenderEngine.renderBezierHandles) this.utils.selectionRenderEngine.renderBezierHandles();
+    if (this.utils.selectionRenderEngine?.renderBezierHandles) {
+      this.utils.selectionRenderEngine.renderBezierHandles();
+    }
 
     const controller = this.activeGripEntity?.data?.controller;
     if (controller && typeof controller.startTransform === 'function') {
@@ -114,6 +129,10 @@ export class ParametricGripHandler {
       return false;
     }
 
+    if (!this.session.hasExceededThreshold(event)) {
+      return true;
+    }
+
     const controller = this.activeGripEntity.data?.controller;
     if (!controller || typeof controller.onGripDrag !== 'function') {
       return false;
@@ -123,7 +142,6 @@ export class ParametricGripHandler {
     const isShift = event.event ? event.event.shiftKey : false;
     const isCenterGrip = this.activeGripId === 'center';
 
-    // En el grip central se aplica Ortogonal con F8/Shift; en esquinas y bordes Shift queda libre para escalado simétrico
     const targetPt = this.utils.resolveConstrainedPoint(event.point, {
       fromPoint: isCenterGrip ? this.gripStartPoint : null,
       isShift: isCenterGrip ? isShift : false,
@@ -152,26 +170,28 @@ export class ParametricGripHandler {
     if (!this.activeGripEntity || !this.activeGripId) return false;
 
     const controller = this.activeGripEntity.data?.controller;
-    if (controller) {
-      const initialState = {
-        position: controller.initialPosition ? controller.initialPosition.clone() : this.activeGripEntity.position.clone(),
-        boundsWidth: controller.initialBounds ? controller.initialBounds.width : this.activeGripEntity.bounds.width,
-        boundsHeight: controller.initialBounds ? controller.initialBounds.height : this.activeGripEntity.bounds.height,
-        matrix: controller.initialMatrix ? controller.initialMatrix.clone() : (this.activeGripEntity.matrix ? this.activeGripEntity.matrix.clone() : null)
-      };
-      const finalState = {
-        position: this.activeGripEntity.position.clone(),
-        boundsWidth: this.activeGripEntity.bounds.width,
-        boundsHeight: this.activeGripEntity.bounds.height,
-        matrix: this.activeGripEntity.matrix ? this.activeGripEntity.matrix.clone() : null
-      };
+    if (controller && this.session.isConfirmed) {
+      const initialState = typeof controller.getInitialTransformState === 'function'
+        ? controller.getInitialTransformState()
+        : null;
+      const finalState = typeof controller.getTransformState === 'function'
+        ? controller.getTransformState()
+        : null;
 
-      const cmd = new TransformEntityCommand(this.service, this.activeGripEntity, initialState, finalState);
-      this.service.executeCommand(cmd);
+      if (initialState && finalState) {
+        const cmd = new TransformEntityCommand(this.service, this.activeGripEntity, initialState, finalState);
+        this.service.executeCommand(cmd);
+      }
+    }
+
+    if (controller && typeof controller.endTransform === 'function') {
+      controller.endTransform();
     }
 
     this.reset();
-    if (this.utils?.selectionRenderEngine?.renderBezierHandles) this.utils.selectionRenderEngine.renderBezierHandles();
+    if (this.utils?.selectionRenderEngine?.renderBezierHandles) {
+      this.utils.selectionRenderEngine.renderBezierHandles();
+    }
     return true;
   }
 
@@ -179,7 +199,32 @@ export class ParametricGripHandler {
     return !!(this.activeGripEntity && this.activeGripId);
   }
 
+  cancelDrag() {
+    if (!this.activeGripEntity) return false;
+
+    const controller = this.activeGripEntity.data?.controller;
+    if (controller && this.session?.isConfirmed && typeof controller.cancelTransform === 'function') {
+      controller.cancelTransform();
+    }
+
+    this.reset();
+    if (this.utils?.selectionRenderEngine?.renderBezierHandles) {
+      this.utils.selectionRenderEngine.renderBezierHandles();
+    }
+    const paperInst = this._getPaper();
+    if (paperInst?.view) {
+      paperInst.view.update();
+    }
+    return true;
+  }
+
   reset() {
+    const controller = this.activeGripEntity?.data?.controller;
+    if (controller && typeof controller.endTransform === 'function') {
+      controller.endTransform();
+    }
+
+    this.session?.reset();
     this.activeGripEntity = null;
     this.activeGripId = null;
     this.gripStartPoint = null;

@@ -288,18 +288,22 @@ export class BezierHandlesRenderer {
 
   renderSelectionOverlays(selectableEntities, activeEntities, controlHandlesGroup, context) {
     const {
+      paper: paperArg,
       zoom,
       getSelectionStyleConfig,
       getSelectionMultiplier,
       getResolvedStrokeWidth
     } = context;
 
+    const paperInst = paperArg || (typeof paper !== 'undefined' ? paper : null);
+    if (!paperInst) return;
+
     selectableEntities.forEach((entity) => {
       if (!entity.visible || activeEntities.includes(entity) || entity.data?.isPointEntity) {
         return;
       }
 
-      if (entity instanceof paper.Path || entity instanceof paper.CompoundPath) {
+      if (entity instanceof paperInst.Path || entity instanceof paperInst.CompoundPath) {
         const styleConfig = getSelectionStyleConfig(entity);
         const mult = getSelectionMultiplier(entity);
 
@@ -310,15 +314,6 @@ export class BezierHandlesRenderer {
         selOverlay.strokeColor = styleConfig.strokeColor || '#ffff00';
         selOverlay.strokeWidth = getResolvedStrokeWidth(entity, mult, zoom);
         controlHandlesGroup.addChild(selOverlay);
-      } else if (entity instanceof paper.Raster && !entity.data?.controller) {
-        const rasterOutline = new paper.Path.Rectangle({
-          rectangle: entity.bounds,
-          strokeColor: '#ffff00',
-          strokeWidth: 1.5 / zoom,
-          insert: false
-        });
-        rasterOutline.guide = true;
-        controlHandlesGroup.addChild(rasterOutline);
       }
     });
   }

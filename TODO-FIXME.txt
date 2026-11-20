@@ -31,7 +31,6 @@ autocompletado en consola
 agregar teclas rapidas a cadtheme cmd+z cmd+a cmd+y backspace, shift, alt, etc
 la tangente en circulos no es con la linea del radio sino que es con la curva
 movimiento y osnap perpendicular
-los puntos de control en imagen al moverlos deben cambiar su color a seleccionados
 
 - [x] **QW-01 | Rubber band en Move con Select:** Dibujar guía discontinua (`CAD_THEME.rubberBand`) en `hudLayer` entre el *pivot point* inicial y la posición actual durante el arrastre de entidades/vértices en `HandleSelectionHandler` / `SelectTool`, limpiándola en `onMouseUp` y `reset()`.
 - [x] **QW-02 | OSNAP Perpendicular en Selección y Movimiento:** Pasar el *pivot point* como `fromPoint` e incluir las entidades arrastradas en `ignoreEntities` al invocar `OsnapEngine.calculateOsnap()` desde `HandleSelectionHandler` / `SegmentEditHandler`.
@@ -67,10 +66,13 @@ icono mouse en tooltip
 
 
 más adelante podemos mover MixedDragSession, BoxSelectHandler y SelectionMenuHandler a una carpeta tools/shared/ cuando también los consuman CopyTool, RotateTool o PointTool).
-Resolver osnap interseccion
+
+Resolver osnap interseccion visualizacion
 ver la seleccion de imagenes y colores de seleccion
 
 Implementar CopyTool (tools/CopyTool.js): Construir la herramienta de copia componiendo CommandSelectionHandler y clonado de entidades (entity.clone()), permitiendo múltiples copias consecutivas hasta Enter o Escape registradas mediante Command.
 Soportar entrada por consola en MoveTool (onCommandInput): Permitir ingresar coordenadas o distancia numérica sobre el vector activo durante la fase PICK_DEST_POINT.
 Extraer SegmentEditHandler.selectEdgeAt: Mover _selectEditModeEdge desde CommandSelectionHandler hacia SegmentEditHandler para unificar la selección de tramos en modo edición.
 Migrar DivisionSelectionHandler.js a BoxSelectHandler y _getPaper(): Reemplazar la caja de selección propia de división por BoxSelectHandler con filtro de entidades editables y eliminar dependencias al paper global.
+
+Cuadrante para maximos y minimos

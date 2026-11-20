@@ -447,7 +447,10 @@ export class TransformEntityCommand {
   applyState(state) {
     if (!this.entity || !state) return;
 
-    if (state.matrix && this.entity.matrix) {
+    const controller = this.entity.data?.controller;
+    if (controller && typeof controller.applyTransformState === 'function') {
+      controller.applyTransformState(state);
+    } else if (state.matrix && this.entity.matrix) {
       this.entity.matrix = state.matrix.clone();
     } else {
       if (state.position) {
@@ -460,11 +463,17 @@ export class TransformEntityCommand {
       }
     }
 
-    if (window.cadUtils?.selectionRenderEngine) {
-      window.cadUtils.selectionRenderEngine.updateEntitiesStroke();
-      window.cadUtils.selectionRenderEngine.renderBezierHandles();
+    const utils = this.cadService?.utils || (typeof window !== 'undefined' ? window.cadUtils : null);
+    const renderEngine = this.cadService?.selectionRenderEngine || utils?.selectionRenderEngine;
+    if (renderEngine) {
+      renderEngine.updateEntitiesStroke();
+      renderEngine.renderBezierHandles();
     }
-    paper.view.update();
+
+    const paperInst = utils?.paper || (typeof paper !== 'undefined' ? paper : null);
+    if (paperInst?.view) {
+      paperInst.view.update();
+    }
   }
 }
 

@@ -13,6 +13,7 @@ export class BaseTool {
     this.preservesEditMode = false;
     this.clearsHudOnActivate = false;
     this.cursorMode = 'draw';
+    this.highlightGripsOnSelect = false;
   }
 
   onActivate() {

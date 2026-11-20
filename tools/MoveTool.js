@@ -16,6 +16,7 @@ export class MoveTool extends BaseTool {
     this.preservesSelection = 'all';
     this.preservesEditMode = true;
     this.clearsHudOnActivate = true;
+    this.highlightGripsOnSelect = true;
 
     this.session = new MixedDragSession(cadService, cadUtils);
     this.selectionPhase = new CommandSelectionHandler(cadService, cadUtils, {
@@ -88,10 +89,6 @@ export class MoveTool extends BaseTool {
     return this.selectionPhase.hasValidSelection();
   }
 
-  _hasValidSelection() {
-    return this.selectionPhase.hasValidSelection();
-  }
-
   _resolveOsnapPoint(rawPoint) {
     let snapped = rawPoint;
     const osnap = this.service.calculateOsnap(rawPoint, (snapPt, type) => {
@@ -102,6 +99,37 @@ export class MoveTool extends BaseTool {
     }
     this.utils.hud.updateHUD(snapped);
     return snapped;
+  }
+
+  _previewMoveTo(rawPoint, isShift = false) {
+    if (!rawPoint || !this.basePoint) return;
+
+    const destPoint = this.session.resolveSnappedPoint(this.basePoint, rawPoint, isShift);
+    this.session.applyDelta(destPoint.subtract(this.basePoint));
+
+    this._refreshView();
+    if (typeof this.utils.renderPivotMarker === 'function') {
+      this.utils.renderPivotMarker(destPoint);
+    }
+  }
+
+  _commitMoveAt(rawPoint, isShift = false) {
+    if (!rawPoint || !this.basePoint) return;
+
+    const destPoint = this.session.resolveSnappedPoint(this.basePoint, rawPoint, isShift, {
+      updateHud: false
+    });
+
+    this.session.applyDelta(destPoint.subtract(this.basePoint));
+    this.session.commitMoveCommand();
+    this.session.reset();
+    this._clearVisualGuides();
+
+    this.basePoint = null;
+    this._baseDownPoint = null;
+    this.phase = 'SELECT_OBJECTS';
+    this._refreshView();
+    this.exitToSelect();
   }
 
   onMouseDown(event) {
@@ -118,32 +146,19 @@ export class MoveTool extends BaseTool {
       const pickedBase = this._resolveOsnapPoint(event.point);
       this.basePoint = pickedBase.clone();
       this.session.begin(this.basePoint, event.event || null);
-      this.session.isConfirmed = true;
 
       if (typeof this.utils.renderPivotMarker === 'function') {
         this.utils.renderPivotMarker(this.basePoint);
       }
 
       this.phase = 'PICK_DEST_POINT';
-      this.setPrompt('Mover — Especifica el segundo punto (destino):');
+      this.setPrompt('Mover — Especifica el segundo punto (destino) o arrastra y suelta:');
       return;
     }
 
     if (this.phase === 'PICK_DEST_POINT' && this.basePoint) {
       const isShift = Boolean(event.event?.shiftKey);
-      const destPoint = this.session.resolveSnappedPoint(this.basePoint, event.point, isShift, {
-        updateHud: false
-      });
-
-      this.session.applyDelta(destPoint.subtract(this.basePoint));
-      this.session.commitMoveCommand();
-      this.session.reset();
-      this._clearVisualGuides();
-
-      this.basePoint = null;
-      this.phase = 'SELECT_OBJECTS';
-      this._refreshView();
-      this.exitToSelect();
+      this._commitMoveAt(event.point, isShift);
     }
   }
 
@@ -162,13 +177,7 @@ export class MoveTool extends BaseTool {
 
     if (this.phase === 'PICK_DEST_POINT' && this.basePoint) {
       const isShift = Boolean(event.event?.shiftKey);
-      const destPoint = this.session.resolveSnappedPoint(this.basePoint, event.point, isShift);
-      this.session.applyDelta(destPoint.subtract(this.basePoint));
-
-      this._refreshView();
-      if (typeof this.utils.renderPivotMarker === 'function') {
-        this.utils.renderPivotMarker(destPoint);
-      }
+      this._previewMoveTo(event.point, isShift);
     }
   }
 
@@ -180,14 +189,37 @@ export class MoveTool extends BaseTool {
       return;
     }
 
-    if (this.phase === 'PICK_DEST_POINT') {
-      this.onMouseMove(event);
+    if (this.phase === 'PICK_DEST_POINT' && this.basePoint) {
+      if (!this.session.hasExceededThreshold(event)) {
+        return;
+      }
+
+      const isShift = Boolean(event.event?.shiftKey);
+      this._previewMoveTo(event.point, isShift);
     }
   }
 
   onMouseUp(event) {
-    if (this.phase !== 'SELECT_OBJECTS') return;
-    this.selectionPhase.onMouseUp(event);
+    if (this.phase === 'SELECT_OBJECTS') {
+      this.selectionPhase.onMouseUp(event);
+      return;
+    }
+
+    if (this.phase === 'PICK_DEST_POINT' && this.basePoint) {
+      if (event?.event && event.event.button !== undefined && event.event.button !== 0) {
+        return;
+      }
+
+      if (this.session.isConfirmed) {
+        const targetPoint = event?.point || this.utils?.lastMousePoint;
+        const isShift = Boolean(event?.event?.shiftKey);
+        this._commitMoveAt(targetPoint, isShift);
+        return;
+      }
+
+      this.session.isConfirmed = true;
+      this.setPrompt('Mover — Especifica el segundo punto (destino):');
+    }
   }
 
   _clearVisualGuides() {

@@ -68,7 +68,10 @@ export class SegmentEditHandler {
     this.lastClickEntity = targetEntity;
 
     const paperInst = this._getPaper();
-    if (!isDoubleClick || !paperInst || !(targetEntity instanceof paperInst.Path) || targetEntity.data?.isPointEntity) {
+    const isParametric = Boolean(targetEntity?.data?.controller);
+    const isEditablePath = Boolean(paperInst && targetEntity instanceof paperInst.Path && !targetEntity.data?.isPointEntity);
+
+    if (!isDoubleClick || (!isEditablePath && !isParametric)) {
       return false;
     }
 

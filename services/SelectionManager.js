@@ -282,9 +282,11 @@ export class SelectionManager {
     const paperInst = this._getPaper();
     const editable = sourceList.filter((ent) => {
       if (!ent || !ent.parent || !ent.visible) return false;
+      if (!this._isLayerEditable(ent)) return false;
+
+      if (ent.data?.controller) return true;
       if (!paperInst || !(ent instanceof paperInst.Path) || ent.data?.isPointEntity) return false;
-      if (!ent.segments || ent.segments.length < 2) return false;
-      return this._isLayerEditable(ent);
+      return Boolean(ent.segments && ent.segments.length >= 2);
     });
 
     if (editable.length === 0) return [];

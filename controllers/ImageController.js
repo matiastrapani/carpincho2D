@@ -10,6 +10,7 @@ export class ImageController {
     this.initialPosition = null;
     this.initialBounds = null;
     this.initialMatrix = null;
+    this.initialTransformState = null;
   }
 
   _ensureRasterData() {
@@ -71,6 +72,17 @@ export class ImageController {
     this.initialPosition = this.raster.position.clone();
     this.initialBounds = this.raster.bounds.clone();
     this.initialMatrix = this.raster.matrix ? this.raster.matrix.clone() : null;
+    this.initialTransformState = this.getTransformState();
+  }
+
+  getInitialTransformState() {
+    if (!this.initialTransformState) return null;
+    return {
+      position: this.initialTransformState.position ? this.initialTransformState.position.clone() : null,
+      boundsWidth: this.initialTransformState.boundsWidth,
+      boundsHeight: this.initialTransformState.boundsHeight,
+      matrix: this.initialTransformState.matrix ? this.initialTransformState.matrix.clone() : null
+    };
   }
 
   /**
@@ -194,5 +206,34 @@ export class ImageController {
     const val = Math.max(0, Math.min(1, parseFloat(value) || 0));
     this.raster.data.opacityByLayer = isByLayer;
     this.raster.data.baseOpacity = val;
+  }
+
+  applyTransformState(state) {
+    if (!this.raster || !state) return;
+
+    if (state.matrix && this.raster.matrix) {
+      this.raster.matrix = state.matrix.clone();
+    } else {
+      if (this.raster.bounds) {
+        if (state.boundsWidth !== undefined) this.raster.bounds.width = state.boundsWidth;
+        if (state.boundsHeight !== undefined) this.raster.bounds.height = state.boundsHeight;
+      }
+      if (state.position) {
+        this.raster.position = state.position.clone();
+      }
+    }
+  }
+
+  endTransform() {
+    this.initialPosition = null;
+    this.initialBounds = null;
+    this.initialMatrix = null;
+    this.initialTransformState = null;
+  }
+
+  cancelTransform() {
+    if (!this.raster || !this.initialTransformState) return;
+    this.applyTransformState(this.initialTransformState);
+    this.endTransform();
   }
 }

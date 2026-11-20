@@ -42,7 +42,7 @@ export class CADUtils {
     this.propertyManager = new PropertyManager(this.service, this);
     this.service.propertyManager = this.propertyManager;
 
-    this.selectionRenderEngine = new SelectionRenderEngine(this.service);
+    this.selectionRenderEngine = new SelectionRenderEngine(this.service, this);
     this.inputDispatcher = new InputDispatcher(this.service);
     this.ioService = new CADIOService(this.service, this);
 

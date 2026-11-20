@@ -4,18 +4,21 @@
 import { CAD_THEME } from '../../config/cadTheme.js';
 import { BezierHandlesRenderer } from './BezierHandlesRenderer.js';
 import { ParametricGripRenderer } from './ParametricGripRenderer.js';
+import { PointLayerRenderer } from './PointLayerRenderer.js';
 
 export class SelectionRenderEngine {
-  constructor(cadService) {
+  constructor(cadService, cadUtils = null) {
     this._cadService = cadService;
+    this._cadUtils = cadUtils;
     this.controlHandlesGroup = null;
     this.bezierHandlesRenderer = new BezierHandlesRenderer();
     this.parametricGripRenderer = new ParametricGripRenderer();
+    this.pointLayerRenderer = new PointLayerRenderer(cadService, cadUtils);
+    this._lastHoveredParametric = null;
   }
 
-  // Getter dinámico para evitar que `service` quede undefined si cadService se instancia después
   get service() {
-    return this._cadService || window.cadService;
+    return this._cadService;
   }
 
   _getOrCreatePointsLayer() {
@@ -56,63 +59,16 @@ export class SelectionRenderEngine {
     return pointsLayer;
   }
 
+  get utils() {
+    return this._cadUtils || this.service?.utils || null;
+  }
+
+  _getPaper() {
+    return this.utils?.paper || (typeof paper !== 'undefined' ? paper : null);
+  }
+
   updatePointEntitiesScale() {
-    if (!paper || !paper.view) return;
-    const zoom = paper.view.zoom;
-    const pointsLayer = this._getOrCreatePointsLayer();
-
-    const nodeTheme = (typeof CAD_THEME !== 'undefined' && CAD_THEME?.node) ? CAD_THEME.node : {};
-    const nodeSelectionTheme = (typeof CAD_THEME !== 'undefined' && CAD_THEME?.selection?.node) ? CAD_THEME.selection.node : {};
-
-    const entities = this.service?.entities || [];
-    const hoveredPoints = [];
-    const selectedPoints = [];
-
-    entities.forEach(ent => {
-      if (ent && ent.data && ent.data.isPointEntity && ent.bounds) {
-        if (pointsLayer && ent.parent !== pointsLayer) {
-          pointsLayer.addChild(ent);
-        }
-
-        const isSelected = Boolean(this.service.selectedEntities?.includes(ent));
-        const isHovered = this.service.hoveredEntity === ent;
-
-        let radiusPx = isSelected 
-          ? (nodeSelectionTheme.selectedRadiusPx || nodeTheme.selectedRadiusPx || 4.0) 
-          : (nodeSelectionTheme.normalRadiusPx || nodeTheme.normalRadiusPx || 3.5);
-
-        if (isHovered && !isSelected) {
-          radiusPx += 0.5;
-        }
-
-        const targetRadius = radiusPx / zoom;
-        const center = ent.position.clone();
-        ent.bounds.width = targetRadius * 2;
-        ent.bounds.height = targetRadius * 2;
-        ent.position = center;
-
-        let strokeWidthPx = isSelected 
-          ? (nodeSelectionTheme.selectedWidthPx || nodeTheme.selectedStrokeWidthPx || 2.0) 
-          : (nodeSelectionTheme.normalWidthPx || nodeTheme.strokeWidthPx || 1.0);
-
-        if (isHovered && !isSelected) {
-          strokeWidthPx *= 1.5;
-        }
-
-        ent.strokeWidth = strokeWidthPx / zoom;
-
-        if (isSelected) {
-          selectedPoints.push(ent);
-        } else if (isHovered) {
-          hoveredPoints.push(ent);
-        }
-      }
-    });
-
-    hoveredPoints.forEach(ent => ent.bringToFront());
-    selectedPoints.forEach(ent => ent.bringToFront());
-
-    if (paper.view) paper.view.update();
+    this.pointLayerRenderer.updatePointEntitiesScale();
   }
 
   _getSelectionStyleConfig(entity) {
@@ -145,15 +101,16 @@ export class SelectionRenderEngine {
   }
 
   updateEntitiesStroke() {
-    if (!paper || !paper.view) return;
-    if (this.service?.utils?.canvasViewportManager) {
-      this.service.utils.canvasViewportManager.previousViewState = null;
+    const paperInst = this._getPaper();
+    if (!paperInst || !paperInst.view) return;
+
+    const cadUtils = this.utils;
+    if (cadUtils?.canvasViewportManager) {
+      cadUtils.canvasViewportManager.previousViewState = null;
     }
 
-    const zoom = paper.view.zoom;
-
-    const cadUtils = window.cadUtils;
-    const layerManager = this.service?.layerManager || this.service?.utils?.layerManager || cadUtils?.layerManager;
+    const zoom = paperInst.view.zoom;
+    const layerManager = this.service?.layerManager || cadUtils?.layerManager;
     const propertyManager = cadUtils?.propertyManager;
     const activePath = cadUtils?.activePath;
 
@@ -162,7 +119,7 @@ export class SelectionRenderEngine {
       entitiesToUpdate.push(activePath);
     }
 
-    entitiesToUpdate.forEach(ent => {
+    entitiesToUpdate.forEach((ent) => {
       if (!ent) return;
       if (!ent.data) ent.data = {};
 
@@ -170,13 +127,13 @@ export class SelectionRenderEngine {
       const layer = layerManager?.layers?.get(String(layerId));
       const isLayerVisible = layer ? (layer.visible !== false) : true;
       const isLayerLocked = layer ? (layer.locked === true) : false;
-      
+
       ent.visible = isLayerVisible;
       if (!isLayerVisible) return;
 
       const layerOpacity = (layer && layer.opacity !== undefined) ? layer.opacity : 1.0;
-      const resolvedOpacity = ent.data.opacityByLayer !== false 
-        ? layerOpacity 
+      const resolvedOpacity = ent.data.opacityByLayer !== false
+        ? layerOpacity
         : (ent.data.origOpacity !== undefined ? ent.data.origOpacity : (ent.opacity ?? 1.0));
 
       const isEditing = Boolean(this.service?.editingEntities?.includes(ent));
@@ -185,43 +142,43 @@ export class SelectionRenderEngine {
 
       // NODOS / PUNTOS
       if (ent.data.isPointEntity) {
-        const nodeTheme = (typeof CAD_THEME !== 'undefined' && CAD_THEME?.node) ? CAD_THEME.node : {};
-        const nodeSelectionTheme = (typeof CAD_THEME !== 'undefined' && CAD_THEME?.selection?.node) ? CAD_THEME.selection.node : {};
-        
+        const nodeTheme = CAD_THEME?.node || {};
+        const nodeSelectionTheme = CAD_THEME?.selection?.node || {};
+
         ent.opacity = 1.0;
-        ent.fillColor = isSelected 
-          ? (nodeSelectionTheme.fillColor || nodeTheme.defaultFillColor || '#10141D') 
+        ent.fillColor = isSelected
+          ? (nodeSelectionTheme.fillColor || nodeTheme.defaultFillColor || '#10141D')
           : (ent.data.origFillColor || nodeTheme.defaultFillColor || '#10141D');
-          
-        const resolvedPointColor = propertyManager 
-          ? propertyManager.getResolvedColor(ent) 
+
+        const resolvedPointColor = propertyManager
+          ? propertyManager.getResolvedColor(ent)
           : (ent.data.origStrokeColor || nodeTheme.defaultStrokeColor || '#18fcf1');
 
-        const strokeHex = isSelected 
-          ? (nodeSelectionTheme.strokeColor || '#ffff00') 
+        const strokeHex = isSelected
+          ? (nodeSelectionTheme.strokeColor || '#ffff00')
           : resolvedPointColor;
 
-        const strokeColorObj = new paper.Color(strokeHex);
+        const strokeColorObj = new paperInst.Color(strokeHex);
         strokeColorObj.alpha = isSelected ? 1.0 : resolvedOpacity;
         ent.strokeColor = strokeColorObj;
         return;
       }
 
       // RASTERS / IMÁGENES
-      if (ent instanceof paper.Raster) {
+      if (ent instanceof paperInst.Raster) {
         const isByLayer = ent.data?.opacityByLayer !== false;
-        const resolvedOpacity = (isByLayer && layer && layer.opacity !== undefined)
+        const rasterOpacity = (isByLayer && layer && layer.opacity !== undefined)
           ? layer.opacity
           : (ent.data?.baseOpacity ?? ent.data?.origOpacity ?? ent.opacity ?? 1.0);
 
-        ent.opacity = resolvedOpacity;
-        ent.data.baseOpacity = resolvedOpacity;
+        ent.opacity = rasterOpacity;
+        ent.data.baseOpacity = rasterOpacity;
         return;
       }
 
       // LÍNEAS Y GEOMETRÍAS
-      if (ent instanceof paper.Path || ent instanceof paper.CompoundPath) {
-        if (ent instanceof paper.Path) {
+      if (ent instanceof paperInst.Path || ent instanceof paperInst.CompoundPath) {
+        if (ent instanceof paperInst.Path) {
           ent.strokeJoin = 'miter';
           ent.miterLimit = 3;
         }
@@ -232,15 +189,15 @@ export class SelectionRenderEngine {
 
         const styleConfig = this._getSelectionStyleConfig(ent);
 
-        const effectiveColor = propertyManager 
-          ? propertyManager.getResolvedColor(ent) 
+        const effectiveColor = propertyManager
+          ? propertyManager.getResolvedColor(ent)
           : (ent.data.origStrokeColor || '#00e5ff');
 
         if (isSelected) {
           ent.opacity = 1.0;
           ent.strokeColor = styleConfig.strokeColor || '#ffff00';
           if (ent.fillColor) {
-            const fillCol = new paper.Color(ent.fillColor);
+            const fillCol = new paperInst.Color(ent.fillColor);
             fillCol.alpha = resolvedOpacity;
             ent.fillColor = fillCol;
           }
@@ -248,7 +205,7 @@ export class SelectionRenderEngine {
           ent.opacity = resolvedOpacity;
           ent.strokeColor = effectiveColor;
           if (ent.fillColor) {
-            const fillCol = new paper.Color(ent.fillColor);
+            const fillCol = new paperInst.Color(ent.fillColor);
             fillCol.alpha = 1.0;
             ent.fillColor = fillCol;
           }
@@ -261,28 +218,35 @@ export class SelectionRenderEngine {
     });
 
     this.updatePointEntitiesScale();
+
+    const currentHoveredParametric = (this.service?.hoveredEntity?.data?.controller)
+      ? this.service.hoveredEntity
+      : null;
+    if (this._lastHoveredParametric !== currentHoveredParametric) {
+      this._lastHoveredParametric = currentHoveredParametric;
+      this.renderBezierHandles();
+    }
   }
 
   renderBezierHandles() {
-    if (this.controlHandlesGroup) this.controlHandlesGroup.remove();
-    this.controlHandlesGroup = new paper.Group({ insert: false });
+    const paperInst = this._getPaper();
+    if (!paperInst) return;
 
-    const cadUtils = this.service?.utils || window.cadUtils || {};
-    const nodesLayer = cadUtils.nodesLayer || paper.project?.layers.find((l) => l.name === 'nodesLayer');
+    if (this.controlHandlesGroup) this.controlHandlesGroup.remove();
+    this.controlHandlesGroup = new paperInst.Group({ insert: false });
+
+    const cadUtils = this.utils || {};
+    const nodesLayer = cadUtils.nodesLayer || paperInst.project?.layers.find((l) => l.name === 'nodesLayer');
     if (nodesLayer) {
       nodesLayer.addChild(this.controlHandlesGroup);
-    } else if (paper.project?.activeLayer) {
-      paper.project.activeLayer.addChild(this.controlHandlesGroup);
-    }
-
-    if (window.cadUtils) {
-      window.cadUtils.controlHandlesGroup = this.controlHandlesGroup;
+    } else if (paperInst.project?.activeLayer) {
+      paperInst.project.activeLayer.addChild(this.controlHandlesGroup);
     }
 
     const service = this.service;
     if (!service) return;
 
-    const layerManager = service.layerManager || service.utils?.layerManager || cadUtils.layerManager;
+    const layerManager = service.layerManager || cadUtils.layerManager;
     const propertyManager = cadUtils.propertyManager;
     const hoveredCurve = cadUtils.hoveredCurve;
     const hoveredHandle = cadUtils.hoveredHandle;
@@ -306,8 +270,8 @@ export class SelectionRenderEngine {
       }
     }
 
-    const zoom = paper.view.zoom;
-    const cfg = (typeof CAD_THEME !== 'undefined' && CAD_THEME?.handles) ? CAD_THEME.handles : {};
+    const zoom = paperInst.view?.zoom || 1;
+    const cfg = CAD_THEME?.handles || {};
     const activeEntities = this._filterUnlockedEntities(service.editingEntities, layerManager);
     const selectableEntities = this._filterUnlockedEntities(service.selectedEntities, layerManager);
 
@@ -334,18 +298,62 @@ export class SelectionRenderEngine {
       { zoom, ...styleHelpers }
     );
 
-    selectableEntities.forEach((entity) => {
+    const renderedParametric = new Set();
+
+    activeEntities.forEach((entity) => {
       if (entity.visible && entity.data?.controller) {
+        renderedParametric.add(entity);
         this.parametricGripRenderer.render(entity, this.controlHandlesGroup, {
+          paper: paperInst,
           zoom,
           cfg,
           propertyManager,
           hoveredParametricGrip,
-          activeParametricGrip
+          activeParametricGrip,
+          showCornerGrips: true,
+          showCenterGrip: true,
+          forceActiveHighlight: selectableEntities.includes(entity)
         });
       }
     });
 
-    this._getOrCreatePointsLayer();
+    selectableEntities.forEach((entity) => {
+      if (entity.visible && entity.data?.controller && !renderedParametric.has(entity)) {
+        renderedParametric.add(entity);
+        this.parametricGripRenderer.render(entity, this.controlHandlesGroup, {
+          paper: paperInst,
+          zoom,
+          cfg,
+          propertyManager,
+          hoveredParametricGrip,
+          activeParametricGrip,
+          showCornerGrips: false,
+          showCenterGrip: true,
+          forceActiveHighlight: true
+        });
+      }
+    });
+
+    const hoveredEntity = service.hoveredEntity;
+    this._lastHoveredParametric = (hoveredEntity?.data?.controller) ? hoveredEntity : null;
+
+    if (hoveredEntity && hoveredEntity.visible && hoveredEntity.data?.controller && !renderedParametric.has(hoveredEntity)) {
+      const unlockedHovered = this._filterUnlockedEntities([hoveredEntity], layerManager);
+      if (unlockedHovered.length > 0) {
+        this.parametricGripRenderer.render(hoveredEntity, this.controlHandlesGroup, {
+          paper: paperInst,
+          zoom,
+          cfg,
+          propertyManager,
+          hoveredParametricGrip,
+          activeParametricGrip,
+          showCornerGrips: false,
+          showCenterGrip: false,
+          forceActiveHighlight: false
+        });
+      }
+    }
+
+    this.pointLayerRenderer.ensurePointsLayer();
   }
 }

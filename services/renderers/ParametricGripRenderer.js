@@ -3,9 +3,23 @@
  */
 
 export class ParametricGripRenderer {
-  render(entity, controlHandlesGroup, { zoom, cfg, propertyManager, hoveredParametricGrip, activeParametricGrip }) {
+  render(
+    entity,
+    controlHandlesGroup,
+    {
+      paper: paperArg,
+      zoom,
+      cfg,
+      propertyManager,
+      hoveredParametricGrip,
+      activeParametricGrip,
+      showCornerGrips = true,
+      forceActiveHighlight = false
+    }
+  ) {
+    const paperInst = paperArg || (typeof paper !== 'undefined' ? paper : null);
     const controller = entity?.data?.controller;
-    if (!controller || !controlHandlesGroup) return;
+    if (!paperInst || !controller || !controlHandlesGroup) return;
 
     const { grips, outlineSegments } = controller.getGrips();
 
@@ -13,11 +27,11 @@ export class ParametricGripRenderer {
       ? propertyManager.getResolvedColor(entity)
       : (entity.data?.origStrokeColor || '#00e5ff');
 
-    const entityColor = new paper.Color(rawColor);
+    const entityColor = new paperInst.Color(rawColor);
     entityColor.alpha = 1.0;
     const activeColor = cfg.anchorStrokeSelected || '#ffff00';
 
-    if (outlineSegments && outlineSegments.length === 4) {
+    if (showCornerGrips && outlineSegments && outlineSegments.length === 4) {
       const [nw, ne, se, sw] = outlineSegments;
       const edges = [
         { id: 'n', from: nw, to: ne, cursor: 'ns-resize' },
@@ -32,7 +46,7 @@ export class ParametricGripRenderer {
           hoveredParametricGrip.entity === entity &&
           hoveredParametricGrip.gripId === edge.id
         );
-        const isEdgeActive = Boolean(
+        const isEdgeActive = forceActiveHighlight || Boolean(
           activeParametricGrip &&
           activeParametricGrip.entity === entity &&
           activeParametricGrip.gripId === edge.id
@@ -43,7 +57,7 @@ export class ParametricGripRenderer {
           ? (cfg.anchorStrokeWidthSelectedPx || 1.5)
           : (isEdgeHovered ? (cfg.anchorStrokeWidthHoverPx || 1.8) : (cfg.anchorStrokeWidthNormalPx || 1.0));
 
-        const edgeLine = new paper.Path.Line({
+        const edgeLine = new paperInst.Path.Line({
           from: edge.from,
           to: edge.to,
           strokeColor: edgeStrokeColor,
@@ -61,25 +75,33 @@ export class ParametricGripRenderer {
         controlHandlesGroup.addChild(edgeLine);
       });
     } else if (outlineSegments && outlineSegments.length > 1) {
-      const boundingOutline = new paper.Path({
+      const boundingOutline = new paperInst.Path({
         segments: outlineSegments,
         closed: true,
-        strokeColor: entityColor,
-        strokeWidth: (cfg.anchorStrokeWidthNormalPx || 1.0) / zoom,
+        strokeColor: forceActiveHighlight ? activeColor : entityColor,
+        strokeWidth: (
+          forceActiveHighlight
+            ? (cfg.anchorStrokeWidthSelectedPx || 1.5)
+            : (cfg.anchorStrokeWidthNormalPx || 1.0)
+        ) / zoom,
         insert: false
       });
       boundingOutline.guide = true;
       controlHandlesGroup.addChild(boundingOutline);
     }
 
-    grips.forEach((grip) => {
+    const visibleGrips = showCornerGrips
+      ? grips
+      : grips.filter((grip) => grip.id === 'center');
+
+    visibleGrips.forEach((grip) => {
       const isCenter = grip.id === 'center';
       const isHovered = Boolean(
         hoveredParametricGrip &&
         hoveredParametricGrip.entity === entity &&
         hoveredParametricGrip.gripId === grip.id
       );
-      const isActiveGrip = Boolean(
+      const isActiveGrip = forceActiveHighlight || Boolean(
         activeParametricGrip &&
         activeParametricGrip.entity === entity &&
         activeParametricGrip.gripId === grip.id
@@ -87,37 +109,40 @@ export class ParametricGripRenderer {
 
       const normalSide = isCenter ? 8.0 : (cfg.anchorSizeNormalPx || 7.0);
       const selectedSide = isCenter ? 9.0 : (cfg.anchorSizeSelectedPx || 7.5);
+      const baseStrokeW = cfg.anchorStrokeWidthNormalPx || 1.0;
 
       let sizePx = normalSide;
-      let strokeW = cfg.anchorStrokeWidthNormalPx || 1.0;
+      let strokeW = baseStrokeW;
       let strokeColor = entityColor;
-      const fillColor = cfg.anchorFillNormal || '#10141D';
+      const fillColor = isActiveGrip
+        ? (cfg.anchorFillSelected || cfg.anchorFillNormal || '#10141D')
+        : (cfg.anchorFillNormal || '#10141D');
 
       if (isActiveGrip) {
         sizePx = selectedSide;
-        strokeW = cfg.anchorStrokeWidthSelectedPx || 1.5;
+        strokeW = isCenter ? baseStrokeW : (cfg.anchorStrokeWidthSelectedPx || 1.5);
         strokeColor = activeColor;
       } else if (isHovered) {
         sizePx = normalSide + 0.5;
-        strokeW = cfg.anchorStrokeWidthHoverPx || 1.8;
+        strokeW = isCenter ? baseStrokeW : (cfg.anchorStrokeWidthHoverPx || 1.8);
       }
 
       const size = sizePx / zoom;
 
       let gripMarker;
       if (isCenter) {
-        gripMarker = new paper.CompoundPath({
+        gripMarker = new paperInst.CompoundPath({
           children: [
-            new paper.Path.Circle({ center: grip.point, radius: size / 1.5 }),
-            new paper.Path.Line(grip.point.subtract([size, 0]), grip.point.add([size, 0])),
-            new paper.Path.Line(grip.point.subtract([0, size]), grip.point.add([0, size]))
+            new paperInst.Path.Circle({ center: grip.point, radius: size / 1.5 }),
+            new paperInst.Path.Line(grip.point.subtract([size, 0]), grip.point.add([size, 0])),
+            new paperInst.Path.Line(grip.point.subtract([0, size]), grip.point.add([0, size]))
           ],
           strokeColor,
           strokeWidth: strokeW / zoom,
           fillColor: null
         });
       } else {
-        gripMarker = new paper.Path.Rectangle({
+        gripMarker = new paperInst.Path.Rectangle({
           point: [grip.point.x - size / 2, grip.point.y - size / 2],
           size: [size, size],
           fillColor,
