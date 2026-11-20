@@ -192,8 +192,6 @@ export class CanvasViewportManager {
     };
   }
 
-
-
   _clientToProject(clientX, clientY) {
     if (!paper?.view || clientX === null || clientY === null) return null;
 
@@ -461,19 +459,26 @@ export class CanvasViewportManager {
     }
 
     const isValidEntity = (ent) => {
-      if (!ent || !ent.bounds) return false;
-      
+      if (!ent) return false;
+
       // Filtrar entidades ocultas o pertenecientes a capas ocultas
       const isVisible = typeof ent.isVisible === 'function' ? ent.isVisible() : ent.visible !== false;
       if (!isVisible) return false;
+
+      if (ent.data?.isPointEntity && ent.position) return true;
+      if (!ent.bounds) return false;
 
       const b = ent.strokeBounds || ent.bounds;
       return Math.abs(b.width) > 0 || Math.abs(b.height) > 0 || (ent.segments && ent.segments.length > 0);
     };
 
     const validEntities = (this.utils.service?.entities || []).filter(isValidEntity);
+    const editingEntities = (this.utils.service?.editingEntities || []).filter(isValidEntity);
     const selectedEntities = (this.utils.service?.selectedEntities || []).filter(isValidEntity);
-    const currentTargets = selectedEntities.length > 0 ? selectedEntities : validEntities;
+
+    const currentTargets = editingEntities.length > 0
+      ? editingEntities
+      : (selectedEntities.length > 0 ? selectedEntities : validEntities);
 
     const targetsKey = currentTargets.map(e => e.id || e._id || e.guid || e.handle).join(',');
 
@@ -512,20 +517,28 @@ export class CanvasViewportManager {
     if (currentTargets.length > 0) {
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
-      currentTargets.forEach(ent => {
-        if (ent.segments) {
-          ent.segments.forEach(seg => {
+      currentTargets.forEach((ent) => {
+        if (ent.data?.isPointEntity && ent.position) {
+          minX = Math.min(minX, ent.position.x);
+          maxX = Math.max(maxX, ent.position.x);
+          minY = Math.min(minY, ent.position.y);
+          maxY = Math.max(maxY, ent.position.y);
+          return;
+        }
+
+        const b = ent.bounds;
+        if (b && Number.isFinite(b.left) && Number.isFinite(b.right) && Number.isFinite(b.top) && Number.isFinite(b.bottom)) {
+          minX = Math.min(minX, b.left, b.right);
+          maxX = Math.max(maxX, b.left, b.right);
+          minY = Math.min(minY, b.top, b.bottom);
+          maxY = Math.max(maxY, b.top, b.bottom);
+        } else if (ent.segments) {
+          ent.segments.forEach((seg) => {
             minX = Math.min(minX, seg.point.x);
             maxX = Math.max(maxX, seg.point.x);
             minY = Math.min(minY, seg.point.y);
             maxY = Math.max(maxY, seg.point.y);
           });
-        } else {
-          const b = ent.strokeBounds || ent.bounds;
-          minX = Math.min(minX, b.left, b.right);
-          maxX = Math.max(maxX, b.left, b.right);
-          minY = Math.min(minY, b.top, b.bottom);
-          maxY = Math.max(maxY, b.top, b.bottom);
         }
       });
 
