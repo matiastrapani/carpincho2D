@@ -4,6 +4,7 @@
 
 import {
   resolveFromPoint,
+  getCurveQuadrantCandidates,
   collectExtendedOsnapCandidates
 } from './OsnapGeometryMath.js';
 import {
@@ -234,6 +235,15 @@ export class OsnapEngine {
             }
           }
         });
+      });
+    }
+
+    if (this.service.snapFilters.quadrant) {
+      snapTargets.forEach((path) => {
+        const quadCandidates = getCurveQuadrantCandidates(path, mousePoint, snapRadius, isSelfPoint, isDynamicCurve);
+        if (quadCandidates.length > 0) {
+          candidatePoints.push(...quadCandidates);
+        }
       });
     }
   }
