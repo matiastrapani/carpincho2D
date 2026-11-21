@@ -31,37 +31,6 @@ export class SegmentEditHandler {
     this.lastClickEntity = null;
   }
 
-  _updateDragRubberBand(fromPt, toPt) {
-    if (!fromPt || !toPt) return;
-
-    const paperInst = this._getPaper();
-    const hudLayer = this.utils.hudLayer || paperInst?.project?.layers?.['hudLayer'];
-    if (!hudLayer || !paperInst) return;
-
-    const zoom = paperInst.view?.zoom || 1;
-    const strokeWidth = (CAD_THEME.rubberBand?.strokeWidthPx ?? 1) / zoom;
-    const dashArray = (CAD_THEME.rubberBand?.dashArrayPx || [6, 4]).map((v) => v / zoom);
-
-    if (!this.dragRubberBand) {
-      const line = new paperInst.Path.Line({
-        from: fromPt,
-        to: toPt,
-        strokeColor: CAD_THEME.selection.line.strokeColor,
-        strokeWidth,
-        dashArray,
-        data: { isAuxiliary: true },
-        insert: false
-      });
-      hudLayer.addChild(line);
-      this.dragRubberBand = line;
-    } else {
-      this.dragRubberBand.segments[0].point = fromPt;
-      this.dragRubberBand.segments[1].point = toPt;
-      this.dragRubberBand.strokeWidth = strokeWidth;
-      this.dragRubberBand.dashArray = dashArray;
-    }
-  }
-
   tryEnterEditModeOnDoubleClick(targetEntity, isShift, now) {
     const isDoubleClick = (now - this.lastClickTime) < 350 && this.lastClickEntity === targetEntity;
     this.lastClickTime = now;

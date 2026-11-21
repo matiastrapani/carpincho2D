@@ -72,34 +72,6 @@ export class HandleSelectionHandler {
     return this.utils?.paper || (typeof paper !== 'undefined' ? paper : null);
   }
 
-  _updateDragRubberBand(fromPt, toPt) {
-    if (!fromPt || !toPt) return;
-
-    const paperInst = this._getPaper();
-    const hudLayer = this.utils.hudLayer || paperInst?.project?.layers?.['hudLayer'];
-    if (!hudLayer || !paperInst) return;
-
-    const zoom = paperInst.view?.zoom || 1;
-    const strokeWidth = 1 / zoom;
-    if (!this.dragRubberBand) {
-      const line = new paperInst.Path.Line({
-        from: fromPt,
-        to: toPt,
-        strokeColor: CAD_THEME.selection.line.strokeColor,
-        strokeWidth,
-        dashArray: CAD_THEME.rubberBand.dashArrayPx,
-        data: { isAuxiliary: true },
-        insert: false
-      });
-      hudLayer.addChild(line);
-      this.dragRubberBand = line;
-    } else {
-      this.dragRubberBand.segments[0].point = fromPt;
-      this.dragRubberBand.segments[1].point = toPt;
-      this.dragRubberBand.strokeWidth = strokeWidth;
-    }
-  }
-
   hitTest(point) {
     if (!this.utils.controlHandlesGroup) return null;
 

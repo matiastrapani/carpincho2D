@@ -59,8 +59,8 @@ Migrar DivisionSelectionHandler.js a BoxSelectHandler y _getPaper(): Reemplazar 
   [x] Seleccion y bezier con zoom falla y zoom extents solo usa nodos y no min y max de curvas.
 
 
-Resolver la visualizacion de osnap interseccion
-seleccion sobre elementos superpuestos en modo edicion con dropdown como tenemos en modo entidad
+  [x] Resolver la visualizacion de osnap interseccion
+  [x] Seleccion sobre elementos superpuestos en modo edicion con dropdown como tenemos en modo entidad
 
 
 bloqueo y visibilidad global por entidades selecciondas
@@ -73,6 +73,6 @@ resolver el punto de incio con estilo punto en division por distancia
 resolver la barra de desplazamiento horizontal en el panel de propiedades al reducir el tamaño sin overflow
 resolver que hacer con la opacidad en capa
 autocompletado en consola
-la tangente en circulos no es con la linea del radio sino que es con la curva
-movimiento y osnap perpendicular
+  [x] La tangente en circulos no es con la linea del radio sino que es con la curva
+  [x] El movimiento de arrastre y osnap perpendicular
 implementar clases para las entidades

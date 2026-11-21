@@ -120,7 +120,8 @@ export class OsnapEngine {
             draggedPath,
             isSelfPoint,
             isDynamicCurve,
-            rasterContourMap
+            rasterContourMap,
+            osnapMode: ignoreContext?.osnapMode || null
           })
         );
       } finally {

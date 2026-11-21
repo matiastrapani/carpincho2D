@@ -37,23 +37,6 @@ export class SelectionDragHandler {
     return this.utils?.paper || (typeof paper !== 'undefined' ? paper : null);
   }
 
-  _isPointEntity(ent) {
-    let current = ent;
-    while (current) {
-      if (
-        current.data?.isPointEntity ||
-        current.data?.isPoint ||
-        current.data?.type === 'point' ||
-        current.data?.type === 'Point' ||
-        current.data?.isPointShape
-      ) {
-        return true;
-      }
-      current = current.parent;
-    }
-    return false;
-  }
-
   prepareDrag(targetItem, point, nativeEvent = null) {
     if (!targetItem || !point) return;
 
@@ -92,88 +75,6 @@ export class SelectionDragHandler {
     this.pivotPoint = closestVertex ? closestVertex.clone() : point.clone();
     this.isPivotFromPoint = isPivotFromPoint;
     this.session.begin(point, nativeEvent);
-  }
-
-  _hasExceededDragThreshold(event) {
-    if (this.isDragConfirmed) return true;
-    if (!this.mouseStartPt) return false;
-
-    const nativeEvt = event?.event;
-    let screenDistPx = null;
-
-    if (this.mouseStartClient && nativeEvt && typeof nativeEvt.clientX === 'number') {
-      screenDistPx = Math.hypot(
-        nativeEvt.clientX - this.mouseStartClient.x,
-        nativeEvt.clientY - this.mouseStartClient.y
-      );
-    } else if (event?.point) {
-      const zoom = this._getPaper()?.view?.zoom || 1;
-      screenDistPx = this.mouseStartPt.getDistance(event.point) * zoom;
-    }
-
-    if (screenDistPx === null) return false;
-
-    const elapsedMs = Date.now() - this.mouseDownTime;
-    const isNormalDrag = screenDistPx >= 5;
-    const isDeliberateMicroDrag = elapsedMs >= 180 && screenDistPx >= 2;
-
-    if (isNormalDrag || isDeliberateMicroDrag) {
-      this.isDragConfirmed = true;
-      return true;
-    }
-
-    return false;
-  }
-
-  _captureMixedSelectionStartState() {
-    const paperInst = this._getPaper();
-
-    this.entityStartPositions = (this.service.selectedEntities || []).map((ent) => {
-      const isPoint = this._isPointEntity(ent);
-      const isPath = Boolean(paperInst && ent instanceof paperInst.Path && !isPoint);
-      return {
-        entity: ent,
-        isPath,
-        initialPos: isPoint
-          ? (ent.bounds ? ent.bounds.center.clone() : ent.position.clone())
-          : ent.position.clone(),
-        initialSegments: isPath
-          ? ent.segments.map((s) => ({
-              point: s.point.clone(),
-              handleIn: s.handleIn.clone(),
-              handleOut: s.handleOut.clone()
-            }))
-          : null
-      };
-    });
-
-    this.segmentStartPositions = (this.service.selectedSegments || [])
-      .filter((s) => s && s.path && !this.service.selectedEntities.includes(s.path))
-      .map((s) => ({
-        segment: s,
-        path: s.path,
-        segmentIndex: s.index,
-        initialPt: s.point.clone(),
-        initialHandleIn: s.handleIn.clone(),
-        initialHandleOut: s.handleOut.clone()
-      }));
-
-    this.handleStartPositions = (this.service.selectedHandles || [])
-      .filter(
-        (h) =>
-          h &&
-          h.segment &&
-          h.segment.path &&
-          !this.service.selectedEntities.includes(h.segment.path) &&
-          !this.service.selectedSegments.includes(h.segment)
-      )
-      .map((h) => ({
-        segment: h.segment,
-        path: h.segment.path,
-        segmentIndex: h.segment.index,
-        handleType: h.type,
-        initialVector: h.segment[h.type].clone()
-      }));
   }
 
   onMouseDrag(event) {

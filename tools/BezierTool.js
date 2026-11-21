@@ -12,6 +12,19 @@ export class BezierTool extends BaseTool {
     this.previewGroup = null;
   }
 
+  _resolveNextPoint(rawPoint, isShift) {
+    const lastSeg = this.utils.activePath?.lastSegment || null;
+    const fromPoint = lastSeg ? lastSeg.point : null;
+    const disableFromPoint = Boolean(lastSeg && !lastSeg.handleOut.isZero());
+
+    return this.utils.resolveConstrainedPoint(rawPoint, {
+      fromPoint,
+      isShift,
+      excludeEntity: this.utils.activePath,
+      disableFromPoint
+    });
+  }
+
   onMouseDown(event) {
     // Procesar ÚNICAMENTE el clic izquierdo
     if (event.event && event.event.button !== 0) return;
@@ -21,11 +34,7 @@ export class BezierTool extends BaseTool {
       ? this.utils.activePath.lastSegment.point
       : null;
 
-    const pt = this.utils.resolveConstrainedPoint(event.point, {
-      fromPoint,
-      isShift,
-      excludeEntity: this.utils.activePath
-    });
+    const pt = this._resolveNextPoint(event.point, isShift);
 
     if (!this.utils.activePath) {
       // Iniciar trazo de curva Bézier
@@ -91,11 +100,7 @@ export class BezierTool extends BaseTool {
       ? this.utils.activePath.lastSegment.point
       : null;
 
-    const currentPt = this.utils.resolveConstrainedPoint(event.point, {
-      fromPoint,
-      isShift,
-      excludeEntity: this.utils.activePath
-    });
+    const pt = this._resolveNextPoint(event.point, isShift);
 
     this.utils.hud.updateHUD(currentPt);
 

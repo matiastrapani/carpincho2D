@@ -225,13 +225,11 @@ export class CADUtils {
 
   executeCommandLine(rawCmd = null) {
     const val = (rawCmd !== null ? String(rawCmd) : '').trim();
-    if (!val) return;
-
-    const upperVal = val.toUpperCase();
-
-    if (upperVal === 'DELETE' || upperVal === 'DEL' || upperVal === 'ERASE') {
-      this.deleteSelectedHandleOrSegment();
-      this.setPrompt('Command:');
+    if (!val) {
+      const activeTool = this.toolManager?.activeTool;
+      if (activeTool && typeof activeTool.onConfirmDefault === 'function') {
+        activeTool.onConfirmDefault();
+      }
       return;
     }
     if (upperVal === 'POINT' || upperVal === 'PT') { this.setTool('point'); return; }
@@ -624,13 +622,22 @@ export class CADUtils {
     }
   }
 
-  resolveConstrainedPoint(rawPoint, { fromPoint = null, isShift = false, excludeEntity = null, ignoreEntities = null } = {}) {
+  resolveConstrainedPoint(rawPoint, {
+    fromPoint = null,
+    isShift = false,
+    excludeEntity = null,
+    ignoreEntities = null,
+    disableFromPoint = false,
+    osnapMode = null
+  } = {}) {
     const effectiveOrtho = Boolean(this.service?.isOrthoEnabled) !== Boolean(isShift);
     const hasOrigin = Boolean(fromPoint);
 
     const osnapOptions = {};
     if (fromPoint) osnapOptions.fromPoint = fromPoint;
     if (ignoreEntities) osnapOptions.ignoreEntities = ignoreEntities;
+    if (disableFromPoint) osnapOptions.disableFromPoint = true;
+    if (osnapMode) osnapOptions.osnapMode = osnapMode;
 
     const osnap = this.service.calculateOsnap(
       rawPoint,
