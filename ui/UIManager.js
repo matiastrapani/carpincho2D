@@ -1,5 +1,5 @@
 /**
- * modules/uiManager.js - Delegación de eventos e interfaz CAD
+ * modules/UIManager.js - Delegación de eventos e interfaz CAD
  */
 import { ChangeOpacityCommand } from '../services/commands/cadCommands.js';
 

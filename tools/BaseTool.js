@@ -196,8 +196,9 @@ export class BaseTool {
    * Se ejecuta al desinstalar/limpiar la herramienta (cada subclase limpia su previsualización)
    */
   cancel() {
-    if (typeof this.utils.finishCurrentDrawing === 'function') {
-      this.utils.finishCurrentDrawing();
+    if (this.utils.activePath) {
+      this.utils.activePath.remove();
+      this.utils.activePath = null;
     }
   }
 

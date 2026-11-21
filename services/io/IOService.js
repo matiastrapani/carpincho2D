@@ -1,5 +1,5 @@
 /**
- * modules/ioService.js - Exportación e Importación de archivos
+ * modules/IOService.js - Exportación e Importación de archivos
  */
 import { ImageController } from '../../controllers/ImageController.js';
 import { AddEntityCommand, ImportSVGCommand } from '../commands/cadCommands.js';

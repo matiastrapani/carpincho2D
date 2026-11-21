@@ -410,15 +410,6 @@ export class CanvasViewportManager {
     if (this.utils.hud && typeof this.utils.hud.refreshSnapMarkerScale === 'function') {
       this.utils.hud.refreshSnapMarkerScale();
     }
-    if (this.utils.activePath && this.utils.rubberBandLine) {
-      const activeWidth = this.utils.propertyManager 
-        ? this.utils.propertyManager.getResolvedStrokeWidth(this.utils.activePath) 
-        : 0;
-      const dashPattern = CAD_THEME.rubberBand.dashArrayPx || [2, 2];
-      
-      this.utils.rubberBandLine.strokeWidth = activeWidth === 0 ? (1 / view.zoom) : activeWidth;
-      this.utils.rubberBandLine.dashArray = dashPattern.map(val => val / view.zoom);
-    }
 
     const isDraggingPrimary = this._isPrimaryDragActive || ((e.buttons & 1) === 1);
     if (isDraggingPrimary) {
@@ -730,12 +721,6 @@ export class CanvasViewportManager {
         activeTool.confirmTrimBoundaries();
         return;
       }
-    }
-
-    const drawingTools = ['polyline', 'spline', 'bezier', 'line'];
-    if (drawingTools.includes(this.utils.currentToolMode) && this.utils.activePath) {
-      this.utils.finishCurrentDrawing();
-      return;
     }
 
     if (previousTool === 'select' && this.utils.lastActiveToolMode && this.utils.lastActiveToolMode !== 'select') {

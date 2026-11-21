@@ -104,8 +104,6 @@ export class ConsoleManager {
       if (isCommandRunning) {
         if (activeTool && typeof activeTool.onCommandInput === 'function') {
           activeTool.onCommandInput('');
-        } else if (typeof this.utils.finishCurrentDrawing === 'function') {
-          this.utils.finishCurrentDrawing();
         }
         return;
       }

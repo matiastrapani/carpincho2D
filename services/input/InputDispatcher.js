@@ -120,7 +120,9 @@ export class InputDispatcher {
     // 4. Deshacer / Rehacer
     if (isCtrlOrCmd && e.key.toLowerCase() === 'z' && !e.shiftKey) {
       e.preventDefault();
-      if (cadUtils?.finishCurrentDrawing) cadUtils.finishCurrentDrawing();
+      if (activeTool && typeof activeTool.cancel === 'function') {
+        activeTool.cancel();
+      }
       this.service?.undo();
       cadUtils?.selectionRenderEngine?.updateEntitiesStroke();
       cadUtils?.selectionRenderEngine?.renderBezierHandles();
@@ -129,7 +131,9 @@ export class InputDispatcher {
 
     if ((isCtrlOrCmd && e.key.toLowerCase() === 'y') || (isCtrlOrCmd && e.shiftKey && e.key.toLowerCase() === 'z')) {
       e.preventDefault();
-      if (cadUtils?.finishCurrentDrawing) cadUtils.finishCurrentDrawing();
+      if (activeTool && typeof activeTool.cancel === 'function') {
+        activeTool.cancel();
+      }
       this.service?.redo();
       cadUtils?.selectionRenderEngine?.updateEntitiesStroke();
       cadUtils?.selectionRenderEngine?.renderBezierHandles();
@@ -213,7 +217,7 @@ export class InputDispatcher {
     if (!isCtrlOrCmd && !e.altKey && e.key.length === 1) {
       const targetInput = (consoleManager?.floatingUI?.isOpen && consoleManager.floatingUI.input)
         ? consoleManager.floatingUI.input
-        : consoleManager?.fixedUI?.input;
+        : consoleManager?.fixedUI.input;
 
       if (targetInput) {
         targetInput.focus();

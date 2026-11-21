@@ -1,11 +1,54 @@
 export function populateentities(cadService) {
-  const layerManager = cadService.utils?.layerManager;
+  if (!cadService || !cadService.utils) {
+    throw new Error('populateentities requiere una instancia válida de cadService con utils inicializado.');
+  }
 
-  const rect = new paper.Path.Rectangle({
+  const utils = cadService.utils;
+  const paperInstance = utils.paper || cadService.paper;
+  if (!paperInstance) {
+    throw new Error('Instancia de Paper.js no disponible en cadService.utils.');
+  }
+
+  const { layerManager, selectionRenderEngine } = utils;
+  if (!layerManager || !selectionRenderEngine) {
+    throw new Error('layerManager y selectionRenderEngine son obligatorios en cadService.utils.');
+  }
+
+  const project = paperInstance.project;
+  const pointsLayer = utils.pointsLayer || (project && project.layers ? project.layers['pointsLayer'] : null);
+  if (!pointsLayer) {
+    throw new Error('pointsLayer no está disponible en el proyecto Paper.js.');
+  }
+
+  const registerDemoEntity = (entity, baseName) => {
+    if (!entity) return;
+    if (!entity.data) entity.data = {};
+
+    if (baseName && typeof utils.generateNextEntityName === 'function') {
+      const entityName = utils.generateNextEntityName(baseName);
+      entity.name = entityName;
+      entity.data.name = entityName;
+    }
+
+    if (typeof cadService.registerEntity === 'function') {
+      cadService.registerEntity(entity, { layerId: '0' });
+    } else {
+      cadService.entities.push(entity);
+    }
+
+    if (entity.data.isPointEntity) {
+      pointsLayer.addChild(entity);
+    }
+
+    layerManager.assignEntityToLayer(entity, '0');
+  };
+
+  const rect = new paperInstance.Path.Rectangle({
     point: [-180, -120],
     size: [120, 80],
     strokeColor: '#00e5ff',
-    strokeWidth: 2
+    strokeWidth: 2,
+    insert: false
   });
   rect.data = {
     layerId: '0',
@@ -14,14 +57,15 @@ export function populateentities(cadService) {
     baseStrokeWidth: 2,
     isDynamicStroke: true
   };
-  cadService.entities.push(rect);
+  registerDemoEntity(rect, 'Rectángulo');
 
-  const poly = new paper.Path.RegularPolygon({
+  const poly = new paperInstance.Path.RegularPolygon({
     center: [150, -80],
     sides: 6,
     radius: 50,
     strokeColor: '#f59e0b',
-    strokeWidth: 2
+    strokeWidth: 2,
+    insert: false
   });
   poly.data = {
     layerId: '0',
@@ -31,16 +75,17 @@ export function populateentities(cadService) {
     baseStrokeWidth: 2,
     isDynamicStroke: true
   };
-  cadService.entities.push(poly);
+  registerDemoEntity(poly, 'Polígono');
 
-  const curve = new paper.Path({
+  const curve = new paperInstance.Path({
     segments: [
-      [new paper.Point(-120, 100), null, new paper.Point(40, -60)],
-      [new paper.Point(0, 180), new paper.Point(-40, 0), new paper.Point(40, 0)],
-      [new paper.Point(140, 100), new paper.Point(-40, 50), null]
+      [new paperInstance.Point(-120, 100), null, new paperInstance.Point(40, -60)],
+      [new paperInstance.Point(0, 180), new paperInstance.Point(-40, 0), new paperInstance.Point(40, 0)],
+      [new paperInstance.Point(140, 100), new paperInstance.Point(-40, 50), null]
     ],
     strokeColor: '#10b981',
-    strokeWidth: 2.5
+    strokeWidth: 2.5,
+    insert: false
   });
   curve.data = {
     layerId: '0',
@@ -50,19 +95,20 @@ export function populateentities(cadService) {
     baseStrokeWidth: 2.5,
     isDynamicStroke: true
   };
-  cadService.entities.push(curve);
+  registerDemoEntity(curve, 'Curva');
 
-  const pt1 = cadService.createPointEntity(new paper.Point(-120, -120), { layerId: '0', colorByLayer: true });
-  const pt2 = cadService.createPointEntity(new paper.Point(-60, -120), { layerId: '0', colorByLayer: true });
+  const pt1 = cadService.createPointEntity(new paperInstance.Point(-120, -120), {
+    layerId: '0',
+    colorByLayer: true
+  });
+  registerDemoEntity(pt1, 'Punto');
 
-  if (layerManager) {
-    [rect, poly, curve, pt1, pt2].forEach((ent) => {
-      if (ent) {
-        layerManager.assignEntityToLayer(ent, '0');
-      }
-    });
-    layerManager.syncZOrder();
-  }
+  const pt2 = cadService.createPointEntity(new paperInstance.Point(-60, -120), {
+    layerId: '0',
+    colorByLayer: true
+  });
+  registerDemoEntity(pt2, 'Punto');
 
-  cadService.utils?.selectionRenderEngine?.updateEntitiesStroke?.();
+  layerManager.syncZOrder();
+  selectionRenderEngine.updateEntitiesStroke();
 }

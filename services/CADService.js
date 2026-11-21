@@ -1,8 +1,8 @@
 /**
- * cadService.js - Servicio geométrico, OSNAP, recortes (Trim), división y estado CAD.
+ * CADService.js - Servicio geométrico, OSNAP, recortes (Trim), división y estado CAD.
  */
 
-import { CommandHistory } from './commandHistory.js';
+import { CommandHistory } from './CommandHistory.js';
 import { OsnapEngine } from './engines/OsnapEngine.js';
 import { GeometryEngine } from './engines/GeometryEngine.js';
 import { SelectionManager } from './SelectionManager.js';

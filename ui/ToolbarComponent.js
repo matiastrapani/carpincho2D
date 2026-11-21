@@ -1,5 +1,5 @@
 /**
- * ui/toolbarComponent.js - Componente de UI (OSNAP, HUD, Toolbar Vertical y Slots)
+ * ui/ToolbarComponent.js - Componente de UI (OSNAP, HUD, Toolbar Vertical y Slots)
  */
 export class CADToolbarComponent {
   constructor(containerId = 'fixedConsoleContainer') {

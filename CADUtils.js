@@ -1,5 +1,5 @@
 /**
- * cadUtils.js - Orquestador central de la aplicación CAD.
+ * CADUtils.js - Orquestador central de la aplicación CAD.
  */
 
 import { LayerManager } from './services/LayerManager.js';
@@ -21,7 +21,7 @@ import { HUDManager } from './ui/HUDManager.js';
 import { CanvasViewportManager } from './services/CanvasViewportManager.js';
 import { SelectionRenderEngine } from './services/renderers/SelectionRenderEngine.js';
 import { InputDispatcher } from './services/input/InputDispatcher.js';
-import { CADIOService } from './services/io/ioService.js';
+import { CADIOService } from './services/io/IOService.js';
 
 
 import { CAD_THEME } from './config/cadTheme.js';
@@ -183,44 +183,6 @@ export class CADUtils {
     // Resetear la referencia huérfana ANTES de borrar elementos
     this.selectedHandle = null;
     this.service.deleteSelectedElements(() => this.selectionRenderEngine.renderBezierHandles());
-  }
-
-  finishCurrentDrawing() {
-    if (this.rubberBandLine) {
-      this.rubberBandLine.remove();
-      this.rubberBandLine = null;
-    }
-    if (this.bezierHandlePreviewGroup) {
-      this.bezierHandlePreviewGroup.remove();
-      this.bezierHandlePreviewGroup = null;
-    }
-
-    if (this.hud) {
-      this.hud.clear();
-    }
-
-    if (this.activePath) {
-      // 1. Eliminar el último segmento elástico "dinámico" si no se confirmó
-      // (Opcional según si usas rubberband en la propia activePath)
-
-      // 2. Registrar usando el guardián de CADService
-      const isRegistered = this.service.registerEntity(this.activePath);
-
-      if (isRegistered) {
-        // Generar comando para Undo/Redo si aplica
-        const cmd = new AddLineCommand(this.service, this.activePath);
-        this.service.executeCommand(cmd);
-        this.selectionRenderEngine.renderBezierHandles();
-      }
-      
-      this.activePath = null;
-    }
-
-    this.setPrompt('Command:');
-    // Cambiar automáticamente a 'select' al finalizar el trazo si no estamos en polilínea/spline
-    if (!this.isChangingTool && this.currentToolMode !== 'select' && this.currentToolMode !== 'pan') {
-      setTimeout(() => this.setTool('select'), 0);
-    }
   }
 
   executeCommandLine(rawCmd = null) {

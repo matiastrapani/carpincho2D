@@ -1,9 +1,9 @@
-import { CADToolbarComponent } from './ui/toolbarComponent.js';
+import { CADToolbarComponent } from './ui/ToolbarComponent.js';
 import { ConsoleManager } from './ui/console/ConsoleManager.js';
 
-import { CADService } from './services/cadService.js';
-import { CADUtils } from './cadUtils.js';
-import { CADUIManager } from './ui/uiManager.js';
+import { CADService } from './services/CADService.js';
+import { CADUtils } from './CADUtils.js';
+import { CADUIManager } from './ui/UIManager.js';
 import { LayerPanelUI } from './ui/LayerPanelUI.js';
 import { PropertyPanelUI } from './ui/PropertyPanelUI.js';
 import { CAD_THEME, applyThemeToDocument } from './config/cadTheme.js';
