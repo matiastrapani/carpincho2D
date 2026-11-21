@@ -1,7 +1,7 @@
 export const CAD_THEME = {
   // Fondo general del área de trabajo y ejes cartesianos
   canvas: {
-    backgroundColor: '#10141D',
+    backgroundColor: '#10141D', //#10141D
     axisXColor: 'rgba(181, 217, 255, 0.2)', // #b5d9ff con opacidad 0.2
     axisYColor: 'rgba(181, 217, 255, 0.2)',
     axisWidthPx: 1.5
@@ -36,14 +36,14 @@ export const CAD_THEME = {
     },
     node: {
       fillColor: '#10141D',       
-      strokeColor: '#aaff00',     
+      strokeColor: '#88ff00',     
       selectedRadiusPx: 4.0,      
       normalRadiusPx: 3.5,        
       selectedWidthPx: 2.0,
       normalWidthPx: 1.0
     },
     circle: {
-      strokeColor: '#aaff00',
+      strokeColor: '#88ff00',
       widthMultiplier: 1.5
     },
     raster: {
@@ -59,21 +59,23 @@ export const CAD_THEME = {
     anchorStrokeWidthHoverPx: 1.5,    
     anchorFillNormal: '#10141D',      
     anchorFillSelected: '#10141D',    
-    anchorStrokeSelected: '#aaff00',  
+    anchorStrokeSelected: '#88ff00',  
     bezierHandleSizePx: 6.0,            
     bezierHandleStrokeWidthPx: 1.0,   
     bezierHandleStrokeWidthHoverPx: 1.5, 
     bezierHandleFill: '#10141D',
-    bezierHandleStrokeSelected: '#aaff00',
+    bezierHandleStrokeSelected: '#88ff00',
     bezierArmStrokeWidthPx: 0.5,
-    bezierArmStrokeSelected: '#aaff00'
+    bezierArmStrokeSelected: '#88ff00'
   },
   hud: {
     snapStrokeColor: '#88ff00', //'#34d399'
     snapFillColor: '#88ff0050', //'#34d39933'
-    snapBgColor: '#10141d',
+    snapBgColor: '#10141d50',
     snapStrokeWidthPx: 1.7,
+    snapOutlineWidthPx: 0.8,
     snapMarkerSizePx: 12.0,
+    intersectionWidthMultiplier: 1.4,
     extensionFactor: 1.3
   },
   properties: {
