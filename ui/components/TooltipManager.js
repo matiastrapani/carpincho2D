@@ -1,6 +1,9 @@
 /**
  * ui/components/TooltipManager.js - Gestor global de tooltips flotantes (capa superior)
  */
+
+import { getShortcutLabel } from '../../services/input/ShortcutResolver.js';
+
 export class TooltipManager {
   constructor(mountNode = document.body) {
     this.mountNode = mountNode;
@@ -171,7 +174,7 @@ export class TooltipManager {
     this.tooltipEl.replaceChildren();
 
     const lines = String(rawText).split(/\r?\n|\\n/);
-    const tokenRegex = /<span\b([^>]*)><\/span>|<span\b([^>]*)\/>|\{icon:([a-zA-Z0-9:_-]+)\}/gi;
+    const tokenRegex = /<span\b([^>]*)><\/span>|<span\b([^>]*)\/>|\{icon:([a-zA-Z0-9:_-]+)\}|\{shortcut:([a-zA-Z0-9_-]+)\}/gi;
 
     for (const line of lines) {
       const lineEl = document.createElement('div');
@@ -194,6 +197,7 @@ export class TooltipManager {
 
         const rawSpanAttrs = match[1] !== undefined ? match[1] : match[2];
         const shorthandIcon = match[3];
+        const shortcutKey = match[4];
 
         if (rawSpanAttrs !== undefined) {
           const iconAttrMatch = rawSpanAttrs.match(/\bdata-icon\s*=\s*["']([^"']+)["']/i);
@@ -211,6 +215,11 @@ export class TooltipManager {
           iconSpan.className = 'iconify';
           iconSpan.setAttribute('data-icon', shorthandIcon);
           lineEl.appendChild(iconSpan);
+        } else if (shortcutKey) {
+          const label = getShortcutLabel(shortcutKey);
+          if (label) {
+            lineEl.appendChild(document.createTextNode(label));
+          }
         }
 
         lastIndex = tokenRegex.lastIndex;

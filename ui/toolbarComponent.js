@@ -16,11 +16,11 @@ export class CADToolbarComponent {
           
           <!-- OSNAP & Filtros -->
           <div class="h-5 flex items-center gap-1 max-w-full shrink-0 z-11">
-            <button id="btnSnap" type="button" class="cad-button cad-button-square snap-btn active h-5 w-6 tooltip-top-left" data-tooltip="Refobj [F3]">
+            <button id="btnSnap" type="button" class="cad-button cad-button-square snap-btn active h-5 w-6 tooltip-top-left" data-tooltip="Refobj [{shortcut:osnap}]">
               <span class="iconify text-xs icon-crisp shrink-0" data-icon="lucide:magnet"></span>
             </button>
 
-            <button id="btnGrid" type="button" class="cad-button cad-button-square snap-btn active h-5 w-6 tooltip-top" data-tooltip="Grilla [F7]">
+            <button id="btnGrid" type="button" class="cad-button cad-button-square snap-btn active h-5 w-6 tooltip-top" data-tooltip="Grilla [{shortcut:grid}]">
               <span class="iconify text-xs shrink-0" data-icon="lucide:grid-3x3"></span>
             </button>
 
@@ -95,11 +95,11 @@ export class CADToolbarComponent {
 
             <div class="flat-divider h-4"></div>
 
-            <button id="btnOrtho" type="button" class="snap-chip rounded px-2 h-5 flex items-center justify-center gap-1.5 tooltip-top shrink-0" data-tooltip="Ortogonal [F8]">
+            <button id="btnOrtho" type="button" class="snap-chip rounded px-2 h-5 flex items-center justify-center gap-1.5 tooltip-top shrink-0" data-tooltip="Ortogonal [{shortcut:ortho}]">
               <span class="text-[11px] font-medium leading-none">Orto</span>
             </button>
 
-            <button id="chipGrid" type="button" class="snap-chip rounded px-2 h-5 flex items-center justify-center gap-1.5 tooltip-top shrink-0" data-tooltip="Ajustar a grilla [F9]">
+            <button id="chipGrid" type="button" class="snap-chip rounded px-2 h-5 flex items-center justify-center gap-1.5 tooltip-top shrink-0" data-tooltip="Ajustar a grilla [{shortcut:gridSnap}]">
               <span class="text-[11px] font-medium leading-none">Ajustar a grilla</span>
             </button>
 
@@ -128,7 +128,7 @@ export class CADToolbarComponent {
 
             <div class="flat-divider h-4 shrink-0 hidden sm:block"></div>
 
-            <button id="btnZoomReset" class="hidden md:flex cad-button rounded items-center gap-1.5 px-2 h-5 shrink-0 text-zinc-400 hover:text-zinc-100 tooltip-top cursor-pointer" data-tooltip="Restablecer vista a 100%\n (Origen 0,0)">
+            <button id="btnZoomReset" class="hidden md:flex cad-button rounded items-center gap-1.5 px-2 h-5 shrink-0 text-zinc-400 hover:text-zinc-100 tooltip-top cursor-pointer" data-tooltip="Restablecer vista a 100%\n(Origen 0,0) [{shortcut:zoomReset}]">
               <span class="text-zinc-500 font-medium text-[10px] leading-none pointer-events-none">ZOOM:</span>
               <span id="hudZoom" class="hud-value text-zinc-300 min-w-[32px] text-right font-medium text-[11px] leading-none pointer-events-none">100%</span>
             </button>
@@ -136,7 +136,7 @@ export class CADToolbarComponent {
             <div class="flat-divider h-4 shrink-0 hidden sm:block"></div>
 
             <div class="hidden md:flex items-center gap-1 h-5 shrink-0">
-              <button id="btnExtents" class="cad-button cad-button-square h-5 w-6 text-zinc-400 hover:text-zinc-100 tooltip-top shrink-0" data-tooltip="Ajustar a vista\n(extensión)">
+              <button id="btnExtents" class="cad-button cad-button-square h-5 w-6 text-zinc-400 hover:text-zinc-100 tooltip-top shrink-0" data-tooltip="Ajustar a vista (extensión)\n[{shortcut:zoomExtents}]">
                 
                  <span id="btnSnapIcon" class="iconify text-zinc-200 text-sm shrink-0" data-icon="lucide:shrink"></span> 
               </button>

@@ -3,6 +3,7 @@
  */
 
 import { CAD_THEME } from '../../config/cadTheme.js';
+import { getShortcutLabel } from './ShortcutResolver.js';
 
 export class InputDispatcher {
   constructor(cadService) {
@@ -57,7 +58,7 @@ export class InputDispatcher {
 
     const isCtrlOrCmd = e.ctrlKey || e.metaKey;
 
-    // 2. Teclas de función hardware (F3 Snap, F7 Grid, F8 Ortho, F9 Grid Snap, F10 PointsOn, F11 PointsOff)
+    // 2. Teclas de función hardware (F2 Consola, F3 Snap, F4 Extents, F7 Grid, F8 Ortho, F9 Grid Snap, F10/F11 Nodos)
     if (this._handleFunctionKeys(e, cadUtils)) {
       return;
     }
@@ -135,7 +136,28 @@ export class InputDispatcher {
       return;
     }
 
+    // 4b. Zoom 100% al origen (Ctrl+0 / Cmd+0) y Colapsar/Expandir panel lateral (Ctrl+B / Cmd+B)
+    if (isCtrlOrCmd && !e.shiftKey && !e.altKey && (e.key === '0' || e.code === 'Digit0' || e.code === 'Numpad0')) {
+      e.preventDefault();
+      cadUtils?.viewportManager?.zoomReset?.();
+      return;
+    }
+
+    if (isCtrlOrCmd && !e.shiftKey && !e.altKey && (e.key.toLowerCase() === 'b' || e.code === 'KeyB')) {
+      e.preventDefault();
+      const uiManager = cadUtils?.cadUI || window.cadUI;
+      uiManager?.toggleSidebar?.();
+      return;
+    }
+
     if (isConsoleInput) {
+      return;
+    }
+
+    // 4c. Zoom Extents alternativo (Shift+Z)
+    if (!isCtrlOrCmd && !e.altKey && e.shiftKey && (e.key.toLowerCase() === 'z' || e.code === 'KeyZ')) {
+      e.preventDefault();
+      cadUtils?.viewportManager?.resetView?.();
       return;
     }
 
@@ -232,17 +254,34 @@ export class InputDispatcher {
 
   _handleFunctionKeys(e, cadUtils) {
     const shortcuts = CAD_THEME?.shortcuts || {};
+    const consoleKey = shortcuts.console || 'F2';
     const osnapKey = shortcuts.osnap || 'F3';
+    const zoomExtentsFnKey = (shortcuts.zoomExtents || 'F4').split('/')[0].trim();
     const gridKey = shortcuts.grid || 'F7';
     const orthoKey = shortcuts.ortho || 'F8';
     const gridSnapKey = shortcuts.gridSnap || 'F9';
     const pointsOnKey = shortcuts.pointsOn || 'F10';
-    const pointsOffKey = shortcuts.pointsOff || 'F11';
+    const pointsOffWinKey = typeof shortcuts.pointsOff === 'object'
+      ? (shortcuts.pointsOff.win || 'F11')
+      : (shortcuts.pointsOff || 'F11');
 
+    if (e.key === consoleKey) {
+      e.preventDefault();
+      const consoleManager = cadUtils?.consoleManager || window.consoleManager;
+      if (consoleManager && typeof consoleManager.toggleFloating === 'function') {
+        consoleManager.toggleFloating();
+      }
+      return true;
+    }
     if (e.key === osnapKey) {
       e.preventDefault();
       if (cadUtils?.toggleSnapMaster) cadUtils.toggleSnapMaster();
       else this.service?.toggleSnapMaster();
+      return true;
+    }
+    if (e.key === zoomExtentsFnKey) {
+      e.preventDefault();
+      cadUtils?.viewportManager?.resetView?.();
       return true;
     }
     if (e.key === gridKey) {
@@ -283,13 +322,14 @@ export class InputDispatcher {
       if (edited.length > 0 && cadUtils?.setPrompt) {
         const total = this.service.editingEntities.length;
         const label = total === 1 ? '1 entidad' : `${total} entidades`;
-        cadUtils.setPrompt(`Modo edición de nodos activo (${label}). Presiona Esc o Shift+${pointsOnKey} para salir.`);
+        const pointsOffLabel = getShortcutLabel('pointsOff') || `Shift+${pointsOnKey}`;
+        cadUtils.setPrompt(`Modo edición de nodos activo (${label}). Presiona Esc o ${pointsOffLabel} para salir.`);
       } else if (append && this.service?.selectionManager?.exitEditMode()) {
         cadUtils?.setPrompt?.('Herramienta Selección: selecciona objetos o haz doble clic en un trazo para editar sus nodos.');
       }
       return true;
     }
-    if (e.key === pointsOffKey) {
+    if (e.key === pointsOffWinKey) {
       e.preventDefault();
       if (this.service?.selectionManager?.exitEditMode() && cadUtils?.setPrompt) {
         cadUtils.setPrompt('Herramienta Selección: selecciona objetos o haz doble clic en un trazo para editar sus nodos.');

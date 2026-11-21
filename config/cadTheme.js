@@ -86,14 +86,21 @@ export const CAD_THEME = {
     ]
   },
 
-  // Atajos globales de teclado estilo Rhino 3D
+  // Atajos globales de teclado estilo Rhino 3D y navegación
   shortcuts: {
+    console: 'F2',
     osnap: 'F3',
+    zoomExtents: 'F4 / Shift+Z',
     grid: 'F7',
     ortho: 'F8',
     gridSnap: 'F9',
-    pointsOn: 'F10',
-    pointsOff: 'F11'
+    pointsOn: 'Tab',
+    pointsOff: { win: 'F11', mac: 'Shift+F10' },
+    zoomReset: { win: 'Ctrl+0', mac: '⌘0' },
+    toggleSidebar: { win: 'Ctrl+B', mac: '⌘B' },
+    undo: { win: 'Ctrl+Z', mac: '⌘Z' },
+    redo: { win: 'Ctrl+Y', mac: '⇧⌘Z' },
+    selectAll: { win: 'Ctrl+A', mac: '⌘A' }
   },
 
   // Tokens de interfaz sincronizados con variables CSS (--cad-*)

@@ -6,7 +6,6 @@ export class FloatingConsoleUI {
   constructor() {
     this.isOpen = false;
 
-    this._onKeyDown = this._handleKeyDown.bind(this);
     this._onWindowResize = this._handleWindowResize.bind(this);
     this._onDocumentClick = this._handleDocumentClick.bind(this);
 
@@ -76,7 +75,6 @@ export class FloatingConsoleUI {
       this.hide();
     });
 
-    window.addEventListener('keydown', this._onKeyDown);
     window.addEventListener('resize', this._onWindowResize);
     document.addEventListener('click', this._onDocumentClick);
   }
@@ -329,7 +327,6 @@ export class FloatingConsoleUI {
   }
 
   destroy() {
-    window.removeEventListener('keydown', this._onKeyDown);
     window.removeEventListener('resize', this._onWindowResize);
     document.removeEventListener('click', this._onDocumentClick);
     this.modal?.remove();

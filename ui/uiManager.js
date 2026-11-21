@@ -384,8 +384,6 @@ export class CADUIManager {
   // 6. Colapsado y redimensionamiento del Panel Lateral Derecho
   bindSidebarControls() {
     const rightSidebar = document.getElementById('rightSidebar');
-    const sidebarHeader = document.getElementById('sidebarHeader');
-    const sidebarContent = document.getElementById('sidebarContent');
     const resizer = document.getElementById('resizer');
     const btnToggleSidebar = document.getElementById('btnToggleSidebar');
     const btnExpandSidebar = document.getElementById('btnExpandSidebar');
@@ -409,72 +407,84 @@ export class CADUIManager {
       window.addEventListener('mouseup', this._onSidebarMouseUp);
     });
 
-    const setCollapsedState = (collapsed) => {
-      this._sidebarResizeState.isCollapsed = collapsed;
-      clearTimeout(this._sidebarResizeState.expandRevealTimer);
-      rightSidebar.style.transition = 'width 180ms ease-out';
+    btnToggleSidebar.addEventListener('click', () => this.toggleSidebar(true));
+    btnExpandSidebar?.addEventListener('click', () => this.toggleSidebar(false));
+  }
 
-      if (collapsed) {
-        rightSidebar.classList.add('overflow-hidden');
-        rightSidebar.style.width = '0px';
-        resizer?.classList.add('hidden');
-        resizer?.classList.remove('has-docked-border');
+  toggleSidebar(forceState = null) {
+    const rightSidebar = this._sidebarResizeState.rightSidebar || document.getElementById('rightSidebar');
+    const sidebarHeader = document.getElementById('sidebarHeader');
+    const sidebarContent = document.getElementById('sidebarContent');
+    const resizer = this._sidebarResizeState.resizer || document.getElementById('resizer');
+    const btnExpandSidebar = this._sidebarResizeState.btnExpandSidebar || document.getElementById('btnExpandSidebar');
 
-        if (this._dragState.currentDockState === 'docked-right') {
-          this._applyDockState('docked-panel-left');
-        }
+    if (!rightSidebar) return;
 
-        const revealExpandBtn = () => {
-          if (!this._sidebarResizeState.isCollapsed) return;
-          sidebarHeader?.classList.add('hidden');
-          sidebarContent?.classList.add('hidden');
-          this._updateExpandButtonPosition();
-          btnExpandSidebar?.classList.remove('hidden');
-        };
+    const collapsed = typeof forceState === 'boolean'
+      ? forceState
+      : !this._sidebarResizeState.isCollapsed;
 
-        const onTransitionEnd = (e) => {
-          if (e.propertyName !== 'width') return;
-          rightSidebar.removeEventListener('transitionend', onTransitionEnd);
-          clearTimeout(this._sidebarResizeState.expandRevealTimer);
-          revealExpandBtn();
-        };
+    this._sidebarResizeState.isCollapsed = collapsed;
+    clearTimeout(this._sidebarResizeState.expandRevealTimer);
+    rightSidebar.style.transition = 'width 180ms ease-out';
 
-        rightSidebar.addEventListener('transitionend', onTransitionEnd);
-        this._sidebarResizeState.expandRevealTimer = setTimeout(() => {
-          rightSidebar.removeEventListener('transitionend', onTransitionEnd);
-          revealExpandBtn();
-        }, 195);
-      } else {
-        btnExpandSidebar?.classList.add('hidden');
-        sidebarHeader?.classList.remove('hidden');
-        sidebarContent?.classList.remove('hidden');
-        rightSidebar.style.width = `${this._sidebarResizeState.lastExpandedWidth}px`;
-        resizer?.classList.remove('hidden');
+    if (collapsed) {
+      rightSidebar.classList.add('overflow-hidden');
+      rightSidebar.style.width = '0px';
+      resizer?.classList.add('hidden');
+      resizer?.classList.remove('has-docked-border');
 
-        if (this._dragState.currentDockState === 'docked-panel-left') {
-          resizer?.classList.add('has-docked-border');
-        }
-
-        const onExpandEnd = (e) => {
-          if (e.propertyName !== 'width') return;
-          rightSidebar.removeEventListener('transitionend', onExpandEnd);
-          if (!this._sidebarResizeState.isCollapsed) {
-            rightSidebar.classList.remove('overflow-hidden');
-          }
-        };
-
-        rightSidebar.addEventListener('transitionend', onExpandEnd);
-        this._sidebarResizeState.expandRevealTimer = setTimeout(() => {
-          rightSidebar.removeEventListener('transitionend', onExpandEnd);
-          if (!this._sidebarResizeState.isCollapsed) {
-            rightSidebar.classList.remove('overflow-hidden');
-          }
-        }, 195);
+      if (this._dragState.currentDockState === 'docked-right') {
+        this._applyDockState('docked-panel-left');
       }
-    };
 
-    btnToggleSidebar.addEventListener('click', () => setCollapsedState(true));
-    btnExpandSidebar?.addEventListener('click', () => setCollapsedState(false));
+      const revealExpandBtn = () => {
+        if (!this._sidebarResizeState.isCollapsed) return;
+        sidebarHeader?.classList.add('hidden');
+        sidebarContent?.classList.add('hidden');
+        this._updateExpandButtonPosition();
+        btnExpandSidebar?.classList.remove('hidden');
+      };
+
+      const onTransitionEnd = (e) => {
+        if (e.propertyName !== 'width') return;
+        rightSidebar.removeEventListener('transitionend', onTransitionEnd);
+        clearTimeout(this._sidebarResizeState.expandRevealTimer);
+        revealExpandBtn();
+      };
+
+      rightSidebar.addEventListener('transitionend', onTransitionEnd);
+      this._sidebarResizeState.expandRevealTimer = setTimeout(() => {
+        rightSidebar.removeEventListener('transitionend', onTransitionEnd);
+        revealExpandBtn();
+      }, 195);
+    } else {
+      btnExpandSidebar?.classList.add('hidden');
+      sidebarHeader?.classList.remove('hidden');
+      sidebarContent?.classList.remove('hidden');
+      rightSidebar.style.width = `${this._sidebarResizeState.lastExpandedWidth}px`;
+      resizer?.classList.remove('hidden');
+
+      if (this._dragState.currentDockState === 'docked-panel-left') {
+        resizer?.classList.add('has-docked-border');
+      }
+
+      const onExpandEnd = (e) => {
+        if (e.propertyName !== 'width') return;
+        rightSidebar.removeEventListener('transitionend', onExpandEnd);
+        if (!this._sidebarResizeState.isCollapsed) {
+          rightSidebar.classList.remove('overflow-hidden');
+        }
+      };
+
+      rightSidebar.addEventListener('transitionend', onExpandEnd);
+      this._sidebarResizeState.expandRevealTimer = setTimeout(() => {
+        rightSidebar.removeEventListener('transitionend', onExpandEnd);
+        if (!this._sidebarResizeState.isCollapsed) {
+          rightSidebar.classList.remove('overflow-hidden');
+        }
+      }, 195);
+    }
   }
 
   _updateExpandButtonPosition() {
