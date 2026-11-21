@@ -10,8 +10,6 @@ cotas
 modo colaborativo en linea
 
 FIXME
-revisar funcionalidad de los osnaps en distintas entidades
-osnap en svg importado a veces falla
 herramienta de seleccion y edicion de objetos. mejorar funcionalidad de bezier
 aumentar solo 1px el espesor de la seleccion
 el export svg exporta los colores de la seleccion, y los puntos escalados por zoom
@@ -26,49 +24,45 @@ espesores y zoom, escalar bordes?
 - [x] **QW-01 | Rubber band en Move con Select:** Dibujar guía discontinua (`CAD_THEME.rubberBand`) en `hudLayer` entre el *pivot point* inicial y la posición actual durante el arrastre de entidades/vértices en `HandleSelectionHandler` / `SelectTool`, limpiándola en `onMouseUp` y `reset()`.
 - [x] **QW-02 | OSNAP Perpendicular en Selección y Movimiento:** Pasar el *pivot point* como `fromPoint` e incluir las entidades arrastradas en `ignoreEntities` al invocar `OsnapEngine.calculateOsnap()` desde `HandleSelectionHandler` / `SegmentEditHandler`.
 
-- [ ] **Refactor de arrastre unificado (`MixedDragHelper`):** Extraer la lógica duplicada de captura de estado inicial, aplicación de desplazamiento, registro en `MoveCommand` (`type: 'mixed'`) y cancelación de arrastre compartida entre `SelectTool`, `HandleSelectionHandler` y `SegmentEditHandler`.
 
+- [x] [Área Puntos] **Unificar selección en división:** Reemplazar la caja de selección propia de `DivisionSelectionHandler.js` por `BoxSelectHandler` con filtro de entidades editables y eliminar dependencias directas al `paper` global (incluyendo `_getPaper()`).
+- [x] [Área Selección] **Limpiar selección por capa:** Incorporar `purgeLayerSelection(layerId)` en `SelectionManager.js` para limpiar entidades, edición directa, segmentos y handles cuando una capa se bloquea u oculta, reemplazando la mutación directa de arrays en `LayerManager._purgeLockedLayerState`.
+- [x] [Área Edición] **Menú superpuestos en modo edición:** Habilitar la selección sobre elementos superpuestos en modo edición mediante menú desplegable (dropdown), igualando el comportamiento del modo entidad.
+- [x] [Área OSNAP / Geometría] **Cuadrantes en curvas Bézier:** Calcular cuadrantes para máximos y mínimos geométricos en curvas Bézier.
+- [x] [Área OSNAP / HUD] **Visualización de OSNAP intersección:** Resolver el renderizado del marcador visual para enganches de tipo intersección.
+- [x] [Área Viewport / Render] **Zoom y límites en Bézier:** Corregir la selección y curvas Bézier al hacer zoom y contemplar los máximos y mínimos reales de las curvas (no solo sus nodos) en `Zoom Extents`.
 
+- [ ] [Área Dibujo] **Auditar herramientas de dibujo:** Iniciar la auditoría del Área #5 revisando `BaseTool.js` y las herramientas de dibujo primitivas para desacoplar la creación de geometrías de `cadService.js`.
+- [ ] [Área Dibujo / HUD] **Separar marcador visual OSNAP:** Desacoplar el callback visual `renderMarkerFn` de `OsnapEngine.calculateOsnap()` para que el motor devuelva solo `{ point, type }` y el marcador del HUD (`HUDManager.js`) se actualice en un único punto centralizado.
+- [ ] [Área OSNAP / Puntos] **Garantizar entidad en candidatos OSNAP:** Asegurar que todos los candidatos devueltos por `OsnapEngine` incluyan la propiedad `entity` para simplificar `DivisionSelectionHandler._findSnappedTarget()` y eliminar el cálculo de cercanía de respaldo.
 
+- [ ] [Área Edición] **Unificar lógica de arrastre:** Crear `MixedDragHelper` para extraer la captura de estado inicial, aplicación de desplazamiento, registro en `MoveCommand` (`type: 'mixed'`) y cancelación de arrastre compartida entre `SelectTool`, `HandleSelectionHandler` y `SegmentEditHandler`.
+- [ ] [Área Edición] **Mover helpers a tools/shared:** Reubicar `MixedDragSession`, `BoxSelectHandler` y `SelectionMenuHandler` en una carpeta `tools/shared/` cuando también los consuman `CopyTool`, `RotateTool` o `PointTool`.
+- [ ] [Área Edición] **Mover selección de tramos:** Extraer `_selectEditModeEdge` desde `CommandSelectionHandler` hacia `SegmentEditHandler.selectEdgeAt` para unificar la selección de tramos en modo edición.
+- [ ] [Área Edición] **Consola numérica en MoveTool:** Soportar entrada por consola (`onCommandInput`) en `MoveTool` para ingresar coordenadas o distancia numérica sobre el vector activo durante la fase `PICK_DEST_POINT`.
+- [ ] [Área Edición] **Implementar herramienta CopyTool:** Construir `tools/CopyTool.js` componiendo `CommandSelectionHandler` y clonado de entidades (`entity.clone()`), permitiendo múltiples copias consecutivas hasta `Enter` o `Escape` registradas mediante `Command`.
 
-1. [Propiedades] Preparar PropertySingleView.js para secciones por tipo de entidad (ui/components/PropertySingleView.js): Hoy tiene 297 líneas (cerca del techo de 350). Antes de sumar propiedades nuevas (radio, texto, dimensiones), conviene extraer sus bloques base (Color, Opacidad, Grosor) para dejarlo debajo de 250 líneas y habilitar secciones componibles (*Section.js) según la Regla 8.
-2. [Núcleo / Capas] Eliminar manipulación directa del array entities en DeleteLayerCommand (services/commands/LayerCommands.js): Reemplazar cadService.entities.splice y .push por métodos oficiales de baja/restauración en CADService (Reglas 1 y 3). Abordar cuando se trabaje en el área de CADService.
-3. [Infraestructura] Desacoplar el redibujado directo de los gestores (services/LayerManager.js y services/PropertyManager.js): Sacar las llamadas directas a selectionRenderEngine y paper.view.update() hacia un suscriptor central de renderizado. Abordar solo cuando se revise el ciclo de renderizado global.
-4. [Color Picker — Opcional] Muestras personalizadas (ui/components/ColorSwatchManager.js): Si a futuro se decide guardar paletas personalizadas del usuario, crear un gestor independiente acoplado a ColorPickerPopover sin superar las 350 líneas.
+- [ ] [Área Viewport / Render] **Desacoplar renderers de globales:** Inyectar explícitamente `cadService`, `cadUtils` y `paper` en `SelectionRenderEngine.js`, `BezierHandlesRenderer.js` y `ParametricGripRenderer.js` desde `cadUtils.js` (eliminando `window.cadUtils`, `window.cadService` y `paper` implícito), recibiendo `paper` en `context` y manteniendo los 3 archivos en ≤ 350 líneas.
+- [ ] [Área Viewport / Render] **Dividir estilizado en SelectionRenderEngine:** Extraer el estilizado de trazos de `updateEntitiesStroke()` (y eliminar `_getOrCreatePointsLayer()` sin uso) para mantener `SelectionRenderEngine.js` debajo de 300 líneas y desacoplar la invalidación de caché `canvasViewportManager.previousViewState = null`.
+- [ ] [Área Viewport / Render] **Centralizar redibujado de gestores:** Sacar las llamadas directas a `selectionRenderEngine` y `paper.view.update()` desde `services/LayerManager.js` y `services/PropertyManager.js` hacia un suscriptor central de renderizado.
 
-Área #8 — Selección (SelectionManager.js): Incorporar un método oficial (ej. purgeLayerSelection(layerId)) para limpiar entidades, edición directa, segmentos y handles cuando una capa se bloquea u oculta, reemplazando la mutación directa de arrays en LayerManager._purgeLockedLayerState.
-Área #12 — Input y HUD (HUDManager.js) y Área #5 — Dibujo: Desacoplar el callback visual renderMarkerFn de OsnapEngine.calculateOsnap(), haciendo que el motor devuelva solo { point, type } y que el marcador visual se actualice en un único punto centralizado.
-Área #15 — Núcleo (cadService.js / app.js): Confirmar que cadService.utils quede inyectado desde el arranque de la aplicación (sin depender de window.cadUtils) y limpiar métodos puente residuales en cadUtils.js.
+- [ ] [Área Propiedades / UI] **Dividir secciones de propiedades:** Extraer los bloques base (Color, Opacidad, Grosor) de `ui/components/PropertySingleView.js` (hoy en 297 líneas) para dejarlo debajo de 250 líneas y habilitar secciones componibles (`*Section.js`) antes de sumar propiedades nuevas (radio, texto, dimensiones).
+- [ ] [Área Propiedades / UI] **Muestras de color personalizadas:** (Opcional) Si a futuro se decide guardar paletas personalizadas del usuario, crear `ui/components/ColorSwatchManager.js` independiente y acoplado a `ColorPickerPopover` sin superar las 350 líneas.
 
+- [ ] [Área Núcleo] **Inyectar utils al arrancar:** Confirmar en `app.js` y `cadUtils.js` que `cadService.utils` quede inyectado desde el arranque de la aplicación (sin depender de `window.cadUtils`) y limpiar métodos puente residuales en `cadUtils.js`.
+- [ ] [Área Núcleo] **Inyectar paper y capas:** Centralizar `paper` y las referencias de capas (`hudLayer`, `pointsLayer`) en `CADUtils` para eliminar los helpers repetidos `_getPaper()` / `_getHudLayer()`, y en `cadService.createPointEntity()` insertar directamente en `pointsLayer` en lugar de mutar la capa activa (`targetLayer.activate()` / `drawLayer.activate()`).
+- [ ] [Área Núcleo] **Encapsular baja de capas:** Eliminar la manipulación directa de `cadService.entities.splice` y `.push` en `DeleteLayerCommand` (`services/commands/LayerCommands.js`), reemplazándola por métodos oficiales de baja y restauración en `CADService`.
 
-- [ ] **Desacoplar `SelectionRenderEngine` y sub-renderers de globales (`window.cadUtils`, `window.cadService`, `paper`):**
-  - **Contexto:** Durante el refactor de `cadUtils.js`, inyectar explícitamente las dependencias en `SelectionRenderEngine` (`cadService`, `cadUtils`, `paper`) en lugar de leer `window.cadUtils`, `window.cadService` o el global `paper`.
-  - **Archivos afectados:** `services/renderers/SelectionRenderEngine.js`, `services/renderers/BezierHandlesRenderer.js`, `services/renderers/ParametricGripRenderer.js` y el punto de inicialización en `cadUtils.js`.
-  - **Criterio de aceptación:** Ninguno de los 3 renderers referencia `window.*` ni `paper` implícito, recibiendo la instancia `paper` mediante el objeto `context` de renderizado y manteniendo los 3 archivos ≤ 350 líneas.
-
-
-más adelante podemos mover MixedDragSession, BoxSelectHandler y SelectionMenuHandler a una carpeta tools/shared/ cuando también los consuman CopyTool, RotateTool o PointTool).
-
-
-Implementar CopyTool (tools/CopyTool.js): Construir la herramienta de copia componiendo CommandSelectionHandler y clonado de entidades (entity.clone()), permitiendo múltiples copias consecutivas hasta Enter o Escape registradas mediante Command.
-Soportar entrada por consola en MoveTool (onCommandInput): Permitir ingresar coordenadas o distancia numérica sobre el vector activo durante la fase PICK_DEST_POINT.
-Extraer SegmentEditHandler.selectEdgeAt: Mover _selectEditModeEdge desde CommandSelectionHandler hacia SegmentEditHandler para unificar la selección de tramos en modo edición.
-Migrar DivisionSelectionHandler.js a BoxSelectHandler y _getPaper(): Reemplazar la caja de selección propia de división por BoxSelectHandler con filtro de entidades editables y eliminar dependencias al paper global.
-
-  [x] Cuadrante para maximos y minimos para curvas Bezier
-  [x] Seleccion y bezier con zoom falla y zoom extents solo usa nodos y no min y max de curvas.
-
-
-  [x] Resolver la visualizacion de osnap interseccion
-  [x] Seleccion sobre elementos superpuestos en modo edicion con dropdown como tenemos en modo entidad
 
 
 bloqueo y visibilidad global por entidades selecciondas
+
 no permitir la seleccion de imagen como elemento en trim/extend
 agregar en linetool los colores de la etiqueta de rubberband
+resolver el punto de incio con estilo punto en division por distancia
+
 
 mejorar el nombre de las entidades agregando para separar el tag #
-resolver el punto de incio con estilo punto en division por distancia
 
 resolver la barra de desplazamiento horizontal en el panel de propiedades al reducir el tamaño sin overflow
 resolver que hacer con la opacidad en capa

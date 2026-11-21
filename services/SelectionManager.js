@@ -25,6 +25,7 @@ export class SelectionManager {
 
   set selectedEntities(val) {
     this._selectedEntities = Array.isArray(val) ? val : [];
+    this._refreshRender();
     this._notify();
   }
 

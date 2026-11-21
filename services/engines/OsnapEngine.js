@@ -3,17 +3,13 @@
  */
 
 import {
-  resolveFromPoint,
-  collectExtendedOsnapCandidates
+  resolveFromPoint, collectExtendedOsnapCandidates
 } from './OsnapGeometryMath.js';
 import {
-  buildRasterContourPath,
-  collectPrimitiveOsnapCandidates
+  buildRasterContourPath, collectPrimitiveOsnapCandidates
 } from './OsnapPrimitiveSolvers.js';
 import {
-  collectPathGeometryCandidates,
-  collectIntersectionCandidates,
-  collectEditingHandleCandidates
+  collectPathGeometryCandidates, collectIntersectionCandidates, collectEditingHandleCandidates
 } from './OsnapPathSolvers.js';
 
 export class OsnapEngine {
@@ -27,15 +23,19 @@ export class OsnapEngine {
   calculateOsnap(mousePoint, renderMarkerFn, activePath = null, ignoreContext = null) {
     if (this.service.isSnapSuspendedByAlt === true) {
       if (renderMarkerFn) renderMarkerFn(null, null);
-      return { point: mousePoint, type: null };
+      return { point: mousePoint, type: null, entity: null };
     }
 
     const zoom = paper.view.zoom;
     const snapRadius = 14 / zoom;
     const EPSILON = 0.01;
     const candidatePoints = [];
+    const restrictToEntities = Array.isArray(ignoreContext?.restrictToEntities)
+      ? ignoreContext.restrictToEntities
+      : null;
+    const isMasterEnabled = this.service.isSnapMasterEnabled || ignoreContext?.forceMasterEnabled === true;
 
-    if (this.service.isSnapMasterEnabled) {
+    if (isMasterEnabled) {
       const draggedPath = ignoreContext?.path || (ignoreContext instanceof paper.Path ? ignoreContext : null);
       const draggedSegment = ignoreContext?.segment || null;
       const ignoreEntities = ignoreContext?.ignoreEntities || [];
@@ -46,7 +46,7 @@ export class OsnapEngine {
       const isSelfPoint = (pt) => Boolean(pt && selectedPointsCoords.some((s) => s.getDistance(pt) < EPSILON));
       const isDynamicCurve = this._createDynamicCurveFilter(draggedPath, draggedSegment, ignoreSegments, ignoreHandles);
       const { circleTargets, snapTargets, pointTargets, rasterTargets } =
-        this._collectTargetGroups(mousePoint, snapRadius, activePath, draggedPath, ignoreEntities);
+        this._collectTargetGroups(mousePoint, snapRadius, activePath, draggedPath, ignoreEntities, restrictToEntities);
 
       const rasterContourMap = new Map();
       rasterTargets.forEach((raster) => {
@@ -55,7 +55,9 @@ export class OsnapEngine {
       });
 
       try {
-        const snapFilters = this.service.snapFilters;
+        const snapFilters = ignoreContext?.filterOverrides
+          ? { ...this.service.snapFilters, ...ignoreContext.filterOverrides }
+          : this.service.snapFilters;
         const intersectionPathTargets = rasterContourMap.size > 0
           ? [...snapTargets, ...rasterContourMap.values()]
           : snapTargets;
@@ -133,15 +135,17 @@ export class OsnapEngine {
         candidatePoints.sort((a, b) => a.priority - b.priority || a.dist - b.dist);
         const best = candidatePoints[0];
         if (renderMarkerFn) renderMarkerFn(best.point, best.type);
-        return { point: best.point, type: best.type };
+        return { point: best.point, type: best.type, entity: best.entity || null };
       }
     }
 
-    const gridSnap = this._resolveGridOsnap(mousePoint, zoom, snapRadius, renderMarkerFn);
-    if (gridSnap) return gridSnap;
+    if (!restrictToEntities) {
+      const gridSnap = this._resolveGridOsnap(mousePoint, zoom, snapRadius, renderMarkerFn);
+      if (gridSnap) return { ...gridSnap, entity: null };
+    }
 
     if (renderMarkerFn) renderMarkerFn(null, null);
-    return { point: mousePoint, type: null };
+    return { point: mousePoint, type: null, entity: null };
   }
 
   _resolveGridOsnap(mousePoint, zoom, snapRadius, renderMarkerFn) {
@@ -183,7 +187,7 @@ export class OsnapEngine {
     };
   }
 
-  _collectTargetGroups(mousePoint, snapRadius, activePath, draggedPath, ignoreEntities) {
+  _collectTargetGroups(mousePoint, snapRadius, activePath, draggedPath, ignoreEntities, restrictToEntities = null) {
     const gridGroup = this.service.utils?.gridGroup || null;
     const layerManager = this.service.utils?.layerManager || null;
 
@@ -209,6 +213,7 @@ export class OsnapEngine {
     );
 
     const canEvaluate = (ent) => {
+      if (restrictToEntities && !restrictToEntities.includes(ent)) return false;
       if (draggedPath && ent === draggedPath) return false;
       if (ignoreEntities.includes(ent)) return false;
       return Boolean(ent.bounds && ent.bounds.intersects(snapBox));
@@ -233,7 +238,7 @@ export class OsnapEngine {
       }
     }
 
-    if (activePath instanceof paper.Path && activePath.segments?.length > 0 && !activePath.data?.isCircleEntity) {
+    if (!restrictToEntities && activePath instanceof paper.Path && activePath.segments?.length > 0 && !activePath.data?.isCircleEntity) {
       if (!activePath.clipMask && !snapTargets.includes(activePath)) {
         snapTargets.push(activePath);
       }

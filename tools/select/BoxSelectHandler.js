@@ -21,50 +21,78 @@ export class BoxSelectHandler {
 
   _createBoxRect(fromPt, toPt, isWindowSelection = true) {
     const paperInst = this._getPaper();
-    if (!paperInst) return null;
+    const hudLayer = this._getHudLayer();
+    if (!paperInst || !hudLayer) return null;
 
     const zoom = paperInst.view?.zoom || 1;
-    const rect = new paperInst.Path.Rectangle({
-      from: fromPt,
-      to: toPt,
+    const minX = Math.min(fromPt.x, toPt.x);
+    const maxX = Math.max(fromPt.x, toPt.x);
+    const minY = Math.min(fromPt.y, toPt.y);
+    const maxY = Math.max(fromPt.y, toPt.y);
+
+    const rect = new paperInst.Path({
+      segments: [
+        [minX, minY],
+        [maxX, minY],
+        [maxX, maxY],
+        [minX, maxY]
+      ],
+      closed: true,
       strokeWidth: 1 / zoom,
       strokeColor: '#008800',
-      dashArray: isWindowSelection ? null : [2 / zoom, 2 / zoom],
+      dashArray: isWindowSelection ? [] : [2 / zoom, 2 / zoom],
       fillColor: new paperInst.Color(0, 0.53, 0, 0.15),
-      insert: false
+      insert: false,
+      guide: true,
+      data: { isAuxiliary: true }
     });
-    rect.guide = true;
 
-    const hudLayer = this._getHudLayer();
-    if (hudLayer) {
-      hudLayer.addChild(rect);
-    } else if (paperInst.project?.activeLayer) {
-      paperInst.project.activeLayer.addChild(rect);
+    hudLayer.addChild(rect);
+    return rect;
+  }
+
+  _syncBoxRectGeometry(fromPt, toPt, isWindowSelection = true) {
+    const paperInst = this._getPaper();
+    if (!paperInst || !this.selectionBoxRect) return;
+
+    const zoom = paperInst.view?.zoom || 1;
+    const minX = Math.min(fromPt.x, toPt.x);
+    const maxX = Math.max(fromPt.x, toPt.x);
+    const minY = Math.min(fromPt.y, toPt.y);
+    const maxY = Math.max(fromPt.y, toPt.y);
+
+    const segs = this.selectionBoxRect.segments;
+    if (segs && segs.length === 4) {
+      segs[0].point.set(minX, minY);
+      segs[1].point.set(maxX, minY);
+      segs[2].point.set(maxX, maxY);
+      segs[3].point.set(minX, maxY);
     }
 
-    return rect;
+    this.selectionBoxRect.strokeWidth = 1 / zoom;
+    this.selectionBoxRect.dashArray = isWindowSelection ? [] : [2 / zoom, 2 / zoom];
   }
 
   startBox(point) {
     this.selectionStartPoint = point.clone();
-    if (this.selectionBoxRect) {
-      this.selectionBoxRect.remove();
+    if (!this.selectionBoxRect) {
+      this.selectionBoxRect = this._createBoxRect(this.selectionStartPoint, point, true);
+    } else {
+      this._syncBoxRectGeometry(this.selectionStartPoint, point, true);
     }
-
-    this.selectionBoxRect = this._createBoxRect(this.selectionStartPoint, point, true);
   }
 
   updateBox(currentPoint) {
     if (!this.selectionStartPoint) return;
 
-    if (this.selectionBoxRect) {
-      this.selectionBoxRect.remove();
-    }
-
     const startPt = this.selectionStartPoint;
     const isWindowSelection = currentPoint.x >= startPt.x;
 
-    this.selectionBoxRect = this._createBoxRect(startPt, currentPoint, isWindowSelection);
+    if (!this.selectionBoxRect) {
+      this.selectionBoxRect = this._createBoxRect(startPt, currentPoint, isWindowSelection);
+    } else {
+      this._syncBoxRectGeometry(startPt, currentPoint, isWindowSelection);
+    }
   }
 
   getEntitiesInBox(boxBounds, isWindowSelection, filterFn = null) {

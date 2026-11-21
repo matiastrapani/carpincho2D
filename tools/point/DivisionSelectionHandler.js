@@ -3,26 +3,126 @@
  */
 
 import { CAD_THEME } from '../../config/cadTheme.js';
+import { BoxSelectHandler } from '../select/BoxSelectHandler.js';
+import { DivideCommand } from '../../services/commands/cadCommands.js';
 
 export class DivisionSelectionHandler {
   constructor(cadService, cadUtils) {
     this.service = cadService;
     this.utils = cadUtils;
+    this.boxSelector = new BoxSelectHandler(cadService, cadUtils);
 
+    this.step = 'select';
+    this.divisionCount = null;
+    this.divisionDistance = null;
     this.isSelectingBox = false;
     this.boxStartPoint = null;
-    this.selectionBoxPath = null;
 
     this.targetEntities = [];
     this.customStartPoints = new Map();
     this.startPointMarkersGroup = null;
   }
 
-  _getHudLayer() {
-    return this.utils.hudLayer || paper.project?.layers?.find((l) => l.name === 'hudLayer') || null;
+  _getPaper() {
+    const p = this.utils?.paper || (typeof paper !== 'undefined' ? paper : null);
+    if (!p) {
+      throw new Error('DivisionSelectionHandler requiere una instancia válida de Paper.js.');
+    }
+    return p;
   }
 
-  _isEntitySelectable(entity) {
+  _getHudLayer() {
+    const p = this._getPaper();
+    return this.utils.hudLayer || this.utils.hud?.hudLayer || p.project?.layers?.find((l) => l.name === 'hudLayer') || null;
+  }
+
+  _clearEditStateAndSync() {
+    const exited = this.service.selectionManager?.exitEditMode?.();
+    if (!exited) {
+      this.service.editingEntities = [];
+      this.service.deselectAllSegments();
+      this.service.deselectAllHandles?.();
+      this.utils.selectionRenderEngine?.renderBezierHandles?.();
+      this.utils.selectionRenderEngine?.updateEntitiesStroke?.();
+    }
+  }
+
+  askForDivisionValue(mode, setPromptFn) {
+    const p = this._getPaper();
+    const count = this.syncTargetsCache().length;
+    this.step = 'input';
+
+    this._clearEditStateAndSync();
+    if (p.view) p.view.update();
+
+    const label = mode === 'divide_count'
+      ? 'DIVIDIR (N): Especifica el número de segmentos'
+      : 'DIVIDIR (Dist): Especifica la distancia de división';
+    setPromptFn?.(`${label} (${count} objetivo/s):`);
+    this.utils.consoleManager?.focus?.();
+  }
+
+  handleCommandInput(input, mode, setPromptFn, exitToSelectFn) {
+    if (mode === 'divide_dist' && this.step === 'start_point') {
+      this.executeDivision(mode, exitToSelectFn);
+      return;
+    }
+    if (this.step !== 'input' || this.getTargets().length === 0) return;
+
+    const val = parseFloat(input);
+    if (isNaN(val)) {
+      exitToSelectFn?.();
+      return;
+    }
+
+    if (mode === 'divide_count') {
+      const count = Math.floor(val);
+      if (count < 2) {
+        setPromptFn?.('DIVIDIR (N): El número de segmentos debe ser mayor o igual a 2:');
+        return;
+      }
+      this.divisionCount = count;
+      this.executeDivision(mode, exitToSelectFn);
+    } else if (mode === 'divide_dist') {
+      if (val <= 0) {
+        setPromptFn?.('DIVIDIR (Dist): La distancia de división debe ser mayor que 0:');
+        return;
+      }
+      this.divisionDistance = val;
+      this.beginStartPointStep();
+      setPromptFn?.('Haz clic en una entidad para cambiar su punto de inicio, o presiona ENTER / Clic Derecho para ejecutar:');
+    }
+  }
+
+  executeDivision(mode, exitToSelectFn) {
+    const val = mode === 'divide_count' ? this.divisionCount : this.divisionDistance;
+    const allCreatedPoints = [];
+
+    this.getTargets().forEach((entity) => {
+      const created = mode === 'divide_count' && val >= 2
+        ? this.service.divideEntityByCount(entity, val, null, null)
+        : mode === 'divide_dist' && val > 0
+          ? this.service.divideEntityByDistance(entity, val, null, null, this.customStartPoints.get(entity))
+          : [];
+
+      (created || []).forEach((ptEnt) => {
+        if (!ptEnt) return;
+        ptEnt.data = ptEnt.data || {};
+        const ptName = this.utils.generateNextEntityName?.('Punto') || 'Punto';
+        ptEnt.name = ptName;
+        ptEnt.data.name = ptName;
+        this.utils.propertyManager?.applyDefaultSettings(ptEnt);
+        allCreatedPoints.push(ptEnt);
+      });
+    });
+
+    if (allCreatedPoints.length > 0) {
+      this.service.executeCommand(new DivideCommand(this.service, allCreatedPoints));
+    }
+    exitToSelectFn?.();
+  }
+
+  isEntitySelectable(entity) {
     if (!entity || entity.data?.isPointEntity || entity.visible === false) {
       return false;
     }
@@ -37,78 +137,52 @@ export class DivisionSelectionHandler {
   }
 
   getTargets() {
-    if (this.utils.divisionStep === 'start_point') {
+    if (this.step === 'start_point') {
       return (this.targetEntities || []).filter(
-        (ent) => ent && ent.parent && this._isEntitySelectable(ent)
+        (ent) => ent && ent.parent && this.isEntitySelectable(ent)
       );
     }
-    return this.getSelectedTargets();
+    return this.syncTargetsCache();
   }
 
   beginStartPointStep() {
     this.syncTargetsCache();
-    this.utils.divisionStep = 'start_point';
+    this.step = 'start_point';
     this.customStartPoints.clear();
-
     this.service.deselectAllEntities();
-    this.service.editingEntities = [];
-    this.service.deselectAllSegments();
-    this.utils.selectionRenderEngine?.renderBezierHandles?.();
-    this.utils.selectionRenderEngine?.updateEntitiesStroke?.();
-
+    this._clearEditStateAndSync();
     this.renderStartPointMarkers();
   }
 
   _resolveSelectedPointStyle() {
-    const zoom = paper?.view?.zoom || 1;
-    const nodeTheme = (typeof CAD_THEME !== 'undefined' && CAD_THEME?.node) ? CAD_THEME.node : {};
-    const nodeSelectionTheme = (typeof CAD_THEME !== 'undefined' && CAD_THEME?.selection?.node)
-      ? CAD_THEME.selection.node
-      : {};
-
-    const radiusPx = nodeSelectionTheme.selectedRadiusPx || nodeTheme.selectedRadiusPx || 4.0;
-    const strokeWidthPx = nodeSelectionTheme.selectedWidthPx || nodeTheme.selectedStrokeWidthPx || 2.0;
-    const fillColor = nodeSelectionTheme.fillColor
-      || nodeTheme.defaultFillColor
-      || CAD_THEME?.canvas?.backgroundColor
-      || '#10141D';
-    const strokeColor = nodeSelectionTheme.strokeColor || '#ffff00';
-
+    const zoom = this._getPaper().view?.zoom || 1;
+    const nodeTheme = CAD_THEME.node || {};
+    const selTheme = CAD_THEME.selection?.node || {};
     return {
-      radius: radiusPx / zoom,
-      fillColor,
-      strokeColor,
-      strokeWidth: strokeWidthPx / zoom
+      radius: (selTheme.selectedRadiusPx || nodeTheme.selectedRadiusPx || 4.0) / zoom,
+      fillColor: selTheme.fillColor || nodeTheme.defaultFillColor || CAD_THEME.canvas.backgroundColor,
+      strokeColor: selTheme.strokeColor || CAD_THEME.selection.strokeColor,
+      strokeWidth: (selTheme.selectedWidthPx || nodeTheme.selectedStrokeWidthPx || 2.0) / zoom
     };
   }
 
-  getSelectedTargets() {
-    return (this.service.selectedEntities || []).filter((ent) => this._isEntitySelectable(ent));
-  }
-
   syncTargetsCache() {
-    const targets = this.getSelectedTargets();
-    this.targetEntities = [...targets];
-    this.utils.divisionSelectedEntities = [...targets];
+    this.targetEntities = (this.service.selectedEntities || []).filter((ent) => this.isEntitySelectable(ent));
     return this.targetEntities;
   }
 
   toggleEntitySelection(entity) {
-    if (!this._isEntitySelectable(entity)) return false;
+    if (!this.isEntitySelectable(entity)) return false;
 
-    const isSelected = this.service.selectedEntities.includes(entity);
-    if (isSelected) {
+    const p = this._getPaper();
+    if (this.service.selectedEntities.includes(entity)) {
       this.service.deselectEntity(entity);
     } else {
       this.service.selectEntity(entity, true);
     }
 
-    this.service.editingEntities = [];
-    this.service.deselectAllSegments();
-    this.utils.selectionRenderEngine?.renderBezierHandles?.();
-    this.utils.selectionRenderEngine?.updateEntitiesStroke?.();
-    if (paper?.view) paper.view.update();
-
+    this._clearEditStateAndSync();
+    if (p.view) p.view.update();
     this.syncTargetsCache();
     return true;
   }
@@ -116,202 +190,82 @@ export class DivisionSelectionHandler {
   startBox(point) {
     this.isSelectingBox = true;
     this.boxStartPoint = point.clone();
+    this.boxSelector.startBox(point);
   }
 
   updateBox(currPt) {
     if (!this.isSelectingBox || !this.boxStartPoint) return;
 
-    if (this.selectionBoxPath) {
-      this.selectionBoxPath.remove();
-      this.selectionBoxPath = null;
-    }
-
-    const isWindowSelection = currPt.x >= this.boxStartPoint.x;
-
-    this.selectionBoxPath = new paper.Path.Rectangle({
-      from: this.boxStartPoint,
-      to: currPt,
-      strokeColor: '#008800',
-      fillColor: new paper.Color(0, 0.53, 0, 0.15),
-      strokeWidth: 1 / paper.view.zoom,
-      dashArray: isWindowSelection ? null : [2 / paper.view.zoom, 2 / paper.view.zoom],
-      insert: false
-    });
-    this.selectionBoxPath.guide = true;
-
-    const hudLayer = this._getHudLayer();
-    if (hudLayer) {
-      hudLayer.addChild(this.selectionBoxPath);
-    } else if (paper.project?.activeLayer) {
-      paper.project.activeLayer.addChild(this.selectionBoxPath);
-    }
-
-    if (paper?.view) paper.view.update();
+    const p = this._getPaper();
+    this.boxSelector.updateBox(currPt);
+    if (p.view) p.view.update();
   }
 
   finishBox(endPt) {
     if (!this.isSelectingBox) return false;
 
+    const p = this._getPaper();
+    const zoom = p.view?.zoom || 1;
     let selectedAny = false;
 
-    if (this.selectionBoxPath && this.boxStartPoint) {
-      const dragDistance = this.boxStartPoint.getDistance(endPt);
-
-      if (dragDistance >= 3 / paper.view.zoom) {
-        const boxBounds = this.selectionBoxPath.bounds;
+    if (this.boxSelector.selectionBoxRect && this.boxStartPoint) {
+      if (this.boxStartPoint.getDistance(endPt) >= 3 / zoom) {
+        const boxBounds = this.boxSelector.selectionBoxRect.bounds;
         const isWindowSelection = endPt.x >= this.boxStartPoint.x;
-
-        const candidates = (this.service.entities || []).filter(
-          (ent) => this._isEntitySelectable(ent) && ent.bounds
+        const matched = this.boxSelector.getEntitiesInBox(
+          boxBounds,
+          isWindowSelection,
+          (ent) => this.isEntitySelectable(ent)
         );
 
-        candidates.forEach((entity) => {
-          const shouldSelect = this._matchesSelectionBox(entity, boxBounds, isWindowSelection);
-          if (shouldSelect && !this.service.selectedEntities.includes(entity)) {
+        matched.forEach((entity) => {
+          if (!this.service.selectedEntities.includes(entity)) {
             this.service.selectEntity(entity, true);
             selectedAny = true;
           }
         });
-
-        this.service.editingEntities = [];
-        this.service.deselectAllSegments();
-        this.utils.selectionRenderEngine?.renderBezierHandles?.();
-        this.utils.selectionRenderEngine?.updateEntitiesStroke?.();
+        this._clearEditStateAndSync();
       }
-
-      this.selectionBoxPath.remove();
-      this.selectionBoxPath = null;
     }
 
+    this.boxSelector.clean();
     this.isSelectingBox = false;
     this.boxStartPoint = null;
     this.syncTargetsCache();
 
-    if (paper?.view) paper.view.update();
+    if (p.view) p.view.update();
     return selectedAny;
-  }
-
-  _matchesSelectionBox(entity, boxBounds, isWindowSelection) {
-    if (entity instanceof paper.Path) {
-      return this._isPathSelectedByBox(entity, boxBounds, isWindowSelection);
-    }
-    if (entity instanceof paper.CompoundPath && entity.children) {
-      return entity.children.some((child) => this._isPathSelectedByBox(child, boxBounds, isWindowSelection));
-    }
-    return isWindowSelection
-      ? boxBounds.contains(entity.bounds)
-      : (boxBounds.contains(entity.bounds) || boxBounds.intersects(entity.bounds));
-  }
-
-  _isPathSelectedByBox(path, boxBounds, isWindowSelection) {
-    if (!path || !path.bounds) return false;
-    if (!boxBounds.intersects(path.bounds) && !boxBounds.contains(path.bounds)) return false;
-    if (isWindowSelection) return boxBounds.contains(path.bounds);
-    if (boxBounds.contains(path.bounds)) return true;
-
-    const segments = path.segments || [];
-    for (let i = 0; i < segments.length; i++) {
-      if (boxBounds.contains(segments[i].point)) return true;
-    }
-
-    const curves = path.curves || [];
-    for (let i = 0; i < curves.length; i++) {
-      const c = curves[i];
-      if (!boxBounds.intersects(c.bounds)) continue;
-
-      const p0 = c.segment1.point;
-      const p1 = c.segment2.point;
-      const h1 = c.segment1.handleOut;
-      const h2 = c.segment2.handleIn;
-
-      if (h1.isZero() && h2.isZero()) {
-        if (this._lineIntersectsBox(p0, p1, boxBounds)) return true;
-      } else {
-        const c1 = p0.add(h1);
-        const c2 = p1.add(h2);
-        let prevPt = p0;
-        const steps = 4;
-
-        for (let k = 1; k <= steps; k++) {
-          const t = k / steps;
-          const mt = 1 - t;
-          const currPt = (k === steps)
-            ? p1
-            : p0.multiply(mt * mt * mt)
-                .add(c1.multiply(3 * mt * mt * t))
-                .add(c2.multiply(3 * mt * t * t))
-                .add(p1.multiply(t * t * t));
-
-          if (boxBounds.contains(currPt) || this._lineIntersectsBox(prevPt, currPt, boxBounds)) {
-            return true;
-          }
-          prevPt = currPt;
-        }
-      }
-    }
-
-    return false;
-  }
-
-  _lineIntersectsBox(p1, p2, rect) {
-    const minX = Math.min(p1.x, p2.x);
-    const maxX = Math.max(p1.x, p2.x);
-    const minY = Math.min(p1.y, p2.y);
-    const maxY = Math.max(p1.y, p2.y);
-
-    if (maxX < rect.left || minX > rect.right || maxY < rect.top || minY > rect.bottom) return false;
-    if (rect.contains(p1) || rect.contains(p2)) return true;
-
-    const ccw = (a, b, c) => (c.y - a.y) * (b.x - a.x) > (b.y - a.y) * (c.x - a.x);
-    const intersectLines = (a, b, c, d) => (ccw(a, c, d) !== ccw(b, c, d)) && (ccw(a, b, c) !== ccw(a, b, d));
-
-    return intersectLines(p1, p2, rect.topLeft, rect.topRight) ||
-           intersectLines(p1, p2, rect.topRight, rect.bottomRight) ||
-           intersectLines(p1, p2, rect.bottomRight, rect.bottomLeft) ||
-           intersectLines(p1, p2, rect.bottomLeft, rect.topLeft);
   }
 
   renderStartPointMarkers() {
     this.clearStartPointMarkers();
+    const p = this._getPaper();
+    const hudLayer = this._getHudLayer();
+    if (!hudLayer) return;
 
-    const targets = this.getTargets();
     const style = this._resolveSelectedPointStyle();
+    this.startPointMarkersGroup = new p.Group({ insert: false, guide: true, data: { isAuxiliary: true } });
 
-    this.startPointMarkersGroup = new paper.Group({ insert: false });
-    this.startPointMarkersGroup.guide = true;
+    this.getTargets().forEach((entity) => {
+      const pt = this.customStartPoints.get(entity)
+        || entity.getPointAt?.(0)
+        || entity.children?.[0]?.getPointAt?.(0);
+      if (!pt) return;
 
-    targets.forEach((entity) => {
-      let pt = this.customStartPoints.get(entity);
-      if (!pt) {
-        if (typeof entity.getPointAt === 'function') {
-          pt = entity.getPointAt(0);
-        } else if (entity.children?.[0]?.getPointAt) {
-          pt = entity.children[0].getPointAt(0);
-        }
-      }
-
-      if (pt) {
-        const marker = new paper.Path.Circle({
-          center: pt,
-          radius: style.radius,
-          fillColor: style.fillColor,
-          strokeColor: style.strokeColor,
-          strokeWidth: style.strokeWidth,
-          insert: false
-        });
-        marker.guide = true;
-        this.startPointMarkersGroup.addChild(marker);
-      }
+      this.startPointMarkersGroup.addChild(new p.Path.Circle({
+        center: pt,
+        radius: style.radius,
+        fillColor: style.fillColor,
+        strokeColor: style.strokeColor,
+        strokeWidth: style.strokeWidth,
+        insert: false,
+        guide: true,
+        data: { isAuxiliary: true }
+      }));
     });
 
-    const hudLayer = this._getHudLayer();
-    if (hudLayer) {
-      hudLayer.addChild(this.startPointMarkersGroup);
-    } else if (paper.project?.activeLayer) {
-      paper.project.activeLayer.addChild(this.startPointMarkersGroup);
-    }
-
-    if (paper?.view) paper.view.update();
+    hudLayer.addChild(this.startPointMarkersGroup);
+    if (p.view) p.view.update();
   }
 
   clearStartPointMarkers() {
@@ -321,16 +275,78 @@ export class DivisionSelectionHandler {
     }
   }
 
-  reset() {
-    if (this.selectionBoxPath) {
-      this.selectionBoxPath.remove();
-      this.selectionBoxPath = null;
+  resolveStartPointSnap(mousePoint, renderMarkerFn = null) {
+    const targets = this.getTargets();
+    if (targets.length === 0) {
+      renderMarkerFn?.(null, null);
+      return { point: mousePoint, type: null, entity: null };
     }
+
+    return this.service.calculateOsnap(mousePoint, renderMarkerFn, null, {
+      restrictToEntities: targets,
+      filterOverrides: { nearest: true },
+      forceMasterEnabled: true
+    });
+  }
+
+  _findSnappedTarget(snapResult, mousePoint, targets) {
+    if (!snapResult?.type) return null;
+
+    if (snapResult.entity) {
+      const direct = targets.find((t) => t === snapResult.entity || t.children?.includes(snapResult.entity));
+      if (direct) return direct;
+    }
+
+    const EPS = 0.05;
+    let bestTarget = null;
+    let bestSnapDist = Infinity;
+    let bestCursorDist = Infinity;
+
+    targets.forEach((ent) => {
+      const curvePt = ent.getNearestPoint?.(snapResult.point) || ent.children?.[0]?.getNearestPoint?.(snapResult.point);
+      const snapDist = curvePt
+        ? curvePt.getDistance(snapResult.point)
+        : (ent.position ? ent.position.getDistance(snapResult.point) : Infinity);
+
+      if (snapDist > EPS) return;
+
+      const cursorPt = ent.getNearestPoint?.(mousePoint) || curvePt;
+      const cursorDist = cursorPt ? cursorPt.getDistance(mousePoint) : Infinity;
+
+      if (snapDist < bestSnapDist - 1e-4 || (Math.abs(snapDist - bestSnapDist) <= 1e-4 && cursorDist < bestCursorDist)) {
+        bestSnapDist = snapDist;
+        bestCursorDist = cursorDist;
+        bestTarget = ent;
+      }
+    });
+
+    return bestTarget;
+  }
+
+  selectStartPointAt(mousePoint) {
+    const targets = this.getTargets();
+    const snap = this.resolveStartPointSnap(mousePoint);
+    const targetItem = this._findSnappedTarget(snap, mousePoint, targets);
+    if (!targetItem) return false;
+
+    const startPt = targetItem.getNearestPoint?.(snap.point)
+      || targetItem.children?.[0]?.getNearestPoint?.(snap.point)
+      || snap.point;
+
+    this.customStartPoints.set(targetItem, startPt);
+    this.renderStartPointMarkers();
+    return true;
+  }
+
+  reset() {
+    this.boxSelector.clean();
     this.clearStartPointMarkers();
     this.customStartPoints.clear();
     this.targetEntities = [];
+    this.step = 'select';
+    this.divisionCount = null;
+    this.divisionDistance = null;
     this.isSelectingBox = false;
     this.boxStartPoint = null;
-    this.utils.divisionSelectedEntities = [];
   }
 }
