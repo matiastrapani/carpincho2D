@@ -143,22 +143,12 @@ export class SegmentEditHandler {
     return true;
   }
 
-  onMouseDown(event, targetItem, hitEntity) {
-    const paperInst = this._getPaper();
-    const isAlreadyInEditMode = this.service.editingEntities.includes(targetItem);
-    const isEntityFullySelected = this.service.selectedEntities.includes(targetItem);
+  selectCurveAndPrepareDrag(curve, point, isShift, enableDrag = true, nativeEvent = null) {
+    if (!curve) return false;
 
-    if (!isAlreadyInEditMode || isEntityFullySelected || !paperInst || !(targetItem instanceof paperInst.Path) || targetItem.data?.isPointEntity) {
-      return false;
-    }
-
-    const location = hitEntity.location || targetItem.getNearestLocation(event.point);
-    if (!location || !location.curve) return false;
-
-    const seg1 = location.curve.segment1;
-    const seg2 = location.curve.segment2;
+    const seg1 = curve.segment1;
+    const seg2 = curve.segment2;
     const pairSegments = [seg1, seg2].filter(Boolean);
-    const isShift = event.event.shiftKey;
 
     const isSegmentFullySelected = seg1 && seg2 &&
       this.service.selectedSegments.includes(seg1) &&
@@ -169,7 +159,9 @@ export class SegmentEditHandler {
         if (isSegmentFullySelected) this.service.deselectSegment(seg);
         else this.service.selectSegment(seg, true);
       });
-      this.utils.selectionRenderEngine.renderBezierHandles();
+      this.utils.selectionRenderEngine?.renderBezierHandles?.();
+      const paperInst = this._getPaper();
+      if (paperInst?.view) paperInst.view.update();
       return true;
     }
 
@@ -180,27 +172,54 @@ export class SegmentEditHandler {
       pairSegments.forEach((seg) => this.service.selectSegment(seg, true));
     }
 
-    let activePivotSeg = seg1;
-    let minDist = seg1 ? seg1.point.getDistance(event.point) : Infinity;
-    const poolSegments = this.service.selectedSegments.length > 0
-      ? this.service.selectedSegments
-      : pairSegments;
+    if (enableDrag) {
+      let activePivotSeg = seg1;
+      let minDist = seg1 ? seg1.point.getDistance(point) : Infinity;
+      const poolSegments = this.service.selectedSegments.length > 0
+        ? this.service.selectedSegments
+        : pairSegments;
 
-    poolSegments.forEach((s) => {
-      const d = s.point.getDistance(event.point);
-      if (d < minDist) {
-        minDist = d;
-        activePivotSeg = s;
-      }
-    });
+      poolSegments.forEach((s) => {
+        const d = s.point.getDistance(point);
+        if (d < minDist) {
+          minDist = d;
+          activePivotSeg = s;
+        }
+      });
 
-    this.dragAnchorSegment = activePivotSeg;
-    this.pivotPoint = activePivotSeg ? activePivotSeg.point.clone() : event.point.clone();
+      this.dragAnchorSegment = activePivotSeg;
+      this.pivotPoint = activePivotSeg ? activePivotSeg.point.clone() : point.clone();
+      this.session.begin(point, nativeEvent);
+    } else {
+      this.reset();
+    }
 
-    this.session.begin(event.point, event.event);
-    this.utils.selectionRenderEngine.updateEntitiesStroke();
-    this.utils.selectionRenderEngine.renderBezierHandles();
+    this.utils.selectionRenderEngine?.updateEntitiesStroke?.();
+    this.utils.selectionRenderEngine?.renderBezierHandles?.();
+    const paperInst = this._getPaper();
+    if (paperInst?.view) paperInst.view.update();
     return true;
+  }
+
+  onMouseDown(event, targetItem, hitEntity) {
+    const paperInst = this._getPaper();
+    const isAlreadyInEditMode = this.service.editingEntities.includes(targetItem);
+    const isEntityFullySelected = this.service.selectedEntities.includes(targetItem);
+
+    if (!isAlreadyInEditMode || isEntityFullySelected || !paperInst || !(targetItem instanceof paperInst.Path) || targetItem.data?.isPointEntity) {
+      return false;
+    }
+
+    const location = hitEntity?.location || targetItem.getNearestLocation(event.point);
+    if (!location || !location.curve) return false;
+
+    return this.selectCurveAndPrepareDrag(
+      location.curve,
+      event.point,
+      Boolean(event.event?.shiftKey),
+      true,
+      event.event
+    );
   }
 
   onMouseDrag(event) {

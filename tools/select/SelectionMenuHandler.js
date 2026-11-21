@@ -2,6 +2,8 @@
  * SelectionMenuHandler.js - Detección con prioridad por capas y menú flotante tipo Rhino 3D.
  */
 
+import { SelectionMenuPopover } from './SelectionMenuPopover.js';
+
 export class SelectionMenuHandler {
   constructor(cadService, cadUtils) {
     if (!cadService || !cadUtils) {
@@ -10,16 +12,23 @@ export class SelectionMenuHandler {
 
     this.service = cadService;
     this.utils = cadUtils;
-    this.menuEl = null;
+    this.popover = new SelectionMenuPopover();
     this.activeHits = [];
     this.onSelectCallback = null;
-    this.wasDismissedRecently = false;
+    this._openTimer = null;
+    this._pendingMenu = null;
+  }
 
-    this._onDocPointerDown = this._handleDocPointerDown.bind(this);
+  get wasDismissedRecently() {
+    return this.popover.wasDismissedRecently;
+  }
+
+  set wasDismissedRecently(val) {
+    this.popover.wasDismissedRecently = Boolean(val);
   }
 
   isOpen() {
-    return Boolean(this.menuEl && this.menuEl.isConnected);
+    return this.popover.isOpen();
   }
 
   getRootEntity(item) {
@@ -49,12 +58,6 @@ export class SelectionMenuHandler {
     return rankMap;
   }
 
-  /**
-   * Devuelve todos los impactos válidos bajo el punto ordenados por:
-   * 1. Jerarquía visual de capas (arriba hacia abajo en LayerManager).
-   * 2. Prioridad de entidades tipo Punto sobre trazos en la misma capa.
-   * 3. Orden Z inverso dentro de la misma capa (el objeto dibujado encima primero).
-   */
   getSortedHits(point, tolerance) {
     const paperInst = this._getPaper();
     if (!paperInst?.project) return [];
@@ -108,22 +111,16 @@ export class SelectionMenuHandler {
       const rankA = layerRanks.has(layerA) ? layerRanks.get(layerA) : Number.MAX_SAFE_INTEGER;
       const rankB = layerRanks.has(layerB) ? layerRanks.get(layerB) : Number.MAX_SAFE_INTEGER;
 
-      if (rankA !== rankB) {
-        return rankA - rankB;
-      }
+      if (rankA !== rankB) return rankA - rankB;
 
       const isPointA = Boolean(a.entity.data?.isPointEntity);
       const isPointB = Boolean(b.entity.data?.isPointEntity);
-      if (isPointA !== isPointB) {
-        return isPointA ? -1 : 1;
-      }
+      if (isPointA !== isPointB) return isPointA ? -1 : 1;
 
       if (a.entity.parent && a.entity.parent === b.entity.parent) {
         const idxA = typeof a.entity.index === 'number' ? a.entity.index : -1;
         const idxB = typeof b.entity.index === 'number' ? b.entity.index : -1;
-        if (idxA !== idxB) {
-          return idxB - idxA;
-        }
+        if (idxA !== idxB) return idxB - idxA;
       }
 
       return 0;
@@ -156,114 +153,92 @@ export class SelectionMenuHandler {
       || entity.strokeColor?.toCSS?.(true)
       || '#e4e4e7';
 
-    return { name, layerName, color };
+    return { name, sublabel: layerName, color };
   }
 
-  open(nativeEvent, hits, onSelect) {
+  open(nativeEvent, hits, onSelect, options = {}) {
     this.close();
     if (!hits || hits.length === 0) return;
 
     this.activeHits = hits;
     this.onSelectCallback = onSelect;
-    this.wasDismissedRecently = false;
 
-    const menu = document.createElement('div');
-    menu.className = 'bg-[#17171c] border border-[#27272a] rounded shadow-2xl py-1 min-w-[190px] max-w-[280px] select-none text-zinc-200';
-    menu.style.position = 'fixed';
-    menu.style.zIndex = '99999';
-    menu.style.fontFamily = "'Inter', sans-serif";
-
-    ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach((evtName) => {
-      menu.addEventListener(evtName, (e) => e.stopPropagation());
+    const items = hits.map((hit) => {
+      if (hit.label) {
+        return {
+          raw: hit,
+          name: hit.label,
+          sublabel: hit.sublabel || '',
+          color: hit.color || '#e4e4e7',
+          isSelected: Boolean(hit.isSelected)
+        };
+      }
+      if (hit.entity) {
+        const isSelected = Boolean(
+          hit.isSelected ?? this.service.selectedEntities?.includes(hit.entity)
+        );
+        return { raw: hit, ...this._getEntityDisplayMeta(hit.entity), isSelected };
+      }
+      return { raw: hit, name: 'Elemento', sublabel: '', color: '#e4e4e7', isSelected: false };
     });
 
-    const header = document.createElement('div');
-    header.className = 'px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500 border-b border-[#27272a]';
-    header.textContent = 'Seleccionar objeto';
-    menu.appendChild(header);
-
-    hits.forEach((hit) => {
-      const { entity } = hit;
-      const { name, layerName, color } = this._getEntityDisplayMeta(entity);
-
-      const row = document.createElement('button');
-      row.type = 'button';
-      row.className = 'w-full flex items-center justify-between gap-2 px-2.5 py-1.5 text-left text-[11px] text-zinc-200 hover:bg-[#27272a] focus:bg-[#27272a] outline-none cursor-pointer transition-colors';
-      row.style.fontFamily = "'Inter', sans-serif";
-
-      row.innerHTML = `
-        <span class="flex items-center gap-2 min-w-0">
-          <span class="w-2.5 h-2.5 rounded-sm shrink-0" style="background-color: ${color}"></span>
-          <span class="truncate font-medium">${name}</span>
-        </span>
-        <span class="text-[10px] text-zinc-500 truncate shrink-0">${layerName}</span>
-      `;
-
-      let isRowHovered = false;
-
-      row.addEventListener('mouseenter', () => {
-        isRowHovered = true;
-        this._previewEntity(entity);
-      });
-
-      row.addEventListener('mouseleave', () => {
-        isRowHovered = false;
-      });
-
-      row.addEventListener('mouseup', (e) => {
-        e.stopPropagation();
-        if (isRowHovered) {
-          this._selectHit(hit);
-        }
-      });
-
-      row.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this._selectHit(hit);
-      });
-
-      menu.appendChild(row);
+    this.popover.open(nativeEvent, items, {
+      title: options.title || 'Seleccionar objeto',
+      onHover: (rawHit) => this._previewHit(rawHit),
+      onSelect: (rawHit) => this._selectHit(rawHit),
+      onDismiss: () => this._clearPreviews()
     });
-
-    document.body.appendChild(menu);
-    this.menuEl = menu;
-
-    const clientX = nativeEvent?.clientX ?? 0;
-    const clientY = nativeEvent?.clientY ?? 0;
-    const rect = menu.getBoundingClientRect();
-    const margin = 8;
-
-    const left = Math.min(clientX + 10, Math.max(margin, window.innerWidth - rect.width - margin));
-    const top = Math.min(clientY + 10, Math.max(margin, window.innerHeight - rect.height - margin));
-
-    menu.style.left = `${left}px`;
-    menu.style.top = `${top}px`;
-
-    this._previewEntity(hits[0].entity);
-
-    document.addEventListener('pointerdown', this._onDocPointerDown, true);
   }
 
-  _previewEntity(entity) {
-    if (!entity) return;
-    if (this.service.hoveredEntity !== entity) {
-      this.utils.clearHoverHighlight();
-      this.service.hoveredEntity = entity;
-      this.utils.selectionRenderEngine.updateEntitiesStroke();
+  _previewHit(hit) {
+    if (!hit) return;
+
+    if (typeof hit.onPreview === 'function') {
+      if (this.service.hoveredEntity) {
+        this.utils.clearHoverHighlight();
+        this.utils.selectionRenderEngine?.updateEntitiesStroke?.();
+      }
+      hit.onPreview();
       const paperInst = this._getPaper();
-      if (paperInst?.view) {
-        paperInst.view.update();
+      if (paperInst?.view) paperInst.view.update();
+      return;
+    }
+
+    if (hit.entity) {
+      if (this.utils.hoveredHandle || this.utils.hoveredCurve) {
+        this.utils.hoveredHandle = null;
+        this.utils.hoveredCurve = null;
+        this.utils.selectionRenderEngine?.renderBezierHandles?.();
+      }
+      if (this.service.hoveredEntity !== hit.entity) {
+        this.utils.clearHoverHighlight();
+        this.service.hoveredEntity = hit.entity;
+        this.utils.selectionRenderEngine?.updateEntitiesStroke?.();
+        const paperInst = this._getPaper();
+        if (paperInst?.view) paperInst.view.update();
       }
     }
   }
 
-  _handleDocPointerDown(e) {
-    if (this.menuEl && !this.menuEl.contains(e.target)) {
-      this.close();
-      this.wasDismissedRecently = true;
-      setTimeout(() => {
-        this.wasDismissedRecently = false;
-      }, 0);
+  _clearPreviews() {
+    let needsViewUpdate = false;
+
+    if (this.service.hoveredEntity) {
+      this.utils.clearHoverHighlight();
+      this.utils.selectionRenderEngine?.updateEntitiesStroke?.();
+      needsViewUpdate = true;
+    }
+
+    if (this.utils.hoveredHandle || this.utils.hoveredCurve) {
+      this.utils.hoveredHandle = null;
+      this.utils.hoveredCurve = null;
+      this.utils.selectionRenderEngine?.renderBezierHandles?.();
+      needsViewUpdate = true;
+    }
+
+    if (needsViewUpdate) {
+      const paperInst = this._getPaper();
+      if (paperInst?.view) paperInst.view.update();
     }
   }
 
@@ -298,6 +273,20 @@ export class SelectionMenuHandler {
     callback(hit);
   }
 
+  setPendingMenu(menuData, onSelect) {
+    this._pendingMenu = menuData ? { menuData, onSelect } : null;
+  }
+
+  clearPendingMenu() {
+    this._pendingMenu = null;
+  }
+
+  consumePendingMenu(hadConfirmedDrag) {
+    const pending = !hadConfirmedDrag ? this._pendingMenu : null;
+    this._pendingMenu = null;
+    return pending;
+  }
+
   hasScheduledOpen() {
     return Boolean(this._openTimer);
   }
@@ -317,35 +306,22 @@ export class SelectionMenuHandler {
       this._openTimer = null;
       if (typeof shouldAbort === 'function' && shouldAbort()) return;
 
-      const { event: menuEvent, hits, point, shift } = menuData;
+      const { event: menuEvent, hits, point, shift, options } = menuData;
       this.open(menuEvent, hits, (chosenHit) => {
         if (typeof onSelect === 'function') {
           onSelect(chosenHit, point, shift);
         }
-      });
+      }, options);
     }, delayMs);
   }
 
   close() {
     this.cancelScheduledOpen();
-    document.removeEventListener('pointerdown', this._onDocPointerDown, true);
-
-    if (this.menuEl) {
-      this.menuEl.remove();
-      this.menuEl = null;
-    }
-
+    this.clearPendingMenu();
+    this.popover.close();
     this.activeHits = [];
     this.onSelectCallback = null;
-
-    if (this.service.hoveredEntity) {
-      this.utils.clearHoverHighlight();
-      this.utils.selectionRenderEngine.updateEntitiesStroke();
-      const paperInst = this._getPaper();
-      if (paperInst?.view) {
-        paperInst.view.update();
-      }
-    }
+    this._clearPreviews();
   }
 
   cleanup() {

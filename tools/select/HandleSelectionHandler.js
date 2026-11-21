@@ -123,32 +123,45 @@ export class HandleSelectionHandler {
     });
   }
 
-  onMouseDown(event, hitResult) {
-    const handleData = hitResult.item.data;
-    const seg = handleData.segment;
-    if (!seg || !seg.path) return;
+  selectAndPrepareDrag(handleData, point, isShift, enableDrag = true, nativeEvent = null) {
+    const seg = handleData?.segment;
+    if (!seg || !seg.path) return false;
 
-    const isShift = event.event.shiftKey;
     const rawType = handleData.type;
-
     this._updateSelectionOnMouseDown(seg, rawType, handleData.handleType, isShift);
 
-    if (rawType === 'arm' || rawType === 'anchor') {
-      this.handleDragStartPt = seg.point.clone();
-      this.grabOffset = this.handleDragStartPt.subtract(event.point);
-      this.activeHandleData = { segment: seg, type: 'anchor' };
+    if (enableDrag) {
+      if (rawType === 'arm' || rawType === 'anchor') {
+        this.handleDragStartPt = seg.point.clone();
+        this.grabOffset = this.handleDragStartPt.subtract(point);
+        this.activeHandleData = { segment: seg, type: 'anchor' };
+      } else {
+        const handlePos = (rawType === 'handleIn')
+          ? seg.point.add(seg.handleIn)
+          : seg.point.add(seg.handleOut);
+        this.handleDragStartPt = handlePos.clone();
+        this.grabOffset = handlePos.subtract(point);
+        this.activeHandleData = { segment: seg, type: rawType };
+      }
+
+      this.session.begin(point, nativeEvent);
     } else {
-      const handlePos = (rawType === 'handleIn')
-        ? seg.point.add(seg.handleIn)
-        : seg.point.add(seg.handleOut);
-      this.handleDragStartPt = handlePos.clone();
-      this.grabOffset = handlePos.subtract(event.point);
-      this.activeHandleData = { segment: seg, type: rawType };
+      this.reset();
     }
 
-    this.session.begin(event.point, event.event);
-    this.utils.selectionRenderEngine.updateEntitiesStroke();
-    this.utils.selectionRenderEngine.renderBezierHandles();
+    this.utils.selectionRenderEngine?.updateEntitiesStroke?.();
+    this.utils.selectionRenderEngine?.renderBezierHandles?.();
+    const paperInst = this._getPaper();
+    if (paperInst?.view) paperInst.view.update();
+    return true;
+  }
+
+  onMouseDown(event, hitResult) {
+    const handleData = hitResult?.item?.data;
+    if (!handleData) return;
+
+    const isShift = Boolean(event.event?.shiftKey);
+    this.selectAndPrepareDrag(handleData, event.point, isShift, true, event.event);
   }
 
   onMouseDrag(event) {

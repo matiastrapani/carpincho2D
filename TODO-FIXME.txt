@@ -58,8 +58,7 @@ Migrar DivisionSelectionHandler.js a BoxSelectHandler y _getPaper(): Reemplazar 
   [x] Cuadrante para maximos y minimos para curvas Bezier
   [x] Seleccion y bezier con zoom falla y zoom extents solo usa nodos y no min y max de curvas.
 
-teclas rapidas en tooltip desde CADTHEME cuando corresponda
-agregar teclas rapidas a cadtheme cmd+z cmd+a cmd+y backspace, shift, alt, etc
+
 Resolver la visualizacion de osnap interseccion
 seleccion sobre elementos superpuestos en modo edicion con dropdown como tenemos en modo entidad
 

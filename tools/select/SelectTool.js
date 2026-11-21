@@ -9,6 +9,8 @@ import { ParametricGripHandler } from './ParametricGripHandler.js';
 import { SegmentEditHandler } from './SegmentEditHandler.js';
 import { SelectionMenuHandler } from './SelectionMenuHandler.js';
 import { SelectionDragHandler } from './SelectionDragHandler.js';
+import { EditModeMenuResolver } from './EditModeMenuResolver.js';
+import { SelectKeyHandler } from './SelectKeyHandler.js';
 
 export class SelectTool extends BaseTool {
   constructor(cadService, cadUtils) {
@@ -20,6 +22,14 @@ export class SelectTool extends BaseTool {
     this.segmentEditHandler = new SegmentEditHandler(cadService, cadUtils);
     this.selectionMenuHandler = new SelectionMenuHandler(cadService, cadUtils);
     this.dragHandler = new SelectionDragHandler(cadService, cadUtils);
+    this.editMenuResolver = new EditModeMenuResolver(
+      cadService,
+      cadUtils,
+      this.handleModule,
+      this.segmentEditHandler,
+      this.selectionMenuHandler
+    );
+    this.keyHandler = new SelectKeyHandler(this);
     this.activeModule = null;
 
     this.preservesSelection = 'all';
@@ -55,12 +65,70 @@ export class SelectTool extends BaseTool {
     this._refreshView();
   }
 
+  _scheduleDelayedMenu(menuData, onChoice) {
+    if (!menuData) return;
+    this.selectionMenuHandler.scheduleOpen(
+      260,
+      menuData,
+      onChoice,
+      () => (
+        this.dragHandler.isDragging() ||
+        this.segmentEditHandler.isDragging() ||
+        Boolean(this.boxSelectHandler.selectionStartPoint)
+      )
+    );
+  }
+
+  _handleOverlappingEntities(hits, event, isShift) {
+    if (isShift) {
+      const unselectedHits = hits.filter((h) => !this.service.selectedEntities.includes(h.entity));
+
+      if (unselectedHits.length >= 2) {
+        const clickPoint = event.point.clone();
+        this.selectionMenuHandler.open(event.event, unselectedHits, (chosenHit) => {
+          this._applyEntitySelection(chosenHit.entity, clickPoint, true, false);
+        });
+        return;
+      }
+
+      if (unselectedHits.length === 1) {
+        this._applyEntitySelection(unselectedHits[0].entity, event.point, true, true, event.event);
+        return;
+      }
+
+      this._applyEntitySelection(hits[0].entity, event.point, true, false);
+      return;
+    }
+
+    const alreadySelectedHit = hits.find((h) => this.service.selectedEntities.includes(h.entity));
+
+    if (alreadySelectedHit) {
+      this._applyEntitySelection(alreadySelectedHit.entity, event.point, false, true, event.event);
+      this.selectionMenuHandler.setPendingMenu(
+        {
+          hits,
+          event: event.event,
+          point: event.point.clone(),
+          shift: false
+        },
+        (chosenHit, pt, shift) => this._applyEntitySelection(chosenHit.entity, pt, shift, false)
+      );
+      return;
+    }
+
+    const clickPoint = event.point.clone();
+    this.selectionMenuHandler.open(event.event, hits, (chosenHit) => {
+      this._applyEntitySelection(chosenHit.entity, clickPoint, false, false);
+    });
+  }
+
   onMouseDown(event) {
     if (event.event && (event.event.button === 2 || event.event.which === 3)) {
       return;
     }
 
     this.selectionMenuHandler.cancelScheduledOpen();
+    this.selectionMenuHandler.clearPendingMenu();
 
     const now = Date.now();
     const isShift = Boolean(event.event?.shiftKey);
@@ -88,14 +156,10 @@ export class SelectTool extends BaseTool {
       return;
     }
 
-    const hitHandle = this.handleModule.hitTest(event.point);
-    if (hitHandle) {
-      const segPath = hitHandle.item?.data?.segment?.path || hitHandle.segment?.path;
-      if (!(segPath && this.service.selectedEntities.includes(segPath))) {
-        this.activeModule = this.handleModule;
-        this.activeModule.onMouseDown(event, hitHandle);
-        return;
-      }
+    const editOutcome = this.editMenuResolver.handleMouseDown(event, isShift, zoom);
+    if (editOutcome?.handled) {
+      this.activeModule = editOutcome.activeModule || null;
+      return;
     }
 
     const hits = this.selectionMenuHandler.getSortedHits(event.point, 8 / zoom);
@@ -108,30 +172,12 @@ export class SelectTool extends BaseTool {
       const targetItem = activeHit.entity;
 
       if (this.segmentEditHandler.tryEnterEditModeOnDoubleClick(targetItem, isShift, now)) {
-        this.dragHandler.clearPendingMenu();
-        return;
-      }
-
-      if (this.segmentEditHandler.onMouseDown(event, targetItem, activeHit.hitResult)) {
+        this.selectionMenuHandler.clearPendingMenu();
         return;
       }
 
       if (hits.length > 1) {
-        if (alreadySelectedHit) {
-          this._applyEntitySelection(alreadySelectedHit.entity, event.point, false, true, event.event);
-          this.dragHandler.setPendingMenu({
-            hits,
-            event: event.event,
-            point: event.point.clone(),
-            shift: isShift
-          });
-          return;
-        }
-
-        const clickPoint = event.point.clone();
-        this.selectionMenuHandler.open(event.event, hits, (chosenHit) => {
-          this._applyEntitySelection(chosenHit.entity, clickPoint, isShift, false);
-        });
+        this._handleOverlappingEntities(hits, event, isShift);
         return;
       }
 
@@ -151,15 +197,24 @@ export class SelectTool extends BaseTool {
 
     if (this.activeModule) {
       this.activeModule.onMouseDrag(event);
+      if (this.activeModule.session?.isConfirmed) {
+        this.selectionMenuHandler.clearPendingMenu();
+      }
       return;
     }
 
     const isBoxSelecting = Boolean(this.boxSelectHandler.selectionStartPoint);
     if (!isBoxSelecting && this.segmentEditHandler.onMouseDrag(event)) {
+      if (this.segmentEditHandler.isDragging()) {
+        this.selectionMenuHandler.clearPendingMenu();
+      }
       return;
     }
 
     if (!isBoxSelecting && this.dragHandler.onMouseDrag(event)) {
+      if (this.dragHandler.isDragging()) {
+        this.selectionMenuHandler.clearPendingMenu();
+      }
       return;
     }
 
@@ -172,26 +227,35 @@ export class SelectTool extends BaseTool {
   onMouseUp(event) {
     if (this.selectionMenuHandler.isOpen()) return;
 
+    const hadConfirmedDrag =
+      Boolean(this.activeModule?.session?.isConfirmed) ||
+      this.segmentEditHandler.isDragging() ||
+      this.dragHandler.isDragging();
+
+    const pendingMenu = this.selectionMenuHandler.consumePendingMenu(hadConfirmedDrag);
+
     if (this.activeModule) {
       this.activeModule.onMouseUp(event);
       this.activeModule = null;
+      if (pendingMenu) {
+        this._scheduleDelayedMenu(pendingMenu.menuData, pendingMenu.onSelect);
+      }
       return;
     }
 
     if (this.segmentEditHandler.onMouseUp()) {
       this.cleanBox();
+      if (pendingMenu) {
+        this._scheduleDelayedMenu(pendingMenu.menuData, pendingMenu.onSelect);
+      }
       return;
     }
 
-    const dragResult = this.dragHandler.onMouseUp();
-    if (dragResult.pendingMenu) {
+    this.dragHandler.onMouseUp();
+
+    if (pendingMenu) {
       this.cleanBox();
-      this.selectionMenuHandler.scheduleOpen(
-        260,
-        dragResult.pendingMenu,
-        (chosenHit, point, shift) => this._applyEntitySelection(chosenHit.entity, point, shift, false),
-        () => this.dragHandler.isDragging() || Boolean(this.boxSelectHandler.selectionStartPoint)
-      );
+      this._scheduleDelayedMenu(pendingMenu.menuData, pendingMenu.onSelect);
       return;
     }
 
@@ -245,99 +309,19 @@ export class SelectTool extends BaseTool {
   }
 
   onContextMenu() {
-    if (this.selectionMenuHandler.isOpen()) {
-      this.selectionMenuHandler.close();
-      return true;
-    }
-
-    if (this.service.hoveredEntity) {
-      this.utils.clearHoverHighlight();
-    }
-
-    return false;
+    return this.keyHandler.onContextMenu();
   }
 
   onKeyDown(event) {
-    const key = event.key || event.code;
-    const targetTag = event.target?.tagName;
-    const isConsoleInput = event.target?.id === 'cmdInput' || event.target?.id === 'cmdInputFloating';
-    const isOtherInputFocused = !isConsoleInput && (
-      ['INPUT', 'TEXTAREA', 'SELECT'].includes(targetTag) || event.target?.isContentEditable
-    );
-
-    if (!isOtherInputFocused && (event.ctrlKey || event.metaKey) && (key.toLowerCase() === 'a' || event.code === 'KeyA')) {
-      if (isConsoleInput && event.target.value.length > 0) return false;
-      return this.segmentEditHandler.selectAllSegments(event);
-    }
-
-    if (key === 'Escape') {
-      if (this.selectionMenuHandler.hasScheduledOpen() || this.selectionMenuHandler.isOpen()) {
-        this.selectionMenuHandler.close();
-        return true;
-      }
-
-      if (this._cancelActiveDrag()) {
-        return true;
-      }
-
-      const hasSelection =
-        this.service.selectedEntities?.length > 0 ||
-        this.service.selectedSegments?.length > 0 ||
-        this.service.selectedHandles?.length > 0;
-
-      if (hasSelection) {
-        this.service.deselectAllEntities();
-        this.service.deselectAllSegments();
-        this.service.deselectAllHandles();
-        this.cleanBox();
-        return true;
-      }
-
-      if (this.service.editingEntities?.length > 0) {
-        this.service.selectionManager.exitEditMode();
-        this.utils.setPrompt('Herramienta Selección: selecciona objetos o haz doble clic en un trazo para editar sus nodos.');
-        return true;
-      }
-
+    if (this.keyHandler.onKeyDown(event)) return true;
+    if ((event.key || event.code) === 'Escape') {
       return super.onKeyDown(event);
     }
-
     return false;
   }
 
-  _cancelActiveDrag() {
-    let cancelled = false;
-
-    if (this.activeModule) {
-      if (typeof this.activeModule.cancelDrag === 'function') {
-        this.activeModule.cancelDrag();
-      } else {
-        this.activeModule.reset();
-      }
-      this.activeModule = null;
-      cancelled = true;
-    } else if (this.segmentEditHandler.isDragging()) {
-      this.segmentEditHandler.cancelDrag();
-      cancelled = true;
-    } else if (this.dragHandler.cancelDrag() || this.boxSelectHandler.selectionStartPoint) {
-      this.cleanBox();
-      cancelled = true;
-    }
-
-    if (cancelled) {
-      this.utils.hud.clear();
-      this._refreshView();
-    }
-
-    return cancelled;
-  }
-
   cancel() {
-    this.cleanBox();
-    this.utils.hud.clear();
-    this.service.deselectAllEditingEntities();
-    const paperInst = this.utils.paper || paper;
-    if (paperInst?.view) paperInst.view.update();
+    this.keyHandler.cancel();
   }
 
   cleanup() {
