@@ -32,7 +32,7 @@ espesores y zoom, escalar bordes?
 - [x] [Área OSNAP / HUD] **Visualización de OSNAP intersección:** Resolver el renderizado del marcador visual para enganches de tipo intersección.
 - [x] [Área Viewport / Render] **Zoom y límites en Bézier:** Corregir la selección y curvas Bézier al hacer zoom y contemplar los máximos y mínimos reales de las curvas (no solo sus nodos) en `Zoom Extents`.
 
-- [ ] [Área Dibujo] **Auditar herramientas de dibujo:** Iniciar la auditoría del Área #5 revisando `BaseTool.js` y las herramientas de dibujo primitivas para desacoplar la creación de geometrías de `cadService.js`.
+- [x] [Área Dibujo] **Auditar herramientas de dibujo:** Iniciar la auditoría del Área #5 revisando `BaseTool.js` y las herramientas de dibujo primitivas para desacoplar la creación de geometrías de `cadService.js`.
 - [ ] [Área Dibujo / HUD] **Separar marcador visual OSNAP:** Desacoplar el callback visual `renderMarkerFn` de `OsnapEngine.calculateOsnap()` para que el motor devuelva solo `{ point, type }` y el marcador del HUD (`HUDManager.js`) se actualice en un único punto centralizado.
 - [ ] [Área OSNAP / Puntos] **Garantizar entidad en candidatos OSNAP:** Asegurar que todos los candidatos devueltos por `OsnapEngine` incluyan la propiedad `entity` para simplificar `DivisionSelectionHandler._findSnappedTarget()` y eliminar el cálculo de cercanía de respaldo.
 
@@ -53,7 +53,12 @@ espesores y zoom, escalar bordes?
 - [ ] [Área Núcleo] **Inyectar paper y capas:** Centralizar `paper` y las referencias de capas (`hudLayer`, `pointsLayer`) en `CADUtils` para eliminar los helpers repetidos `_getPaper()` / `_getHudLayer()`, y en `cadService.createPointEntity()` insertar directamente en `pointsLayer` en lugar de mutar la capa activa (`targetLayer.activate()` / `drawLayer.activate()`).
 - [ ] [Área Núcleo] **Encapsular baja de capas:** Eliminar la manipulación directa de `cadService.entities.splice` y `.push` en `DeleteLayerCommand` (`services/commands/LayerCommands.js`), reemplazándola por métodos oficiales de baja y restauración en `CADService`.
 
-
+- [ ] [Área Consola / Núcleo] **Delegar consola a herramientas activas:** Refactorizar `cadUtils.executeCommandLine()` para delegar la entrada en `activeTool.onCommandInput(input)` y eliminar estado/métodos legados de dibujo (`finishCurrentDrawing`, `rubberBandLine`).
+- [ ] [Área Servicios / Comandos] **Desacoplar globales en motores y comandos:** Eliminar referencias directas a `window.cadUtils` y `paper` global en `GeometryEngine.js` (`performTrim`, `performBoxTrim`) y `EntityCommands.js` (`AddEntityCommand`, `ImportSVGCommand`).
+- [ ] [Área Consola / Herramientas] **Parser compartido de coordenadas en BaseTool:** Implementar `_parsePointInput(rawInput, basePoint)` en `BaseTool` para resolver coordenadas absolutas (`x,y`), relativas (`@x,y`), polares (`@d<a`) y distancia escalar, y migrar `onCommandInput` / `onConfirmDefault` en las herramientas de creación.
+- [ ] [Área Núcleo] **Clases de entidades (Etapa 1 — Base, Punto y Círculo):** Crear `entities/BaseEntity.js`, `PointEntity.js` y `CircleEntity.js` por composición sobre `paper.Item` (`paperItem.data.entity = this`), encapsulando centro, radio e invariantes sin alterar aún `CADService.entities`.
+- [ ] [Área Núcleo] **Clases de entidades (Etapa 2 — Lineales y Curvas):** Crear `LineEntity.js`, `PolylineEntity.js`, `SplineEntity.js` y `BezierEntity.js` encapsulando manipulación de vértices, cierre, suavizado y manijas Bézier.
+- [ ] [Área Núcleo] **Clases de entidades (Etapa 3 — Corte en motores y servicio):** Migrar `OsnapEngine`, `GeometryEngine` y `SelectionRenderEngine` para consumir los métodos de las clases de entidad y almacenar directamente instancias de clase en `CADService.entities`.
 
 bloqueo y visibilidad global por entidades selecciondas
 

@@ -16,7 +16,6 @@ export class CADService {
 
     this.entities = [];
     this.hoveredEntity = null;
-    this.lastInsertedPoint = null;
     this.utils = null;
     this.onHistoryChange = null;
 
@@ -39,6 +38,16 @@ export class CADService {
 
     this.trimCuttingBoundaries = [];
     this.isTrimCuttingPhase = false;
+  }
+
+  _getPaper() {
+    const paperInstance = (this.utils && this.utils.paper)
+      ? this.utils.paper
+      : (typeof paper !== 'undefined' ? paper : null);
+    if (!paperInstance) {
+      throw new Error('CADService requiere una instancia válida de Paper.js.');
+    }
+    return paperInstance;
   }
 
   get selectedEntities() { return this.selectionManager.selectedEntities; }
@@ -166,37 +175,36 @@ export class CADService {
   }
 
   createPointEntity(pt, options = {}) {
-    const EPSILON = 0.001;
-    if (this.lastInsertedPoint && this.lastInsertedPoint.getDistance(pt) < EPSILON) {
-      return null;
-    }
+    if (!pt) return null;
 
-    const zoom = paper.view.zoom;
+    const p = this._getPaper();
+    const zoom = p.view.zoom || 1;
     const opts = options || {};
-    const nodeTheme = CAD_THEME?.node || {};
-    const layerId = String(opts.layerId || this.utils?.layerManager?.activeLayerId || '0');
+    const nodeTheme = CAD_THEME.node;
+    const activeLayerId = (this.utils && this.utils.layerManager)
+      ? this.utils.layerManager.activeLayerId
+      : '0';
+    const layerId = String(opts.layerId || activeLayerId);
     const colorByLayer = opts.colorByLayer !== undefined ? opts.colorByLayer : true;
 
     let strokeColor = opts.strokeColor;
-    if (colorByLayer && this.utils?.layerManager) {
+    if (colorByLayer && this.utils && this.utils.layerManager) {
       const layer = this.utils.layerManager.layers.get(layerId);
-      strokeColor = layer ? layer.color : (nodeTheme.defaultStrokeColor || '#88ff00');
+      strokeColor = layer ? layer.color : nodeTheme.defaultStrokeColor;
     } else if (!strokeColor) {
-      strokeColor = nodeTheme.defaultStrokeColor || '#88ff00';
+      strokeColor = nodeTheme.defaultStrokeColor;
     }
 
     const fillColor = opts.fillColor || nodeTheme.defaultFillColor || CAD_THEME.canvas.backgroundColor;
     const strokeWidth = (nodeTheme.strokeWidthPx || 1.0) / zoom;
 
-    const targetLayer = this.utils?.pointsLayer || this.utils?.nodesLayer;
-    targetLayer?.activate();
-
-    const pointMarker = new paper.Path.Circle({
+    const pointMarker = new p.Path.Circle({
       center: pt,
       radius: (nodeTheme.normalRadiusPx || 3.5) / zoom,
       fillColor,
       strokeColor,
-      strokeWidth
+      strokeWidth,
+      insert: false
     });
 
     pointMarker.data = {
@@ -209,13 +217,7 @@ export class CADService {
       origStrokeWidth: strokeWidth
     };
 
-    this.utils?.drawLayer?.activate();
-
-    if (this.registerEntity(pointMarker)) {
-      this.lastInsertedPoint = pt.clone();
-      return pointMarker;
-    }
-    return null;
+    return pointMarker;
   }
 
   createLineEntity(fromPt, toPt, isDynamic = true, baseWidth = 1) {
@@ -224,15 +226,17 @@ export class CADService {
       return null;
     }
 
-    const zoom = paper.view.zoom;
+    const p = this._getPaper();
+    const zoom = p.view.zoom || 1;
     const initialWidth = isDynamic ? (baseWidth / zoom) : baseWidth;
     const defaultColor = CAD_THEME.properties.customFallbackColor;
 
-    const line = new paper.Path.Line({
+    const line = new p.Path.Line({
       from: fromPt,
       to: toPt,
       strokeColor: defaultColor,
-      strokeWidth: initialWidth
+      strokeWidth: initialWidth,
+      insert: false
     });
 
     line.data = {
@@ -251,16 +255,18 @@ export class CADService {
       return null;
     }
 
-    const zoom = paper.view.zoom;
+    const p = this._getPaper();
+    const zoom = p.view.zoom || 1;
     const initialWidth = isDynamic ? (baseWidth / zoom) : baseWidth;
     const defaultColor = CAD_THEME.properties.customFallbackColor;
 
-    const circlePath = new paper.Path.Circle({
+    const circlePath = new p.Path.Circle({
       center: centerPt,
       radius,
       strokeColor: defaultColor,
       strokeWidth: initialWidth,
-      fillColor: null
+      fillColor: null,
+      insert: false
     });
 
     circlePath.data = {
@@ -277,19 +283,56 @@ export class CADService {
     return circlePath;
   }
 
+  createPathEntity(segments = [], options = {}) {
+    const p = this._getPaper();
+    const opts = options || {};
+    const isDynamic = opts.isDynamic !== undefined ? opts.isDynamic : true;
+    const baseWidth = opts.baseWidth !== undefined ? opts.baseWidth : 1;
+    const zoom = p.view.zoom || 1;
+    const initialWidth = isDynamic ? (baseWidth / zoom) : baseWidth;
+    const defaultColor = CAD_THEME.properties.customFallbackColor;
+
+    const path = new p.Path({
+      segments,
+      closed: Boolean(opts.closed),
+      strokeColor: defaultColor,
+      strokeWidth: initialWidth,
+      fillColor: null,
+      insert: false
+    });
+
+    path.data = {
+      isDynamicStroke: isDynamic,
+      baseStrokeWidth: baseWidth,
+      origStrokeColor: defaultColor,
+      origStrokeWidth: initialWidth
+    };
+
+    if (opts.isSpline) {
+      path.data.isSpline = true;
+    }
+
+    return path;
+  }
+
   registerEntity(entity) {
     const EPSILON = 0.001;
     if (!entity) return false;
 
-    if (entity instanceof paper.Path && !entity.data?.isPointEntity) {
+    const p = this._getPaper();
+    const isPoint = Boolean(entity.data && entity.data.isPointEntity);
+
+    if (entity instanceof p.Path && !isPoint) {
       if (entity.length < EPSILON) {
         entity.remove();
         return false;
       }
     }
 
-    if (entity.data?.isPointEntity) {
-      const pointsLayer = this.utils?.pointsLayer || (typeof paper !== 'undefined' ? paper.project?.layers?.['pointsLayer'] : null);
+    if (isPoint) {
+      const pointsLayer = (this.utils && this.utils.pointsLayer)
+        ? this.utils.pointsLayer
+        : (p.project && p.project.layers ? p.project.layers['pointsLayer'] : null);
       if (pointsLayer && entity.parent !== pointsLayer) {
         pointsLayer.addChild(entity);
       }

@@ -16,6 +16,7 @@ export class SnapMarkerRenderer {
       snapOutlineWidthPx = 0.8,
       snapMarkerSizePx,
       intersectionWidthMultiplier = 1.4,
+      intersectionExtensionEnabled = true,
       extensionFactor = 1.3
     } = CAD_THEME.hud;
 
@@ -100,7 +101,8 @@ export class SnapMarkerRenderer {
     } else if (type === 'intersection') {
       const half = size * 0.5;
       const interWidth = strokeWidth * intersectionWidthMultiplier;
-      const tipExt = half * (extensionFactor - 1) + outlinePx;
+      const effectiveExtensionFactor = intersectionExtensionEnabled ? extensionFactor : 1;
+      const tipExt = half * (effectiveExtensionFactor - 1) + outlinePx;
 
       addOpenLine(
         point.subtract(new paper.Point(half, half)),

@@ -3,61 +3,38 @@
  */
 
 import { BaseTool } from './BaseTool.js';
-import { CAD_THEME } from '../config/cadTheme.js';
 
 export class BezierTool extends BaseTool {
   constructor(cadService, cadUtils) {
     super(cadService, cadUtils);
     this.promptText = 'BÉZIER. Haz clic y arrastra para colocar puntos y manijas. Clic derecho o ENTER para finalizar.';
-    this.previewGroup = null;
+    this.previewLine = null;
+    this._handleGuides = null;
   }
 
   _resolveNextPoint(rawPoint, isShift) {
-    const lastSeg = this.utils.activePath?.lastSegment || null;
+    const activePath = this.utils.activePath;
+    const lastSeg = (activePath && activePath.lastSegment) ? activePath.lastSegment : null;
     const fromPoint = lastSeg ? lastSeg.point : null;
     const disableFromPoint = Boolean(lastSeg && !lastSeg.handleOut.isZero());
 
     return this.utils.resolveConstrainedPoint(rawPoint, {
       fromPoint,
       isShift,
-      excludeEntity: this.utils.activePath,
+      excludeEntity: activePath,
       disableFromPoint
     });
   }
 
   onMouseDown(event) {
-    // Procesar ÚNICAMENTE el clic izquierdo
     if (event.event && event.event.button !== 0) return;
 
-    const isShift = event.event ? event.event.shiftKey : false;
-    const fromPoint = (this.utils.activePath && this.utils.activePath.lastSegment)
-      ? this.utils.activePath.lastSegment.point
-      : null;
-
+    const isShift = event.event ? Boolean(event.event.shiftKey) : false;
     const pt = this._resolveNextPoint(event.point, isShift);
 
     if (!this.utils.activePath) {
-      // Iniciar trazo de curva Bézier
-      this.utils.activePath = new paper.Path({
-        segments: [pt]
-      });
-
-      if (!this.utils.activePath.data) this.utils.activePath.data = {};
-
-      // Auto-nombrar entidad de forma secuencial ('Curva 1', 'Curva 2', ...)
-      const curveName = this.utils.generateNextEntityName ? this.utils.generateNextEntityName('Curva') : 'Curva';
-      this.utils.activePath.name = curveName;
-      this.utils.activePath.data.name = curveName;
-
-      // Aplicar propiedades por defecto (Capa, Color, Grosor, Opacidad)
-      if (this.utils.propertyManager) {
-        this.utils.propertyManager.applyDefaultSettings(this.utils.activePath);
-      }
-
-      this.utils.selectionRenderEngine.updateEntitiesStroke();
-      this.setPrompt('Especifique el siguiente punto o [ENTER / Clic derecho para finalizar]:');
+      this._beginActivePath(pt, 'Especifique el siguiente punto o [ENTER / Clic derecho para finalizar]:');
     } else {
-      // Evitar duplicar vértices si se hace clic en la misma posición
       if (this.utils.activePath.lastSegment) {
         const lastPt = this.utils.activePath.lastSegment.point;
         if (lastPt.getDistance(pt) < 0.001) {
@@ -67,134 +44,191 @@ export class BezierTool extends BaseTool {
 
       this.utils.activePath.add(pt);
       this.utils.selectionRenderEngine.updateEntitiesStroke();
+      this.previewLine = this.syncLineGuide(this.previewLine, pt, pt);
     }
   }
 
   onMouseDrag(event) {
-    if (this.utils.activePath && this.utils.activePath.lastSegment) {
-      const isShift = event.event ? event.event.shiftKey : false;
-      const lastSeg = this.utils.activePath.lastSegment;
+    if (!this.utils.activePath || !this.utils.activePath.lastSegment) {
+      return;
+    }
 
-      const dragPt = this.utils.resolveConstrainedPoint(event.point, {
-        fromPoint: lastSeg.point,
-        isShift,
-        excludeEntity: this.utils.activePath
-      });
+    const isShift = event.event ? Boolean(event.event.shiftKey) : false;
+    const lastSeg = this.utils.activePath.lastSegment;
 
-      this.utils.hud.updateHUD(dragPt);
+    const dragPt = this.utils.resolveConstrainedPoint(event.point, {
+      fromPoint: lastSeg.point,
+      isShift,
+      excludeEntity: this.utils.activePath
+    });
 
-      const handleVec = dragPt.subtract(lastSeg.point);
-      lastSeg.handleOut = handleVec;
-      lastSeg.handleIn = handleVec.multiply(-1);
+    this.utils.hud.clear();
+    this.utils.hud.updateHUD(dragPt);
 
-      this.renderBezierPreview();
-      if (this.utils.selectionRenderEngine.updateEntitiesStroke) {
-        this.utils.selectionRenderEngine.updateEntitiesStroke();
-      }
+    const handleVec = dragPt.subtract(lastSeg.point);
+    lastSeg.handleOut = handleVec;
+    lastSeg.handleIn = handleVec.multiply(-1);
+
+    this.renderBezierPreview();
+    if (typeof this.utils.selectionRenderEngine.updateEntitiesStroke === 'function') {
+      this.utils.selectionRenderEngine.updateEntitiesStroke();
     }
   }
 
   onMouseMove(event) {
-    const isShift = event.event ? event.event.shiftKey : false;
-    const fromPoint = (this.utils.activePath && this.utils.activePath.lastSegment)
-      ? this.utils.activePath.lastSegment.point
-      : null;
-
+    this.utils.hud.clear();
+    const isShift = event.event ? Boolean(event.event.shiftKey) : false;
     const pt = this._resolveNextPoint(event.point, isShift);
 
-    this.utils.hud.updateHUD(currentPt);
+    this.utils.hud.updateHUD(pt);
 
     if (this.utils.activePath && this.utils.activePath.segments.length > 0) {
       const lastConfirmedPt = this.utils.activePath.lastSegment.point;
-      const propMgr = this.utils.propertyManager;
-
-      const activeColor = propMgr ? propMgr.getResolvedColor(this.utils.activePath) : '#00e5ff';
-      const activeOpacity = propMgr && typeof propMgr.getResolvedOpacity === 'function'
-        ? propMgr.getResolvedOpacity(this.utils.activePath)
-        : (this.utils.activePath.opacity !== undefined ? this.utils.activePath.opacity : 1);
-      const dashPattern = CAD_THEME?.rubberBand?.dashArrayPx || [2, 2];
-
-      // Previsualización elástica sincronizada en color y opacidad
-      if (!this.utils.rubberBandLine) {
-        this.utils.rubberBandLine = new paper.Path.Line({
-          from: lastConfirmedPt,
-          to: currentPt,
-          strokeColor: activeColor,
-          strokeWidth: 1 / paper.view.zoom,
-          dashArray: dashPattern.map((val) => val / paper.view.zoom),
-          opacity: activeOpacity
-        });
-      } else {
-        this.utils.rubberBandLine.firstSegment.point = lastConfirmedPt;
-        this.utils.rubberBandLine.lastSegment.point = currentPt;
-        this.utils.rubberBandLine.strokeColor = activeColor;
-        this.utils.rubberBandLine.opacity = activeOpacity;
-      }
-
-      this.utils.hud.updateFeedbackLabels(lastConfirmedPt, currentPt);
+      this.previewLine = this.syncLineGuide(this.previewLine, lastConfirmedPt, pt);
+      this.utils.hud.updateFeedbackLabels(lastConfirmedPt, pt);
     }
   }
 
   onMouseUp(event) {
-    this.clearPreview();
+    this.clearHandlePreview();
+  }
+
+  _ensureHandlePreviewItems() {
+    const hudLayer = this.getHudLayer();
+
+    if (!this._handleGuides) {
+      const lineOut = new this.paper.Path.Line({
+        from: [0, 0],
+        to: [0, 0],
+        guide: true,
+        data: { isAuxiliary: true },
+        insert: false
+      });
+      const lineIn = new this.paper.Path.Line({
+        from: [0, 0],
+        to: [0, 0],
+        guide: true,
+        data: { isAuxiliary: true },
+        insert: false
+      });
+      const circleOut = new this.paper.Path.Circle({
+        center: [0, 0],
+        radius: 1,
+        guide: true,
+        data: { isAuxiliary: true },
+        insert: false
+      });
+      const circleIn = new this.paper.Path.Circle({
+        center: [0, 0],
+        radius: 1,
+        guide: true,
+        data: { isAuxiliary: true },
+        insert: false
+      });
+
+      this._handleGuides = { lineOut, lineIn, circleOut, circleIn };
+    }
+
+    const { lineOut, lineIn, circleOut, circleIn } = this._handleGuides;
+    [lineOut, lineIn, circleOut, circleIn].forEach((item) => {
+      if (item.parent !== hudLayer) {
+        hudLayer.addChild(item);
+      }
+    });
   }
 
   renderBezierPreview() {
-    this.clearPreview();
+    const activePath = this.utils.activePath;
+    const seg = (activePath && activePath.lastSegment) ? activePath.lastSegment : null;
+    if (!seg || seg.handleOut.isZero()) {
+      this.clearHandlePreview();
+      return;
+    }
 
-    const seg = this.utils.activePath?.lastSegment;
-    if (!seg || seg.handleOut.isZero()) return;
+    this._ensureHandlePreviewItems();
 
-    const zoom = paper.view.zoom;
+    const zoom = this.paper.view.zoom || 1;
+    const style = this.resolvePreviewStyle();
     const outPt = seg.point.add(seg.handleOut);
     const inPt = seg.point.add(seg.handleIn);
+    const handleRadius = 3.5 / zoom;
 
-    const propMgr = this.utils.propertyManager;
-    const activeColor = propMgr ? propMgr.getResolvedColor(this.utils.activePath) : '#ec4899';
+    const { lineOut, lineIn, circleOut, circleIn } = this._handleGuides;
 
-    this.previewGroup = new paper.Group({ insert: false });
-    this.previewGroup.guide = true;
+    lineOut.segments[0].point.set(seg.point.x, seg.point.y);
+    lineOut.segments[1].point.set(outPt.x, outPt.y);
+    lineOut.strokeColor = style.color;
+    lineOut.strokeWidth = style.strokeWidth;
+    lineOut.dashArray = style.dashArray;
+    lineOut.opacity = style.opacity;
 
-    const l1 = new paper.Path.Line({ from: seg.point, to: outPt, strokeColor: activeColor, strokeWidth: 1 / zoom, dashArray: [2 / zoom, 2 / zoom], insert: false });
-    const l2 = new paper.Path.Line({ from: seg.point, to: inPt, strokeColor: activeColor, strokeWidth: 1 / zoom, dashArray: [2 / zoom, 2 / zoom], insert: false });
-    const c1 = new paper.Path.Circle({ center: outPt, radius: 3.5 / zoom, fillColor: activeColor, insert: false });
-    const c2 = new paper.Path.Circle({ center: inPt, radius: 3.5 / zoom, fillColor: activeColor, insert: false });
+    lineIn.segments[0].point.set(seg.point.x, seg.point.y);
+    lineIn.segments[1].point.set(inPt.x, inPt.y);
+    lineIn.strokeColor = style.color;
+    lineIn.strokeWidth = style.strokeWidth;
+    lineIn.dashArray = style.dashArray;
+    lineIn.opacity = style.opacity;
 
-    this.previewGroup.addChildren([l1, l2, c1, c2]);
+    circleOut.position.set(outPt.x, outPt.y);
+    circleOut.bounds.width = handleRadius * 2;
+    circleOut.bounds.height = handleRadius * 2;
+    circleOut.fillColor = style.color;
+    circleOut.opacity = style.opacity;
 
-    const hudLayer = this.utils.hudLayer || paper.project?.layers?.find((l) => l.name === 'hudLayer');
-    if (hudLayer) {
-      hudLayer.addChild(this.previewGroup);
-    } else if (paper.project?.activeLayer) {
-      paper.project.activeLayer.addChild(this.previewGroup);
+    circleIn.position.set(inPt.x, inPt.y);
+    circleIn.bounds.width = handleRadius * 2;
+    circleIn.bounds.height = handleRadius * 2;
+    circleIn.fillColor = style.color;
+    circleIn.opacity = style.opacity;
+  }
+
+  clearHandlePreview() {
+    if (!this._handleGuides) return;
+    const { lineOut, lineIn, circleOut, circleIn } = this._handleGuides;
+    lineOut.remove();
+    lineIn.remove();
+    circleOut.remove();
+    circleIn.remove();
+    this._handleGuides = null;
+  }
+
+  clearPreviews() {
+    this.clearHandlePreview();
+    if (this.previewLine) {
+      this.previewLine.remove();
+      this.previewLine = null;
     }
   }
 
-  clearPreview() {
-    if (this.previewGroup) {
-      this.previewGroup.remove();
-      this.previewGroup = null;
-    }
+  _finishActivePath() {
+    this.clearPreviews();
+    this._commitOrDiscardActivePath('Curva');
   }
 
-  onDeactivate() {
-    this.clearPreview();
+  onKeyDown(event) {
+    const key = event.key || event.code;
+    if ((key === 'Enter' || key === 'NumpadEnter') && this.utils.activePath) {
+      if (typeof event.preventDefault === 'function') {
+        event.preventDefault();
+      }
+      this._finishActivePath();
+      return true;
+    }
+    return super.onKeyDown(event);
   }
 
   // Limpieza al cambiar o desactivar la herramienta
   cancel() {
-    this.clearPreview();
+    this.clearPreviews();
     if (this.utils.activePath) {
-      this.utils.finishCurrentDrawing();
+      this._finishActivePath();
     }
   }
 
   // Clic derecho: 1.° finaliza el trazo activo, 2.° sale a Selección
   onContextMenu(event) {
     if (this.utils.activePath) {
-      this.clearPreview();
-      this.utils.finishCurrentDrawing();
-      this.setPrompt(this.promptText);
+      this._finishActivePath();
     } else {
       this.exitToSelect();
     }
@@ -202,10 +236,7 @@ export class BezierTool extends BaseTool {
   }
 
   cancelAndExit() {
-    this.clearPreview();
-    if (this.utils.activePath) {
-      this.utils.finishCurrentDrawing();
-    }
-    this.utils.setTool('select');
+    this.cancel();
+    this.exitToSelect();
   }
 }

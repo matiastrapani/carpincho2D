@@ -12,6 +12,7 @@ export class PointTool extends BaseTool {
     super(cadService, cadUtils);
     this.promptText = 'POINT. Haz clic en el lienzo para colocar un punto o ingresa coordenadas (X,Y).';
     this.divisionSelector = new DivisionSelectionHandler(cadService, cadUtils);
+    this.lastInsertedPoint = null;
   }
 
   _getPaper() {
@@ -31,7 +32,7 @@ export class PointTool extends BaseTool {
   }
 
   onActivate() {
-    this.service.lastInsertedPoint = null;
+    this.lastInsertedPoint = null;
     const mode = this.utils.currentToolMode;
 
     if (mode === 'point') {
@@ -59,7 +60,7 @@ export class PointTool extends BaseTool {
   onMouseDown(event) {
     if (event.event.button !== 0) return;
 
-    const p = this._getPaper();
+    const p = this.paper;
     const mode = this.utils.currentToolMode;
 
     if (mode === 'point') {
@@ -91,7 +92,7 @@ export class PointTool extends BaseTool {
         }
       });
 
-      const clickedItem = this._resolveRootEntity(hitEntity?.item);
+      const clickedItem = hitEntity ? this._resolveRootEntity(hitEntity.item) : null;
       if (clickedItem && this.divisionSelector.toggleEntitySelection(clickedItem)) {
         const count = this.divisionSelector.getTargets().length;
         this.setPrompt(`Objetivos seleccionados: ${count}. Presiona ENTER o Clic Derecho para continuar...`);
@@ -127,7 +128,7 @@ export class PointTool extends BaseTool {
       return;
     }
 
-    this.utils.hud.renderSnapMarker?.(null, null);
+    this.utils.hud.renderSnapMarker(null, null);
     this.utils.hud.updateHUD(event.point);
   }
 
@@ -140,17 +141,24 @@ export class PointTool extends BaseTool {
   }
 
   createPointAt(pt, coordsLabel = null) {
-    const p = this._getPaper();
+    const EPSILON = 0.001;
+    if (!pt) return null;
+    if (this.lastInsertedPoint && this.lastInsertedPoint.getDistance(pt) < EPSILON) {
+      return null;
+    }
+
+    const p = this.paper;
     const pointEntity = this.service.createPointEntity(pt);
     if (!pointEntity) return null;
 
     this.commitNewEntity(pointEntity, 'Punto', AddPointCommand);
+    this.lastInsertedPoint = pt.clone();
 
     this.service.deselectAllEditingEntities();
     this.service.deselectAllSegments();
-    this.utils.selectionRenderEngine?.renderBezierHandles?.();
-    this.utils.selectionRenderEngine?.updateEntitiesStroke?.();
-    if (p.view) p.view.update();
+    this.utils.selectionRenderEngine.renderBezierHandles();
+    this.utils.selectionRenderEngine.updateEntitiesStroke();
+    p.view.update();
 
     const cadX = pt.x.toFixed(2);
     const cadY = (-pt.y).toFixed(2);
@@ -218,7 +226,7 @@ export class PointTool extends BaseTool {
   }
 
   onCommandInput(input) {
-    const p = this._getPaper();
+    const p = this.paper;
     const mode = this.utils.currentToolMode;
 
     if (mode === 'point') {
@@ -262,12 +270,13 @@ export class PointTool extends BaseTool {
 
   resetToolState() {
     this.divisionSelector.reset();
+    this.lastInsertedPoint = null;
 
     this.service.deselectAllEntities();
     this.service.deselectAllEditingEntities();
     this.service.deselectAllSegments();
-    this.utils.selectionRenderEngine?.renderBezierHandles?.();
-    this.utils.selectionRenderEngine?.updateEntitiesStroke?.();
+    this.utils.selectionRenderEngine.renderBezierHandles();
+    this.utils.selectionRenderEngine.updateEntitiesStroke();
     this.utils.hud.clear();
   }
 

@@ -22,28 +22,11 @@ export class CircleTool extends BaseTool {
     return 'Especifica el radio o un punto en el círculo:';
   }
 
-  _resolvePreviewStyle() {
-    const propMgr = this.utils.propertyManager;
-    const layerManager = this.utils.layerManager;
-    const defaults = propMgr?.defaultSettings || {};
-    const activeLayer = layerManager ? layerManager.getActiveLayer() : null;
-
-    const isColorByLayer = defaults.color === 'BYLAYER' || !defaults.color;
-    const previewColor = isColorByLayer ? (activeLayer?.color || '#00e5ff') : defaults.color;
-
-    const isOpacityByLayer = defaults.opacity === 'BYLAYER' || defaults.opacity === undefined;
-    const previewOpacity = isOpacityByLayer
-      ? (activeLayer?.opacity !== undefined ? activeLayer.opacity : 1)
-      : (typeof defaults.opacity === 'number' ? defaults.opacity : 1);
-
-    return { previewColor, previewOpacity };
-  }
-
   _ensurePreviewItems() {
-    const hudLayer = this.utils.hudLayer || paper.project?.layers?.['hudLayer'];
+    const hudLayer = this.getHudLayer();
 
     if (!this.previewCircle) {
-      this.previewCircle = new paper.Path.Circle({
+      this.previewCircle = new this.paper.Path.Circle({
         center: [0, 0],
         radius: 1,
         guide: true,
@@ -62,7 +45,7 @@ export class CircleTool extends BaseTool {
     }
 
     if (!this.previewRadiusLine) {
-      this.previewRadiusLine = new paper.Path.Line({
+      this.previewRadiusLine = new this.paper.Path.Line({
         from: [0, 0],
         to: [0, 0],
         guide: true,
@@ -71,10 +54,8 @@ export class CircleTool extends BaseTool {
       });
     }
 
-    if (hudLayer) {
-      if (this.previewCircle.parent !== hudLayer) hudLayer.addChild(this.previewCircle);
-      if (this.previewRadiusLine.parent !== hudLayer) hudLayer.addChild(this.previewRadiusLine);
-    }
+    if (this.previewCircle.parent !== hudLayer) hudLayer.addChild(this.previewCircle);
+    if (this.previewRadiusLine.parent !== hudLayer) hudLayer.addChild(this.previewRadiusLine);
   }
 
   _updatePreview(pt) {
@@ -83,10 +64,7 @@ export class CircleTool extends BaseTool {
     const cx = this.centerPoint.x;
     const cy = this.centerPoint.y;
     const currentRadius = this.centerPoint.getDistance(pt);
-    const zoom = paper.view.zoom || 1;
-    const strokeWidth = 1 / zoom;
-    const dashStyle = [2 / zoom, 2 / zoom];
-    const { previewColor, previewOpacity } = this._resolvePreviewStyle();
+    const style = this.resolvePreviewStyle();
 
     this.previewCircle.visible = currentRadius > 1e-6;
     if (this.previewCircle.visible) {
@@ -96,19 +74,19 @@ export class CircleTool extends BaseTool {
         seg.handleIn.set(u.ix * currentRadius, u.iy * currentRadius);
         seg.handleOut.set(u.ox * currentRadius, u.oy * currentRadius);
       });
-      this.previewCircle.strokeColor = previewColor;
-      this.previewCircle.strokeWidth = strokeWidth;
-      this.previewCircle.dashArray = dashStyle;
-      this.previewCircle.opacity = previewOpacity;
+      this.previewCircle.strokeColor = style.color;
+      this.previewCircle.strokeWidth = style.strokeWidth;
+      this.previewCircle.dashArray = style.dashArray;
+      this.previewCircle.opacity = style.opacity;
     }
 
     this.previewRadiusLine.visible = true;
     this.previewRadiusLine.segments[0].point.set(cx, cy);
     this.previewRadiusLine.segments[1].point.set(pt.x, pt.y);
-    this.previewRadiusLine.strokeColor = previewColor;
-    this.previewRadiusLine.strokeWidth = strokeWidth;
-    this.previewRadiusLine.dashArray = dashStyle;
-    this.previewRadiusLine.opacity = previewOpacity;
+    this.previewRadiusLine.strokeColor = style.color;
+    this.previewRadiusLine.strokeWidth = style.strokeWidth;
+    this.previewRadiusLine.dashArray = style.dashArray;
+    this.previewRadiusLine.opacity = style.opacity;
   }
 
   onMouseDown(event) {
@@ -156,13 +134,16 @@ export class CircleTool extends BaseTool {
   }
 
   onKeyDown(event) {
-    if (event?.key === 'Enter' && this.centerPoint) {
+    const key = event.key || event.code;
+    if ((key === 'Enter' || key === 'NumpadEnter') && this.centerPoint) {
       if (this.commitDefaultRadius()) {
-        event.preventDefault?.();
+        if (typeof event.preventDefault === 'function') {
+          event.preventDefault();
+        }
         return true;
       }
     }
-    return false;
+    return super.onKeyDown(event);
   }
 
   onMouseMove(event) {
@@ -199,9 +180,12 @@ export class CircleTool extends BaseTool {
     this.centerPoint = null;
     this.utils.hud.clear();
     this.setPrompt(this.promptText);
-    if (window.paper?.view) {
-      paper.view.update();
-    }
+    this.paper.view.update();
+  }
+
+  cancelAndExit() {
+    this.resetTool();
+    this.exitToSelect();
   }
 
   cancel() {

@@ -70,12 +70,13 @@ export const CAD_THEME = {
   },
   hud: {
     snapStrokeColor: '#88ff00', //'#34d399'
-    snapFillColor: '#88ff0050', //'#34d39933'
-    snapBgColor: '#10141d50',
+    snapFillColor: '#88ff0088', //'#34d39933'
+    snapBgColor: '#10141d88',
     snapStrokeWidthPx: 1.7,
     snapOutlineWidthPx: 0.8,
     snapMarkerSizePx: 12.0,
     intersectionWidthMultiplier: 1.4,
+    intersectionExtensionEnabled: false,
     extensionFactor: 1.3
   },
   properties: {
