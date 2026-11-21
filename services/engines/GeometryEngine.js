@@ -3,6 +3,10 @@
  */
 
 import { TrimCommand, BatchTrimCommand } from '../commands/cadCommands.js';
+import {
+  intersectCircleCircle,
+  intersectCircleWithPath
+} from './CircleIntersectionMath.js';
 
 export class GeometryEngine {
   constructor(cadService) {
@@ -532,6 +536,7 @@ export class GeometryEngine {
     const OFFSET_EPSILON = 1e-4;
     const TJUNCTION_TOL = 1e-3;
     const totalLen = targetPath.length;
+    const isCircleTarget = Boolean(targetPath.data?.isCircleEntity);
     const rawCuts = [];
 
     boundariesList.forEach((boundary) => {
@@ -564,7 +569,65 @@ export class GeometryEngine {
         return;
       }
 
-      // 1. Cruces transversales estándar entre entidades distintas
+      if (targetPath.bounds && boundary.bounds && !targetPath.bounds.expand(1e-3).intersects(boundary.bounds)) {
+        return;
+      }
+
+      const isCircleBoundary = Boolean(boundary.data?.isCircleEntity);
+
+      // Caso analítico exacto: intervienen uno o dos círculos matemáticos
+      if (isCircleTarget || isCircleBoundary) {
+        let exactPts = [];
+        if (isCircleTarget && isCircleBoundary) {
+          exactPts = intersectCircleCircle(targetPath, boundary);
+        } else if (isCircleTarget) {
+          exactPts = intersectCircleWithPath(targetPath, boundary);
+        } else {
+          exactPts = intersectCircleWithPath(boundary, targetPath);
+        }
+
+        exactPts.forEach((pt) => {
+          const loc = targetPath.getNearestLocation(pt);
+          if (loc) {
+            rawCuts.push({
+              offset: loc.offset,
+              point: pt.clone(),
+              boundary,
+              isExactAnalytic: true
+            });
+          }
+        });
+
+        // Uniones en "T": extremo de límite abierto apoyado dentro de TJUNCTION_TOL sobre un círculo objetivo
+        if (isCircleTarget && !boundary.closed && boundary.segments && boundary.segments.length >= 2) {
+          const center = targetPath.position;
+          const radius = targetPath.data?.radius || (targetPath.bounds.width / 2);
+          const endpoints = [boundary.firstSegment.point, boundary.lastSegment.point];
+
+          endpoints.forEach((endPt) => {
+            const radialVec = endPt.subtract(center);
+            const dist = radialVec.length;
+            if (dist > 1e-12 && Math.abs(dist - radius) <= TJUNCTION_TOL) {
+              const exactPt = center.add(radialVec.normalize(radius));
+              const alreadyAdded = exactPts.some((p) => p.getDistance(exactPt) <= TJUNCTION_TOL * 2);
+              if (!alreadyAdded) {
+                const loc = targetPath.getNearestLocation(exactPt);
+                if (loc) {
+                  rawCuts.push({
+                    offset: loc.offset,
+                    point: exactPt,
+                    boundary,
+                    isExactAnalytic: true
+                  });
+                }
+              }
+            }
+          });
+        }
+        return;
+      }
+
+      // 1. Cruces transversales estándar entre trazados no circulares
       const crossings = targetPath.getIntersections(boundary);
       crossings.forEach((c) => {
         if (c && c.offset !== undefined) {
@@ -666,6 +729,9 @@ export class GeometryEngine {
 
   _resolveExactCutPoint(cut, targetPath) {
     if (!cut || !cut.point) return null;
+    if (cut.isExactAnalytic || cut.boundary?.data?.isCircleEntity) {
+      return cut.point.clone();
+    }
     if (cut.boundary && cut.boundary !== targetPath && typeof cut.boundary.getNearestPoint === 'function') {
       const snapped = cut.boundary.getNearestPoint(cut.point);
       if (snapped && snapped.getDistance(cut.point) < 0.05) {
@@ -674,7 +740,6 @@ export class GeometryEngine {
     }
     return cut.point.clone();
   }
-
 
   divideEntityByCount(entity, count, renderBezierFn, options = {}) {
     if (!entity || count < 2 || !entity.length) return [];

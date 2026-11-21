@@ -55,11 +55,16 @@ Soportar entrada por consola en MoveTool (onCommandInput): Permitir ingresar coo
 Extraer SegmentEditHandler.selectEdgeAt: Mover _selectEditModeEdge desde CommandSelectionHandler hacia SegmentEditHandler para unificar la selección de tramos en modo edición.
 Migrar DivisionSelectionHandler.js a BoxSelectHandler y _getPaper(): Reemplazar la caja de selección propia de división por BoxSelectHandler con filtro de entidades editables y eliminar dependencias al paper global.
 
-Cuadrante para maximos y minimos
+  [x] Cuadrante para maximos y minimos para curvas Bezier
+  [x] Seleccion y bezier con zoom falla y zoom extents solo usa nodos y no min y max de curvas.
+
 teclas rapidas en tooltip desde CADTHEME cuando corresponda
+agregar teclas rapidas a cadtheme cmd+z cmd+a cmd+y backspace, shift, alt, etc
 Resolver la visualizacion de osnap interseccion
-bloqueo y visibilidad global por entidades selecciondas
 seleccion sobre elementos superpuestos en modo edicion con dropdown como tenemos en modo entidad
+
+
+bloqueo y visibilidad global por entidades selecciondas
 no permitir la seleccion de imagen como elemento en trim/extend
 agregar en linetool los colores de la etiqueta de rubberband
 
@@ -68,9 +73,7 @@ resolver el punto de incio con estilo punto en division por distancia
 
 resolver la barra de desplazamiento horizontal en el panel de propiedades al reducir el tamaño sin overflow
 resolver que hacer con la opacidad en capa
-seleccion y bezier con zoom falla y zoom extents solo usa nodos y no min y max de curvas.
 autocompletado en consola
-agregar teclas rapidas a cadtheme cmd+z cmd+a cmd+y backspace, shift, alt, etc
 la tangente en circulos no es con la linea del radio sino que es con la curva
 movimiento y osnap perpendicular
 implementar clases para las entidades

@@ -4,13 +4,17 @@
 
 import {
   resolveFromPoint,
-  getCurveQuadrantCandidates,
   collectExtendedOsnapCandidates
 } from './OsnapGeometryMath.js';
 import {
   buildRasterContourPath,
   collectPrimitiveOsnapCandidates
 } from './OsnapPrimitiveSolvers.js';
+import {
+  collectPathGeometryCandidates,
+  collectIntersectionCandidates,
+  collectEditingHandleCandidates
+} from './OsnapPathSolvers.js';
 
 export class OsnapEngine {
   constructor(cadService) {
@@ -51,9 +55,14 @@ export class OsnapEngine {
       });
 
       try {
+        const snapFilters = this.service.snapFilters;
+        const intersectionPathTargets = rasterContourMap.size > 0
+          ? [...snapTargets, ...rasterContourMap.values()]
+          : snapTargets;
+
         candidatePoints.push(
           ...collectPrimitiveOsnapCandidates({
-            snapFilters: this.service.snapFilters,
+            snapFilters,
             circleTargets,
             rasterTargets,
             pointTargets,
@@ -62,31 +71,58 @@ export class OsnapEngine {
             snapRadius,
             mousePoint,
             isSelfPoint
+          }),
+          ...collectPathGeometryCandidates({
+            snapFilters,
+            snapTargets,
+            activePath,
+            draggedPath,
+            draggedSegment,
+            ignoreSegments,
+            isDynamicCurve,
+            isSelfPoint,
+            mousePoint,
+            snapRadius
+          }),
+          ...collectEditingHandleCandidates({
+            snapFilters,
+            editingEntities: this.service.editingEntities || [],
+            layerManager: this.service.utils?.layerManager || null,
+            draggedPath,
+            draggedSegment,
+            ignoreEntities,
+            ignoreSegments,
+            ignoreHandles,
+            isSelfPoint,
+            mousePoint,
+            snapRadius
+          }),
+          ...collectIntersectionCandidates({
+            snapFilters,
+            snapTargets: intersectionPathTargets,
+            circleTargets,
+            activePath,
+            draggedPath,
+            isDynamicCurve,
+            isSelfPoint,
+            mousePoint,
+            snapRadius,
+            epsilon: EPSILON
+          }),
+          ...collectExtendedOsnapCandidates({
+            snapFilters,
+            circleTargets,
+            snapTargets,
+            rasterTargets,
+            mousePoint,
+            snapRadius,
+            fromPoint: resolveFromPoint(activePath, ignoreContext),
+            draggedPath,
+            isSelfPoint,
+            isDynamicCurve,
+            rasterContourMap
           })
         );
-
-        const intersectionPathTargets = rasterContourMap.size > 0
-          ? [...snapTargets, ...rasterContourMap.values()]
-          : snapTargets;
-
-        this._collectPathGeometryOsnaps(snapTargets, activePath, draggedPath, draggedSegment, ignoreSegments, isDynamicCurve, isSelfPoint, mousePoint, snapRadius, candidatePoints);
-        this._collectEditingHandleOsnaps(draggedPath, draggedSegment, ignoreEntities, ignoreSegments, ignoreHandles, isSelfPoint, mousePoint, snapRadius, candidatePoints);
-        this._collectIntersectionOsnaps(intersectionPathTargets, circleTargets, activePath, draggedPath, isDynamicCurve, isSelfPoint, mousePoint, snapRadius, EPSILON, candidatePoints);
-
-        const extendedCandidates = collectExtendedOsnapCandidates({
-          snapFilters: this.service.snapFilters,
-          circleTargets,
-          snapTargets,
-          rasterTargets,
-          mousePoint,
-          snapRadius,
-          fromPoint: resolveFromPoint(activePath, ignoreContext),
-          draggedPath,
-          isSelfPoint,
-          isDynamicCurve,
-          rasterContourMap
-        });
-        if (extendedCandidates.length > 0) candidatePoints.push(...extendedCandidates);
       } finally {
         rasterContourMap.forEach((contour) => contour.remove());
         rasterContourMap.clear();
@@ -203,137 +239,5 @@ export class OsnapEngine {
     }
 
     return { circleTargets, snapTargets, pointTargets, rasterTargets };
-  }
-
-  _collectPathGeometryOsnaps(snapTargets, activePath, draggedPath, draggedSegment, ignoreSegments, isDynamicCurve, isSelfPoint, mousePoint, snapRadius, candidatePoints) {
-    if (this.service.snapFilters.endpoint) {
-      snapTargets.forEach((path) => {
-        if (!path?.segments) return;
-        path.segments.forEach((seg, idx) => {
-          if (path === activePath && idx === path.segments.length - 1) return;
-          if (path === draggedPath && seg === draggedSegment) return;
-          if (ignoreSegments.includes(seg) || isSelfPoint(seg.point)) return;
-
-          const d = seg.point.getDistance(mousePoint);
-          if (d <= snapRadius) {
-            candidatePoints.push({ point: seg.point.clone(), type: 'endpoint', dist: d, priority: 1 });
-          }
-        });
-      });
-    }
-
-    if (this.service.snapFilters.midpoint) {
-      snapTargets.forEach((path) => {
-        if (!path?.curves) return;
-        path.curves.forEach((curve) => {
-          if (!curve || curve.length <= 0 || isDynamicCurve(curve)) return;
-          const mid = curve.getPointAt(curve.length * 0.5);
-          if (mid && !isSelfPoint(mid)) {
-            const d = mid.getDistance(mousePoint);
-            if (d <= snapRadius) {
-              candidatePoints.push({ point: mid, type: 'midpoint', dist: d, priority: 2 });
-            }
-          }
-        });
-      });
-    }
-
-    if (this.service.snapFilters.quadrant) {
-      snapTargets.forEach((path) => {
-        const quadCandidates = getCurveQuadrantCandidates(path, mousePoint, snapRadius, isSelfPoint, isDynamicCurve);
-        if (quadCandidates.length > 0) {
-          candidatePoints.push(...quadCandidates);
-        }
-      });
-    }
-  }
-
-  _collectIntersectionOsnaps(snapTargets, circleTargets, activePath, draggedPath, isDynamicCurve, isSelfPoint, mousePoint, snapRadius, EPSILON, candidatePoints) {
-    if (!this.service.snapFilters.intersection) return;
-
-    snapTargets.forEach((path) => {
-      if (!path?.curves || path.curves.length < 1) return;
-      if (draggedPath && path === draggedPath) return;
-
-      const totalLen = path.length || 0;
-      if (totalLen <= EPSILON) return;
-
-      path.getIntersections().forEach((cross) => {
-        if (!cross?.point || isSelfPoint(cross.point)) return;
-        if (isDynamicCurve(cross.curve) || isDynamicCurve(cross.intersection?.curve)) return;
-
-        const off1 = cross.offset;
-        const off2 = cross.intersection?.offset;
-        if (off1 !== undefined && off2 !== undefined) {
-          const rawDiff = Math.abs(off1 - off2);
-          const arcSep = path.closed ? Math.min(rawDiff, totalLen - rawDiff) : rawDiff;
-          if (arcSep < 1e-3) return;
-        } else if (path.segments?.some((seg) => seg.point.getDistance(cross.point) < 1e-3)) {
-          return;
-        }
-
-        const d = cross.point.getDistance(mousePoint);
-        if (d <= snapRadius) {
-          candidatePoints.push({ point: cross.point.clone(), type: 'intersection', dist: d, priority: 0 });
-        }
-      });
-    });
-
-    const intersectionTargets = Array.from(new Set([...snapTargets, ...circleTargets]))
-      .filter((ent) => ent !== activePath);
-
-    for (let i = 0; i < intersectionTargets.length; i++) {
-      for (let j = i + 1; j < intersectionTargets.length; j++) {
-        const pathA = intersectionTargets[i];
-        const pathB = intersectionTargets[j];
-        if (!pathA || !pathB || pathA === pathB) continue;
-        if (draggedPath && (pathA === draggedPath || pathB === draggedPath)) continue;
-        if (!pathA.bounds.intersects(pathB.bounds)) continue;
-
-        pathA.getIntersections(pathB).forEach((cross) => {
-          if (!cross?.point || isSelfPoint(cross.point)) return;
-          if (isDynamicCurve(cross.curve) || isDynamicCurve(cross.intersection?.curve)) return;
-
-          const d = cross.point.getDistance(mousePoint);
-          if (d <= snapRadius) {
-            candidatePoints.push({ point: cross.point.clone(), type: 'intersection', dist: d, priority: 0 });
-          }
-        });
-      }
-    }
-  }
-
-  _collectEditingHandleOsnaps(draggedPath, draggedSegment, ignoreEntities, ignoreSegments, ignoreHandles, isSelfPoint, mousePoint, snapRadius, candidatePoints) {
-    if (!this.service.snapFilters.node) return;
-    const editingEntities = this.service.editingEntities || [];
-    if (editingEntities.length === 0) return;
-
-    const layerManager = this.service.utils?.layerManager || null;
-
-    editingEntities.forEach((ent) => {
-      if (!ent || !ent.parent || ent.visible === false) return;
-      if (!(ent instanceof paper.Path) || ent.data?.isPointEntity) return;
-      if (!ent.segments || ent.segments.length < 2) return;
-      if ((draggedPath && ent === draggedPath) || ignoreEntities.includes(ent)) return;
-      if (layerManager && !layerManager.isEntityInteractive(ent)) return;
-
-      ent.segments.forEach((seg) => {
-        if ((draggedPath && seg === draggedSegment) || ignoreSegments.includes(seg)) return;
-
-        ['handleIn', 'handleOut'].forEach((handleType) => {
-          if (!seg[handleType] || seg[handleType].isZero()) return;
-          const isIgnored = ignoreHandles.some((h) => h.segment === seg && h.type === handleType);
-          if (isIgnored) return;
-
-          const handlePt = seg.point.add(seg[handleType]);
-          if (isSelfPoint(handlePt)) return;
-
-          const d = handlePt.getDistance(mousePoint);
-          if (d <= snapRadius) {
-            candidatePoints.push({ point: handlePt, type: 'node', dist: d, priority: 0 });
-          }
-        });
-      });
-    });
   }
 }
