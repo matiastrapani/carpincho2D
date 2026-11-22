@@ -6,6 +6,7 @@ import { LayerManager } from './services/LayerManager.js';
 import { PropertyManager } from './services/PropertyManager.js';
 import { SelectTool } from './tools/select/SelectTool.js';
 import { LineTool } from './tools/LineTool.js';
+import { TangentLineTool } from './tools/TangentLineTool.js';
 import { PolylineTool } from './tools/PolylineTool.js';
 import { CircleTool } from './tools/CircleTool.js';
 import { SplineTool } from './tools/SplineTool.js';
@@ -118,6 +119,7 @@ export class CADUtils {
 
     // Geometría Básica y Líneas
     this.toolManager.registerTool('line', new LineTool(this.service, this));
+    this.toolManager.registerTool('line_tangent', new TangentLineTool(this.service, this));
     this.toolManager.registerTool('polyline', new PolylineTool(this.service, this));
     this.toolManager.registerTool('circle', new CircleTool(this.service, this));
 

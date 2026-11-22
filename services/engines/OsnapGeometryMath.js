@@ -23,6 +23,26 @@ export function resolveFromPoint(activePath, ignoreContext) {
 export function getNearestCandidate(target, mousePoint, snapRadius, isSelfPoint, isDynamicCurve = null) {
   if (!target) return null;
 
+  if (target.data?.isCircleEntity) {
+    const center = target.position;
+    const radius = target.data?.radius || (target.bounds.width / 2);
+    const vec = mousePoint.subtract(center);
+    if (vec.length <= GEOM_EPSILON || radius <= 0) return null;
+
+    const pt = center.add(vec.normalize(radius));
+    if (isSelfPoint(pt)) return null;
+
+    const dist = pt.getDistance(mousePoint);
+    if (dist > snapRadius) return null;
+
+    return {
+      point: pt,
+      type: 'nearest',
+      dist,
+      priority: 4
+    };
+  }
+
   if (target instanceof paper.Path && Array.isArray(target.curves) && typeof isDynamicCurve === 'function') {
     let bestLoc = null;
     let minDist = snapRadius;

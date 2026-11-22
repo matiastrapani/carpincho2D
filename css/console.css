@@ -1,0 +1,72 @@
+/* ==========================================================================
+   CONSOLA UNIFICADA (Fija y Flotante)
+   ========================================================================== */
+.cad-console-log {
+  --console-font-size: 11px;
+  --console-line-height: 1.35;
+  --console-item-gap: 12px;          /* Separación entre comandos independientes */
+  --console-inner-gap: 3px;          /* Separación entre líneas dentro de un comando */
+  --console-group-indent: 10px;      /* Sangría izquierda del bloque de comando */
+  --console-group-extra-bottom: 0px; /* Aire extra tras un bloque multilínea con | */
+  --console-input-gap: 1px;          /* Distancia entre el último renglón y el input */
+
+  flex: 1 1 0%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 6px 6px var(--console-input-gap) 6px;
+  gap: var(--console-item-gap);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--console-font-size);
+  line-height: var(--console-line-height);
+  color: #d4d4d8;
+  user-select: text;
+}
+
+.cad-console-log::before {
+  content: '';
+  margin-top: auto;
+  margin-bottom: calc(-1 * var(--console-item-gap));
+}
+
+/* Consola flotante: conserva aire lateral/superior de 14px y respeta --console-input-gap abajo */
+#cmdConsoleLog.cad-console-log {
+  padding: 14px 14px 7px 14px;
+}
+
+.cad-console-entry {
+  line-height: var(--console-line-height);
+  flex-shrink: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.cad-console-entry--user {
+  color: #e4e4e7;
+  font-weight: 500;
+}
+
+.cad-console-entry--system {
+  color: #a1a1aa;
+}
+
+.cad-console-entry--interactive {
+  color: #d4d4d8;
+}
+
+/* Grupo de sesión de herramienta (subordinado a "Comando: <Nombre>") */
+.cad-console-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--console-inner-gap);
+  margin-top: calc(var(--console-inner-gap) - var(--console-item-gap));
+  padding-left: var(--console-group-indent);
+  border-left: 1.5px solid transparent;
+}
+
+.cad-console-group.is-multiline {
+  border-left-color: var(--cad-console-session-border, #88ff00);
+  margin-bottom: var(--console-group-extra-bottom);
+}

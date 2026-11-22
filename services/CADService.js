@@ -92,7 +92,7 @@ export class CADService {
     }
 
     if (!undoneCommand && !silent && cm) {
-      cm.logSystem(`Deshacer: ${CAD_CATALOG.commands.undo.logs.empty}`, { grouped: false });
+      cm.logSystem(`[DESHACER] ${CAD_CATALOG.commands.undo.logs.empty}`, { grouped: false });
     }
 
     return Boolean(undoneCommand);
@@ -111,7 +111,7 @@ export class CADService {
     }
 
     if (!redoneCommand && !silent && cm) {
-      cm.logSystem(`Rehacer: ${CAD_CATALOG.commands.redo.logs.empty}`, { grouped: false });
+      cm.logSystem(`[REHACER] ${CAD_CATALOG.commands.redo.logs.empty}`, { grouped: false });
     }
 
     return Boolean(redoneCommand);
@@ -138,61 +138,99 @@ export class CADService {
     }
   }
 
+  _handleHistoryTransaction({ type, command }) {
+    this._notifyHistoryChange();
+
+    if (this._suppressTransactionLog || !command) return;
+    const cm = this.utils?.consoleManager;
+    if (!cm) return;
+
+    const info = this._describeCommand(command);
+    if (!info?.label) return;
+
+    if (type === 'execute') {
+      if (info.skipExecuteLog) return;
+      const isGrouped = Boolean(cm.hasActiveCommandGroup?.());
+      const text = info.raw ? info.label : (info.tag ? `[${info.tag}] ${info.label}` : info.label);
+      cm.logSystem(text, { grouped: isGrouped });
+      return;
+    }
+
+    const cleanTarget = info.raw
+      ? info.label.replace(/^\[CAPA\]\s*/i, 'Capa ')
+      : (info.historyLabel || info.label);
+    const actionTag = type === 'undo' ? '[DESHACER]' : '[REHACER]';
+    cm.logSystem(`${actionTag} ${cleanTarget}`, { grouped: false });
+  }
+
   _describeCommand(command) {
     if (typeof command.getDescription === 'function') {
       const desc = command.getDescription();
-      return typeof desc === 'string' ? { label: desc } : desc;
+      return typeof desc === 'string' ? { label: desc, raw: true } : desc;
     }
 
     const typeName = command.constructor?.name || '';
     const entity = command.lineEntity || command.pointEntity || command.entity;
 
     if (typeName === 'AddLineCommand' || typeName === 'AddPointCommand' || typeName === 'AddEntityCommand') {
-      const entityName = entity?.name || 'Entidad';
-      return { label: entityName, skipExecuteLog: true };
+      return { label: entity?.name || 'Entidad', skipExecuteLog: true };
     }
 
-    if (typeName === 'ChangeOpacityCommand') {
-      return { label: `Opacidad a ${Math.round((command.newOpacity ?? 1) * 100)}%` };
+    if (typeName === 'TrimCommand') {
+      const target = command.originalPath?.name || 'Entidad';
+      return { tag: 'RECORTAR', label: `Recorte ${target}` };
     }
 
-    if (typeName === 'UpdateEntityPropertyCommand') {
-      const count = Array.isArray(command.entities) ? command.entities.length : 1;
-      return { label: `Propiedades (${count} ${count === 1 ? 'entidad' : 'entidades'})` };
+    if (typeName === 'BatchTrimCommand') {
+      const names = (command.commands || []).map((c) => c.originalPath?.name).filter(Boolean);
+      const target = names.length === 1 ? names[0] : `${names.length} entidades`;
+      return { tag: 'RECORTAR', label: `Recorte ${target}` };
     }
 
-    if (typeName === 'UpdateDefaultSettingsCommand') {
-      return { label: 'Propiedades por defecto actualizadas' };
+    if (typeName === 'ExtendCommand') {
+      const target = command.path?.name || 'Entidad';
+      return { tag: 'EXTENDER', label: `Alargamiento ${target}` };
     }
 
     if (typeName === 'MoveCommand') {
-      return { label: 'Desplazamiento' };
+      const items = Array.isArray(command.moveData)
+        ? command.moveData
+        : (command.moveData?.entities || (command.moveData?.entity ? [command.moveData.entity] : []));
+      const names = items.map((it) => it?.entity?.name || it?.name).filter(Boolean);
+      const target = names.length === 1 ? names[0] : `${names.length || 1} entidades`;
+      return { tag: 'MOVER', label: target, historyLabel: `Desplazamiento ${target}` };
     }
 
     if (typeName === 'DeleteCommand') {
-      return { label: 'Eliminar elementos' };
+      return { tag: 'ELIMINAR', label: 'Elementos eliminados' };
     }
 
     if (typeName === 'DivideCommand') {
       const pts = command.pointsCreated?.length || 0;
-      return { label: `División (${pts} puntos)` };
-    }
-
-    if (typeName === 'TrimCommand' || typeName === 'BatchTrimCommand') {
-      return { label: 'Recorte' };
-    }
-
-    if (typeName === 'ExtendCommand') {
-      return { label: 'Alargamiento' };
+      return { tag: 'DIVIDIR', label: `${pts} puntos creados` };
     }
 
     if (typeName === 'TransformEntityCommand') {
-      return { label: 'Transformación de entidad' };
+      const target = command.entity?.name || 'Entidad';
+      return { tag: 'TRANSFORMAR', label: target };
+    }
+
+    if (typeName === 'ChangeOpacityCommand') {
+      return { tag: 'PROPIEDADES', label: `Opacidad a ${Math.round((command.newOpacity ?? 1) * 100)}%` };
+    }
+
+    if (typeName === 'UpdateEntityPropertyCommand') {
+      const count = Array.isArray(command.entities) ? command.entities.length : 1;
+      return { tag: 'PROPIEDADES', label: `${count} ${count === 1 ? 'entidad actualizada' : 'entidades actualizadas'}` };
+    }
+
+    if (typeName === 'UpdateDefaultSettingsCommand') {
+      return { tag: 'PROPIEDADES', label: 'Valores por defecto actualizados' };
     }
 
     if (typeName === 'ImportSVGCommand') {
       const count = command.importedEntities?.length || 0;
-      return { label: `Importar SVG (${count} entidades)` };
+      return { tag: 'IMPORTAR', label: `SVG (${count} entidades)` };
     }
 
     return null;

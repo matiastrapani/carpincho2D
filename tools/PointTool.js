@@ -1,26 +1,39 @@
 /**
  * tools/PointTool.js - Herramienta para Puntos y División de Entidades
- * Soporta selección estándar, caja de selección verde (#008800) y definición del punto de inicio en división por distancia.
+ * Soporta inserción de puntos por clic o coordenadas y división por cantidad o distancia.
  */
 
 import { BaseTool } from './BaseTool.js';
 import { AddPointCommand } from '../services/commands/cadCommands.js';
 import { DivisionSelectionHandler } from './point/DivisionSelectionHandler.js';
+import { CommandInputParser } from '../services/input/CommandInputParser.js';
+import { CAD_CATALOG } from '../config/cadCatalog.js';
 
 export class PointTool extends BaseTool {
   constructor(cadService, cadUtils) {
     super(cadService, cadUtils);
-    this.promptText = 'POINT. Haz clic en el lienzo para colocar un punto o ingresa coordenadas (X,Y).';
     this.divisionSelector = new DivisionSelectionHandler(cadService, cadUtils);
     this.lastInsertedPoint = null;
   }
 
-  _getPaper() {
-    const p = this.utils?.paper || (typeof paper !== 'undefined' ? paper : null);
-    if (!p) {
-      throw new Error('PointTool requiere una instancia válida de Paper.js.');
-    }
-    return p;
+  get commandName() {
+    if (this._commandName) return this._commandName;
+    const mode = this.utils?.currentToolMode || 'point';
+    return (CAD_CATALOG.tools[mode]?.displayName || 'PUNTO').toUpperCase();
+  }
+
+  set commandName(val) {
+    this._commandName = val;
+  }
+
+  get commandAliases() {
+    if (this._commandAliases && this._commandAliases.length > 0) return this._commandAliases;
+    const mode = this.utils?.currentToolMode || 'point';
+    return CAD_CATALOG.tools[mode]?.aliases || ['PUNTO', 'PT'];
+  }
+
+  set commandAliases(val) {
+    this._commandAliases = val;
   }
 
   getSelectionPreserveMode(toolName) {
@@ -31,12 +44,17 @@ export class PointTool extends BaseTool {
     return toolName === 'divide_count' || toolName === 'divide_dist';
   }
 
+  _setStepFromLegacyPrompt(msg, options = {}) {
+    const clean = String(msg || '').replace(/:\s*$/, '').trim();
+    this.setStep(clean || 'Especifique valor', options);
+  }
+
   onActivate() {
     this.lastInsertedPoint = null;
     const mode = this.utils.currentToolMode;
 
     if (mode === 'point') {
-      this.setPrompt('POINT. Haz clic en el lienzo para colocar un punto o ingresa coordenadas (X,Y):');
+      this.setStep(CAD_CATALOG.tools.point.prompts.start);
       return;
     }
 
@@ -44,48 +62,38 @@ export class PointTool extends BaseTool {
       const validSelected = this.divisionSelector.syncTargetsCache();
 
       if (validSelected.length > 0) {
-        this.divisionSelector.askForDivisionValue(mode, (msg) => this.setPrompt(msg));
+        this.divisionSelector.askForDivisionValue(mode, (msg) => this._setStepFromLegacyPrompt(msg));
       } else {
         this.divisionSelector.reset();
-
-        if (mode === 'divide_count') {
-          this.setPrompt('DIVIDIR (N): Selecciona entidad/es y presiona ENTER o Clic Derecho para continuar.');
-        } else {
-          this.setPrompt('DIVIDIR (Dist): Selecciona entidad/es y presiona ENTER o Clic Derecho para continuar.');
-        }
+        this.setStep(CAD_CATALOG.tools[mode].prompts.select);
       }
     }
   }
 
   onMouseDown(event) {
-    if (event.event.button !== 0) return;
+    if (event.event && event.event.button !== 0) return;
 
     const p = this.paper;
     const mode = this.utils.currentToolMode;
 
     if (mode === 'point') {
-      const osnap = this.service.calculateOsnap(
-        event.point,
-        (pt, type) => this.utils.hud.renderSnapMarker(pt, type)
-      );
-      this.createPointAt(osnap.point);
+      const pt = this.utils.resolveConstrainedPoint(event.point);
+      this.createPointAt(pt, { logInput: true });
       return;
     }
 
-    // PASO: Selección del punto de inicio en División por Distancia
     if (mode === 'divide_dist' && this.divisionSelector.step === 'start_point') {
       if (this.divisionSelector.selectStartPointAt(event.point)) {
-        this.setPrompt('Punto de inicio actualizado. Haz clic en otra entidad o presiona ENTER / Clic Derecho para ejecutar:');
+        this.setStep(CAD_CATALOG.tools.divide_dist.prompts.startPointUpdated);
       }
       return;
     }
 
-    // PASO: Selección de Entidades
     if ((mode === 'divide_count' || mode === 'divide_dist') && this.divisionSelector.step === 'select') {
       const hitEntity = p.project.hitTest(event.point, {
         stroke: true,
         fill: true,
-        tolerance: 8 / p.view.zoom,
+        tolerance: 8 / (p.view.zoom || 1),
         match: (res) => {
           const item = this._resolveRootEntity(res.item);
           return Boolean(item) && this.divisionSelector.isEntitySelectable(item);
@@ -95,7 +103,7 @@ export class PointTool extends BaseTool {
       const clickedItem = hitEntity ? this._resolveRootEntity(hitEntity.item) : null;
       if (clickedItem && this.divisionSelector.toggleEntitySelection(clickedItem)) {
         const count = this.divisionSelector.getTargets().length;
-        this.setPrompt(`Objetivos seleccionados: ${count}. Presiona ENTER o Clic Derecho para continuar...`);
+        this.setStep(CAD_CATALOG.tools[mode].prompts.selectedCount(count));
         return;
       }
 
@@ -111,11 +119,8 @@ export class PointTool extends BaseTool {
     const mode = this.utils.currentToolMode;
 
     if (mode === 'point') {
-      const osnap = this.service.calculateOsnap(
-        event.point,
-        (pt, type) => this.utils.hud.renderSnapMarker(pt, type)
-      );
-      this.utils.hud.updateHUD(osnap.point);
+      const pt = this.utils.resolveConstrainedPoint(event.point);
+      this.utils.hud.updateHUD(pt);
       return;
     }
 
@@ -135,19 +140,28 @@ export class PointTool extends BaseTool {
   onMouseUp(event) {
     if (this.divisionSelector.isSelectingBox) {
       this.divisionSelector.finishBox(event.point);
+      const mode = this.utils.currentToolMode;
       const count = this.divisionSelector.getTargets().length;
-      this.setPrompt(`Objetivos seleccionados: ${count}. Presiona ENTER o Clic Derecho para continuar...`);
+      if (CAD_CATALOG.tools[mode]?.prompts?.selectedCount) {
+        this.setStep(CAD_CATALOG.tools[mode].prompts.selectedCount(count));
+      }
     }
   }
 
-  createPointAt(pt, coordsLabel = null) {
-    const EPSILON = 0.001;
+  createPointAt(pt, { logInput = false } = {}) {
+    const logs = CAD_CATALOG.tools.point.logs;
     if (!pt) return null;
-    if (this.lastInsertedPoint && this.lastInsertedPoint.getDistance(pt) < EPSILON) {
+
+    if (this.lastInsertedPoint && this.lastInsertedPoint.getDistance(pt) < 0.001) {
+      this.logTagged(logs.samePoint);
       return null;
     }
 
-    const p = this.paper;
+    const coordsStr = this.formatCoords(pt);
+    if (logInput) {
+      this.utils.consoleManager?.logStepInput?.(coordsStr);
+    }
+
     const pointEntity = this.service.createPointEntity(pt);
     if (!pointEntity) return null;
 
@@ -158,21 +172,58 @@ export class PointTool extends BaseTool {
     this.service.deselectAllSegments();
     this.utils.selectionRenderEngine.renderBezierHandles();
     this.utils.selectionRenderEngine.updateEntitiesStroke();
-    p.view.update();
+    this.paper.view.update();
+    this.refreshUndoRedoUI();
 
-    const cadX = pt.x.toFixed(2);
-    const cadY = (-pt.y).toFixed(2);
-    const label = coordsLabel || `${cadX}, ${cadY}`;
-    this.setPrompt(`Punto insertado en (${label}). Haz clic o ingresa coordenadas (X,Y):`);
+    this.logTagged(logs.created({
+      name: pointEntity.name || 'Punto',
+      coords: coordsStr
+    }));
+    this.setStep(CAD_CATALOG.tools.point.prompts.next);
 
     return pointEntity;
   }
 
+  _finishPointMode() {
+    if (this.lastInsertedPoint) {
+      this.logTagged(CAD_CATALOG.tools.point.logs.finished);
+      this.exitToSelect();
+      return;
+    }
+    if (this.utils.consoleManager) {
+      this.utils.consoleManager.handleCancel();
+      return;
+    }
+    this.exitToSelect();
+  }
+
+  onConfirmDefault() {
+    const mode = this.utils.currentToolMode;
+    if (mode === 'point') {
+      this._finishPointMode();
+    } else if (mode === 'divide_dist' && this.divisionSelector.step === 'start_point') {
+      this.divisionSelector.executeDivision(mode, () => this.exitToSelect());
+    } else if ((mode === 'divide_count' || mode === 'divide_dist') && this.divisionSelector.step === 'input') {
+      this.divisionSelector.acceptDefaultValue(
+        mode,
+        (msg, opts) => this._setStepFromLegacyPrompt(msg, opts),
+        () => this.exitToSelect()
+      );
+    } else if ((mode === 'divide_count' || mode === 'divide_dist') && this.divisionSelector.step === 'select') {
+      if (this.divisionSelector.getTargets().length > 0) {
+        this.divisionSelector.askForDivisionValue(mode, (msg, opts) => this._setStepFromLegacyPrompt(msg, opts));
+      }
+    }
+  }
+
   onContextMenu(event) {
+    if (event?.preventDefault) event.preventDefault();
+    if (event?.event?.preventDefault) event.event.preventDefault();
+
     const mode = this.utils.currentToolMode;
 
     if (mode === 'point') {
-      this.exitToSelect();
+      this._finishPointMode();
       return true;
     }
 
@@ -181,88 +232,115 @@ export class PointTool extends BaseTool {
       return true;
     }
 
+    if ((mode === 'divide_count' || mode === 'divide_dist') && this.divisionSelector.step === 'input') {
+      if (this.divisionSelector.acceptDefaultValue(
+        mode,
+        (msg, opts) => this._setStepFromLegacyPrompt(msg, opts),
+        () => this.exitToSelect()
+      )) {
+        return true;
+      }
+    }
+
     if ((mode === 'divide_count' || mode === 'divide_dist') && this.divisionSelector.step === 'select') {
       if (this.divisionSelector.getTargets().length > 0) {
-        this.divisionSelector.askForDivisionValue(mode, (msg) => this.setPrompt(msg));
-      } else {
-        this.exitToSelect();
+        this.divisionSelector.askForDivisionValue(mode, (msg, opts) => this._setStepFromLegacyPrompt(msg, opts));
+        return true;
       }
+    }
+
+    if (this.utils.consoleManager) {
+      this.utils.consoleManager.handleCancel();
       return true;
     }
 
-    return false;
+    this.exitToSelect();
+    return true;
   }
 
   onKeyDown(event) {
     const key = event.key || event.code;
     const mode = this.utils.currentToolMode;
 
-    if (key === 'Escape') {
-      this.exitToSelect();
-      return true;
-    }
+    if (key === 'Enter' || key === 'NumpadEnter') {
+      if (mode === 'point') {
+        if (typeof event.preventDefault === 'function') event.preventDefault();
+        this._finishPointMode();
+        return true;
+      }
 
-    if (mode === 'point' && (key === 'Enter' || key === 'NumpadEnter' || key === ' ' || key === 'Space')) {
-      this.exitToSelect();
-      return true;
-    }
-
-    if (mode === 'divide_dist' && this.divisionSelector.step === 'start_point') {
-      if (key === 'Enter' || key === 'NumpadEnter' || key === ' ' || key === 'Space') {
+      if (mode === 'divide_dist' && this.divisionSelector.step === 'start_point') {
+        if (typeof event.preventDefault === 'function') event.preventDefault();
         this.divisionSelector.executeDivision(mode, () => this.exitToSelect());
         return true;
       }
-    }
 
-    if ((mode === 'divide_count' || mode === 'divide_dist') && this.divisionSelector.step === 'select') {
-      if (key === 'Enter' || key === 'NumpadEnter' || key === ' ' || key === 'Space') {
+      if ((mode === 'divide_count' || mode === 'divide_dist') && this.divisionSelector.step === 'input') {
+        if (this.divisionSelector.acceptDefaultValue(
+          mode,
+          (msg, opts) => this._setStepFromLegacyPrompt(msg, opts),
+          () => this.exitToSelect()
+        )) {
+          if (typeof event.preventDefault === 'function') event.preventDefault();
+          return true;
+        }
+      }
+
+      if ((mode === 'divide_count' || mode === 'divide_dist') && this.divisionSelector.step === 'select') {
         if (this.divisionSelector.getTargets().length > 0) {
-          this.divisionSelector.askForDivisionValue(mode, (msg) => this.setPrompt(msg));
+          if (typeof event.preventDefault === 'function') event.preventDefault();
+          this.divisionSelector.askForDivisionValue(mode, (msg, opts) => this._setStepFromLegacyPrompt(msg, opts));
           return true;
         }
       }
     }
+
     return super.onKeyDown(event);
   }
 
   onCommandInput(input) {
-    const p = this.paper;
     const mode = this.utils.currentToolMode;
 
     if (mode === 'point') {
-      const raw = input.trim();
-      if (raw.includes(',')) {
-        const parts = raw.split(',');
-        const x = parseFloat(parts[0]);
-        const cadY = parseFloat(parts[1]);
+      const logs = CAD_CATALOG.tools.point.logs;
+      const parsed = CommandInputParser.parse(input, {
+        referencePoint: this.lastInsertedPoint,
+        paper: this.paper
+      });
 
-        if (!isNaN(x) && !isNaN(cadY)) {
-          const pt = new p.Point(x, -cadY);
-          this.createPointAt(pt, `${x}, ${cadY}`);
-          return;
-        }
+      switch (parsed.type) {
+        case 'ACCEPT_DEFAULT':
+          this._finishPointMode();
+          return true;
+        case 'POINT':
+          this.createPointAt(parsed.point);
+          return true;
+        case 'ERROR':
+          this.logTagged(parsed.message);
+          return true;
+        default:
+          this.logTagged(logs.invalidCoords);
+          return true;
       }
-
-      this.setPrompt('Sintaxis de coordenadas inválida. Usa el formato X,Y (ejemplo: 100,50):');
-      return;
     }
 
     if (mode === 'divide_count' || mode === 'divide_dist') {
       this.divisionSelector.handleCommandInput(
         input,
         mode,
-        (msg) => this.setPrompt(msg),
+        (msg) => this._setStepFromLegacyPrompt(msg),
         () => this.exitToSelect()
       );
+      return true;
     }
+
+    return false;
   }
 
   _resolveRootEntity(item) {
     let curr = item;
     while (curr) {
-      if (this.service.entities.includes(curr)) {
-        return curr;
-      }
+      if (this.service.entities.includes(curr)) return curr;
       curr = curr.parent;
     }
     return null;

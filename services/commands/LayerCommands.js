@@ -12,7 +12,7 @@ export class CreateLayerCommand {
   getDescription() {
     const layer = this.createdLayerId ? this.manager.layers.get(this.createdLayerId) : null;
     const name = layer?.name || this.layerData?.name || 'Nueva';
-    return `Capa "${name}" creada`;
+    return `[CAPA] "${name}" creada`;
   }
 
   execute() {
@@ -50,7 +50,7 @@ export class SetActiveLayerCommand {
   getDescription() {
     const layer = this.manager.layers.get(this.newLayerId);
     const name = layer?.name || this.newLayerId;
-    return `Capa activa: "${name}"`;
+    return `[CAPA] activa: "${name}"`;
   }
 
   execute() {
@@ -92,7 +92,7 @@ export class DeleteLayerCommand {
 
   getDescription() {
     const name = this.layerBackup?.name || this.layerId;
-    return `Capa "${name}" eliminada`;
+    return `[CAPA] "${name}" eliminada`;
   }
 
   execute() {
@@ -258,7 +258,7 @@ export class RenameLayerCommand {
   }
 
   getDescription() {
-    return `Capa renombrada: "${this.oldName}" -> "${this.newName}"`;
+    return `[CAPA] renombrada: "${this.oldName}" -> "${this.newName}"`;
   }
 
   execute() {
@@ -278,7 +278,7 @@ export class ReorderLayersCommand {
   }
 
   getDescription() {
-    return `Capa renombrada: "${this.oldName}" -> "${this.newName}"`;
+    return `[CAPA] renombrada: "${this.oldName}" -> "${this.newName}"`;
   }
 
   execute() {

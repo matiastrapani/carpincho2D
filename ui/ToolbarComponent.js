@@ -217,6 +217,13 @@ export class CADToolbarComponent {
                   <span class="text-[10px] text-zinc-400">Secuencia de segmentos</span>
                 </div>
               </div>
+              <div id="optLineTangent" class="flyout-item" data-tool="line_tangent">
+                <span class="iconify text-2xl leading-none shrink-0" data-icon="custom:tangentline"></span>
+                <div class="flex flex-col">
+                  <span class="font-medium text-zinc-200">Línea tangente</span>
+                  <span class="text-[10px] text-zinc-400">Tangente dinámica desde curva</span>
+                </div>
+              </div>
             </div>
           </div>
 

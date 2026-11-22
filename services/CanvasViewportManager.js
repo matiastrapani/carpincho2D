@@ -27,7 +27,6 @@ export class CanvasViewportManager {
     this._resizeObserver = null;
     this._wheelHandler = this.handleMagicMouseWheel.bind(this);
     this._contextMenuHandler = this._handleContextMenu.bind(this);
-    this._cmdInputKeydownHandler = this._handleCmdInputKeydown.bind(this);
     this._windowMouseUpHandler = this._handleWindowMouseUp.bind(this);
   }
 
@@ -80,11 +79,6 @@ export class CanvasViewportManager {
     canvas.addEventListener('wheel', this._wheelHandler, { passive: false });
     canvas.addEventListener('contextmenu', this._contextMenuHandler);
     window.addEventListener('mouseup', this._windowMouseUpHandler);
-
-    const cmdInput = document.getElementById('cmdInput');
-    if (cmdInput) {
-      cmdInput.addEventListener('keydown', this._cmdInputKeydownHandler);
-    }
 
     this.utils.hud.clear();
 
@@ -752,11 +746,6 @@ export class CanvasViewportManager {
     }
 
     window.removeEventListener('mouseup', this._windowMouseUpHandler);
-
-    const cmdInput = document.getElementById('cmdInput');
-    if (cmdInput) {
-      cmdInput.removeEventListener('keydown', this._cmdInputKeydownHandler);
-    }
 
     if (this.gridGroup) {
       this.gridGroup.remove();

@@ -1,25 +1,60 @@
 /**
- * tools/CircleTool.js - Herramienta de Creación de Círculo (Centro y Radio)
+ * tools/CircleTool.js - Herramienta de Creación de Círculo (Centro y Radio/Diámetro)
  */
 
 import { BaseTool } from './BaseTool.js';
+import { CommandInputParser } from '../services/input/CommandInputParser.js';
+import { CAD_CATALOG } from '../config/cadCatalog.js';
 
 export class CircleTool extends BaseTool {
   constructor(cadService, cadUtils) {
     super(cadService, cadUtils);
-    this.promptText = 'CIRCLE. Haz clic para especificar el centro del círculo.';
+    const meta = CAD_CATALOG.tools.circle;
+    this.commandName = 'CÍRCULO';
+    this.commandAliases = meta?.aliases || ['CIRCULO', 'C'];
+    this.promptText = `${meta?.prompts?.center || 'Especifique el centro del círculo'}:`;
     this.centerPoint = null;
     this.lastRadius = null;
     this.previewCircle = null;
     this.previewRadiusLine = null;
     this._unitCircleSegments = null;
+    this.setToolOption('isDiameterMode', false);
   }
 
-  _getRadiusPrompt() {
-    if (this.lastRadius !== null && this.lastRadius > 0.001) {
-      return `Especifica el radio o un punto en el círculo <${this.lastRadius.toFixed(2)}>:`;
+  get isDiameterMode() {
+    return Boolean(this.getToolOption('isDiameterMode', false));
+  }
+
+  set isDiameterMode(value) {
+    this.setToolOption('isDiameterMode', Boolean(value));
+  }
+
+  onActivate() {
+    this.resetTool(true);
+  }
+
+  _getCurrentOptions() {
+    if (!this.centerPoint) return [];
+    const optsMeta = CAD_CATALOG.tools.circle.options;
+    return this.isDiameterMode
+      ? [{ ...optsMeta.radius, active: false }]
+      : [{ ...optsMeta.diameter, active: false }];
+  }
+
+  _announceStep() {
+    const prompts = CAD_CATALOG.tools.circle.prompts;
+    if (!this.centerPoint) {
+      this.setStep(prompts.center);
+      return;
     }
-    return 'Especifica el radio o un punto en el círculo:';
+
+    const hasDefault = this.lastRadius !== null && this.lastRadius > 0.001;
+    const defaultValue = hasDefault
+      ? (this.isDiameterMode ? (this.lastRadius * 2).toFixed(2) : this.lastRadius.toFixed(2))
+      : null;
+    const instruction = this.isDiameterMode ? prompts.diameter : prompts.radius;
+
+    this.setStep(instruction, { defaultValue, options: this._getCurrentOptions() });
   }
 
   _ensurePreviewItems() {
@@ -63,7 +98,8 @@ export class CircleTool extends BaseTool {
 
     const cx = this.centerPoint.x;
     const cy = this.centerPoint.y;
-    const currentRadius = this.centerPoint.getDistance(pt);
+    const rawDist = this.centerPoint.getDistance(pt);
+    const currentRadius = this.isDiameterMode ? rawDist / 2 : rawDist;
     const style = this.resolvePreviewStyle();
 
     this.previewCircle.visible = currentRadius > 1e-6;
@@ -89,10 +125,36 @@ export class CircleTool extends BaseTool {
     this.previewRadiusLine.opacity = style.opacity;
   }
 
+  _refreshPreviewFromMouse() {
+    const cursorPt = this.utils?.lastMousePoint;
+    if (this.centerPoint && cursorPt) {
+      this.utils.hud.clear();
+      const pt = this.utils.resolveConstrainedPoint(cursorPt, {
+        fromPoint: this.centerPoint,
+        isShift: Boolean(this.utils.isShiftPressed),
+        osnapMode: 'circleRadius'
+      });
+      this.utils.hud.updateHUD(pt);
+      this._updatePreview(pt);
+      this.utils.hud.updateFeedbackLabels(this.centerPoint, pt);
+      this.paper.view.update();
+    }
+  }
+
+  _setCenter(pt, { logInput = false } = {}) {
+    if (logInput) {
+      this.utils.consoleManager?.logStepInput?.(this.formatCoords(pt));
+    }
+    this.centerPoint = pt.clone();
+    this._announceStep();
+    this._refreshPreviewFromMouse();
+  }
+
   onMouseDown(event) {
     if (event.event && event.event.button !== 0) return;
+    if (event.point) this.utils.lastMousePoint = event.point.clone();
 
-    const isShift = event.event ? event.event.shiftKey : false;
+    const isShift = event.event ? Boolean(event.event.shiftKey) : false;
     const pt = this.utils.resolveConstrainedPoint(event.point, {
       fromPoint: this.centerPoint,
       isShift,
@@ -100,32 +162,49 @@ export class CircleTool extends BaseTool {
     });
 
     if (!this.centerPoint) {
-      this.centerPoint = pt;
-      this.setPrompt(this._getRadiusPrompt());
+      this._setCenter(pt, { logInput: true });
       return;
     }
 
-    const radius = this.centerPoint.getDistance(pt);
-    this.commitCircle(radius);
+    const dist = this.centerPoint.getDistance(pt);
+    const radius = this.isDiameterMode ? dist / 2 : dist;
+    this.commitCircle(radius, { logInputValue: this.formatCoords(pt) });
   }
 
-  commitCircle(radius) {
-    if (!this.centerPoint || isNaN(radius) || radius <= 0.001) return;
+  commitCircle(radius, { logInputValue = null } = {}) {
+    const logs = CAD_CATALOG.tools.circle.logs;
+    if (!this.centerPoint || Number.isNaN(radius) || radius <= 0.001) {
+      this.logTagged(this.isDiameterMode ? logs.invalidDiameter : logs.invalidRadius);
+      return;
+    }
+
+    if (logInputValue !== null) {
+      this.utils.consoleManager?.logStepInput?.(logInputValue);
+    }
 
     this.lastRadius = radius;
     const circleEntity = this.service.createCircleEntity(this.centerPoint, radius, true, 1);
     if (circleEntity) {
       this.commitNewEntity(circleEntity, 'Círculo');
+      this.logTagged(logs.created({
+        name: circleEntity.name || 'Círculo',
+        center: this.formatCoords(this.centerPoint),
+        radius: radius.toFixed(2)
+      }));
     }
 
-    this.resetTool();
+    this.resetTool(false);
+    this.exitToSelect();
   }
 
   commitDefaultRadius() {
     if (!this.centerPoint || this.lastRadius === null || this.lastRadius <= 0.001) {
       return false;
     }
-    this.commitCircle(this.lastRadius);
+    const defaultStr = this.isDiameterMode
+      ? (this.lastRadius * 2).toFixed(2)
+      : this.lastRadius.toFixed(2);
+    this.commitCircle(this.lastRadius, { logInputValue: defaultStr });
     return true;
   }
 
@@ -133,13 +212,62 @@ export class CircleTool extends BaseTool {
     return this.commitDefaultRadius();
   }
 
+  onCommandInput(rawInput) {
+    const logs = CAD_CATALOG.tools.circle.logs;
+    const parsed = CommandInputParser.parse(rawInput, {
+      options: this._getCurrentOptions(),
+      referencePoint: this.centerPoint,
+      paper: this.paper
+    });
+
+    switch (parsed.type) {
+      case 'ACCEPT_DEFAULT':
+        this.commitDefaultRadius();
+        return true;
+
+      case 'OPTION':
+        if (parsed.key === 'D') {
+          this.isDiameterMode = true;
+          this._announceStep();
+          this._refreshPreviewFromMouse();
+        } else if (parsed.key === 'R') {
+          this.isDiameterMode = false;
+          this._announceStep();
+          this._refreshPreviewFromMouse();
+        }
+        return true;
+
+      case 'POINT':
+        if (!this.centerPoint) {
+          this._setCenter(parsed.point);
+        } else {
+          const dist = this.centerPoint.getDistance(parsed.point);
+          this.commitCircle(this.isDiameterMode ? dist / 2 : dist);
+        }
+        return true;
+
+      case 'NUMBER':
+        if (!this.centerPoint) {
+          this.logTagged(logs.needCenter);
+          return true;
+        }
+        this.commitCircle(this.isDiameterMode ? parsed.value / 2 : parsed.value);
+        return true;
+
+      case 'ERROR':
+        this.logTagged(parsed.message);
+        return true;
+
+      default:
+        return false;
+    }
+  }
+
   onKeyDown(event) {
     const key = event.key || event.code;
     if ((key === 'Enter' || key === 'NumpadEnter') && this.centerPoint) {
       if (this.commitDefaultRadius()) {
-        if (typeof event.preventDefault === 'function') {
-          event.preventDefault();
-        }
+        if (typeof event.preventDefault === 'function') event.preventDefault();
         return true;
       }
     }
@@ -147,8 +275,10 @@ export class CircleTool extends BaseTool {
   }
 
   onMouseMove(event) {
+    if (event.point) this.utils.lastMousePoint = event.point.clone();
+
     this.utils.hud.clear();
-    const isShift = event.event ? event.event.shiftKey : false;
+    const isShift = event.event ? Boolean(event.event.shiftKey) : false;
     const pt = this.utils.resolveConstrainedPoint(event.point, {
       fromPoint: this.centerPoint,
       isShift,
@@ -175,31 +305,34 @@ export class CircleTool extends BaseTool {
     this._unitCircleSegments = null;
   }
 
-  resetTool() {
+  resetTool(announce = false) {
     this.clearPreviews();
     this.centerPoint = null;
     this.utils.hud.clear();
-    this.setPrompt(this.promptText);
+    if (announce) this._announceStep();
     this.paper.view.update();
+    this.refreshUndoRedoUI();
   }
 
   cancel() {
-    this.resetTool();
+    this.resetTool(false);
   }
 
   onContextMenu(event) {
-    if (this.centerPoint) {
-      if (!this.commitDefaultRadius()) {
-        this.resetTool();
-      }
-    } else {
-      this.exitToSelect();
-    }
-    return true;
-  }
+    if (event?.preventDefault) event.preventDefault();
+    if (event?.event?.preventDefault) event.event.preventDefault();
 
-  cancelAndExit() {
-    this.resetTool();
-    this.utils.setTool('select');
+    if (this.centerPoint && this.commitDefaultRadius()) {
+      return true;
+    }
+
+    if (this.utils.consoleManager) {
+      this.utils.consoleManager.handleCancel();
+      return true;
+    }
+
+    this.cancel();
+    this.exitToSelect();
+    return true;
   }
 }

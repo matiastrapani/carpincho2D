@@ -20,7 +20,6 @@ export function intersectCircleCircle(circleA, circleB) {
 
   if (r1 <= 0 || r2 <= 0) return [];
 
-  const PointCtor = c1.constructor;
   const dx = c2.x - c1.x;
   const dy = c2.y - c1.y;
   const d = Math.hypot(dx, dy);
@@ -36,17 +35,17 @@ export function intersectCircleCircle(circleA, circleB) {
   // Tangencia exterior (d ≈ r1 + r2)
   if (Math.abs(d - (r1 + r2)) <= tol) {
     const distFromC1 = 0.5 * (d + r1 - r2);
-    return [new PointCtor(c1.x + ux * distFromC1, c1.y + uy * distFromC1)];
+    return [new paper.Point(c1.x + ux * distFromC1, c1.y + uy * distFromC1)];
   }
 
   // Tangencia interior (d ≈ |r1 - r2|)
   if (Math.abs(d - Math.abs(r1 - r2)) <= tol) {
     if (r1 >= r2) {
       const distFromC1 = 0.5 * (d + r1 + r2);
-      return [new PointCtor(c1.x + ux * distFromC1, c1.y + uy * distFromC1)];
+      return [new paper.Point(c1.x + ux * distFromC1, c1.y + uy * distFromC1)];
     }
     const distFromC1 = 0.5 * (r1 + r2 - d);
-    return [new PointCtor(c1.x - ux * distFromC1, c1.y - uy * distFromC1)];
+    return [new paper.Point(c1.x - ux * distFromC1, c1.y - uy * distFromC1)];
   }
 
   // Secantes: 2 intersecciones exactas
@@ -56,12 +55,12 @@ export function intersectCircleCircle(circleA, circleB) {
   const py = c1.y + a * uy;
 
   return [
-    new PointCtor(px - h * uy, py + h * ux),
-    new PointCtor(px + h * uy, py - h * ux)
+    new paper.Point(px - h * uy, py + h * ux),
+    new paper.Point(px + h * uy, py - h * ux)
   ];
 }
 
-function intersectCircleWithBezierCurve(curve, center, radius, tol, PointCtor) {
+function intersectCircleWithBezierCurve(curve, center, radius, tol) {
   const rSq = radius * radius;
   const radialDiffSq = (t) => {
     const pt = curve.getPointAtTime(t);
@@ -75,7 +74,7 @@ function intersectCircleWithBezierCurve(curve, center, radius, tol, PointCtor) {
   const pushUnique = (t) => {
     const pt = curve.getPointAtTime(t);
     if (!pt) return;
-    const exactPt = new PointCtor(pt.x, pt.y);
+    const exactPt = new paper.Point(pt.x, pt.y);
     if (!results.some((existing) => existing.getDistance(exactPt) <= tol * 10)) {
       results.push(exactPt);
     }
@@ -155,7 +154,6 @@ export function intersectCircleWithPath(circle, path, isDynamicCurve = null) {
   const radius = circle.data?.radius || (circle.bounds.width / 2);
   if (radius <= 0) return [];
 
-  const PointCtor = center.constructor;
   const tol = Math.max(1e-12, 1e-6 * radius);
   const rSq = radius * radius;
   const points = [];
@@ -189,7 +187,7 @@ export function intersectCircleWithPath(circle, path, isDynamicCurve = null) {
         const t = -b / (2 * a);
         if (t >= -paramTol && t <= 1 + paramTol) {
           const ct = Math.max(0, Math.min(1, t));
-          points.push(new PointCtor(p1.x + ct * dx, p1.y + ct * dy));
+          points.push(new paper.Point(p1.x + ct * dx, p1.y + ct * dy));
         }
         return;
       }
@@ -199,14 +197,14 @@ export function intersectCircleWithPath(circle, path, isDynamicCurve = null) {
       [(-b - sqrtDisc) * inv2a, (-b + sqrtDisc) * inv2a].forEach((t) => {
         if (t >= -paramTol && t <= 1 + paramTol) {
           const ct = Math.max(0, Math.min(1, t));
-          points.push(new PointCtor(p1.x + ct * dx, p1.y + ct * dy));
+          points.push(new paper.Point(p1.x + ct * dx, p1.y + ct * dy));
         }
       });
       return;
     }
 
     // Curvas Bézier cúbicas y splines: evaluación radial exacta sobre el polinomio
-    points.push(...intersectCircleWithBezierCurve(curve, center, radius, tol, PointCtor));
+    points.push(...intersectCircleWithBezierCurve(curve, center, radius, tol));
   });
 
   return points;

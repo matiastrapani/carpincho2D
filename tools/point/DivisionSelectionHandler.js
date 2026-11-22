@@ -3,6 +3,7 @@
  */
 
 import { CAD_THEME } from '../../config/cadTheme.js';
+import { CAD_CATALOG, normalizeCommandKey } from '../../config/cadCatalog.js';
 import { BoxSelectHandler } from '../select/BoxSelectHandler.js';
 import { DivideCommand } from '../../services/commands/cadCommands.js';
 
@@ -15,6 +16,8 @@ export class DivisionSelectionHandler {
     this.step = 'select';
     this.divisionCount = null;
     this.divisionDistance = null;
+    this.lastDivisionCount = null;
+    this.lastDivisionDistance = null;
     this.isSelectingBox = false;
     this.boxStartPoint = null;
 
@@ -36,6 +39,22 @@ export class DivisionSelectionHandler {
     return this.utils.hudLayer || this.utils.hud?.hudLayer || p.project?.layers?.find((l) => l.name === 'hudLayer') || null;
   }
 
+  _logTagged(mode, msg) {
+    const displayName = CAD_CATALOG.tools[mode]?.displayName || 'DIVIDIR';
+    const tag = `[${normalizeCommandKey(displayName)}]`;
+    this.utils.consoleManager?.logSystem(`${tag} ${msg}`);
+  }
+
+  _formatDefault(mode) {
+    if (mode === 'divide_count' && this.lastDivisionCount >= 2) {
+      return String(this.lastDivisionCount);
+    }
+    if (mode === 'divide_dist' && this.lastDivisionDistance > 0) {
+      return String(Number(this.lastDivisionDistance.toFixed(4)));
+    }
+    return null;
+  }
+
   _clearEditStateAndSync() {
     const exited = this.service.selectionManager?.exitEditMode?.();
     if (!exited) {
@@ -47,7 +66,17 @@ export class DivisionSelectionHandler {
     }
   }
 
-  askForDivisionValue(mode, setPromptFn) {
+  _promptDivisionValue(mode, setStepFn) {
+    const instruction = CAD_CATALOG.tools[mode]?.prompts?.input
+      || (mode === 'divide_count'
+        ? 'Especifique el número de segmentos'
+        : 'Especifique la distancia de división');
+
+    setStepFn?.(instruction, { defaultValue: this._formatDefault(mode) });
+    this.utils.consoleManager?.focus?.();
+  }
+
+  askForDivisionValue(mode, setStepFn) {
     const p = this._getPaper();
     const count = this.syncTargetsCache().length;
     this.step = 'input';
@@ -55,42 +84,61 @@ export class DivisionSelectionHandler {
     this._clearEditStateAndSync();
     if (p.view) p.view.update();
 
-    const label = mode === 'divide_count'
-      ? 'DIVIDIR (N): Especifica el número de segmentos'
-      : 'DIVIDIR (Dist): Especifica la distancia de división';
-    setPromptFn?.(`${label} (${count} objetivo/s):`);
-    this.utils.consoleManager?.focus?.();
+    const summaryMsg = CAD_CATALOG.tools[mode]?.prompts?.selectedSummary?.(count)
+      || `Objetivos seleccionados: ${count}.`;
+    this._logTagged(mode, summaryMsg);
+
+    this._promptDivisionValue(mode, setStepFn);
   }
 
-  handleCommandInput(input, mode, setPromptFn, exitToSelectFn) {
+  acceptDefaultValue(mode, setStepFn, exitToSelectFn) {
+    if (this.step !== 'input' || this.getTargets().length === 0) return false;
+    const defaultStr = this._formatDefault(mode);
+    if (!defaultStr) return false;
+
+    this.utils.consoleManager?.logStepInput?.(defaultStr);
+    this.handleCommandInput(defaultStr, mode, setStepFn, exitToSelectFn);
+    return true;
+  }
+
+  handleCommandInput(input, mode, setStepFn, exitToSelectFn) {
     if (mode === 'divide_dist' && this.step === 'start_point') {
       this.executeDivision(mode, exitToSelectFn);
       return;
     }
     if (this.step !== 'input' || this.getTargets().length === 0) return;
 
-    const val = parseFloat(input);
-    if (isNaN(val)) {
-      exitToSelectFn?.();
+    const trimmed = String(input ?? '').trim();
+    if (!trimmed) {
+      if (!this.acceptDefaultValue(mode, setStepFn, exitToSelectFn)) {
+        exitToSelectFn?.();
+      }
       return;
     }
 
+    const val = parseFloat(trimmed);
+    const meta = CAD_CATALOG.tools[mode];
+
     if (mode === 'divide_count') {
       const count = Math.floor(val);
-      if (count < 2) {
-        setPromptFn?.('DIVIDIR (N): El número de segmentos debe ser mayor o igual a 2:');
+      if (Number.isNaN(val) || count < 2) {
+        this._logTagged(mode, meta?.logs?.invalidCount || 'El número de segmentos debe ser mayor o igual a 2.');
+        this._promptDivisionValue(mode, setStepFn);
         return;
       }
       this.divisionCount = count;
+      this.lastDivisionCount = count;
       this.executeDivision(mode, exitToSelectFn);
     } else if (mode === 'divide_dist') {
-      if (val <= 0) {
-        setPromptFn?.('DIVIDIR (Dist): La distancia de división debe ser mayor que 0:');
+      if (Number.isNaN(val) || val <= 0) {
+        this._logTagged(mode, meta?.logs?.invalidDistance || 'La distancia de división debe ser mayor que 0.');
+        this._promptDivisionValue(mode, setStepFn);
         return;
       }
       this.divisionDistance = val;
+      this.lastDivisionDistance = val;
       this.beginStartPointStep();
-      setPromptFn?.('Haz clic en una entidad para cambiar su punto de inicio, o presiona ENTER / Clic Derecho para ejecutar:');
+      setStepFn?.(meta?.prompts?.startPoint || 'Haga clic en una entidad para cambiar su punto de inicio, o presione Enter / clic derecho para ejecutar');
     }
   }
 

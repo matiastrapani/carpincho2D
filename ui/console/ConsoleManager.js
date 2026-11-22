@@ -63,12 +63,13 @@ export class ConsoleManager {
   }
 
   // --- AGRUPACIÓN DE LOGS POR HERRAMIENTA ---
+  hasActiveCommandGroup() {
+    return Boolean(this._activeGroups.fixed || this._activeGroups.floating);
+  }
+
   _createGroupElement() {
     const group = document.createElement('div');
-    group.className = 'cmd-session-group flex flex-col gap-0.5 leading-[1.35]';
-    group.style.borderLeft = '2px solid transparent';
-    group.style.paddingLeft = '10px';
-    group.style.margin = '2px 0 0 0';
+    group.className = 'cad-console-group';
     return group;
   }
 
@@ -97,10 +98,7 @@ export class ConsoleManager {
     const lastChild = logContainer.lastElementChild;
     if (lastChild && lastChild !== groupEl) {
       groupEl.appendChild(lastChild);
-      const borderColor = CAD_THEME?.ui?.consoleSessionBorder || '#88ff00';
-      groupEl.style.borderLeftColor = groupEl.children.length > 1
-        ? `var(--cad-console-session-border, ${borderColor})`
-        : 'transparent';
+      groupEl.classList.toggle('is-multiline', groupEl.children.length > 1);
       logContainer.scrollTop = logContainer.scrollHeight;
     }
   }
@@ -226,8 +224,6 @@ export class ConsoleManager {
       }
       if (grouped) {
         this._syncGroupedEntries();
-      } else {
-        this._applyTopLevelBlockSpacing();
       }
       return;
     }
@@ -236,28 +232,7 @@ export class ConsoleManager {
     this.floatingUI.appendUserEntry(text);
     if (grouped) {
       this._syncGroupedEntries();
-    } else {
-      this._applyTopLevelBlockSpacing();
     }
-  }
-
-  logSystem(text, { grouped = true } = {}) {
-    this.fixedUI.appendSystemEntry(text);
-    this.floatingUI.appendSystemEntry(text);
-    if (grouped) {
-      this._syncGroupedEntries();
-    } else {
-      this._applyTopLevelBlockSpacing();
-    }
-  }
-
-  _applyTopLevelBlockSpacing() {
-    [this.fixedUI.logArea, this.floatingUI.log].forEach((container) => {
-      const lastEl = container?.lastElementChild;
-      if (lastEl && container.children.length > 1) {
-        lastEl.classList.add('mt-2');
-      }
-    });
   }
 
   logSystem(text, { grouped = true } = {}) {
@@ -344,7 +319,9 @@ export class ConsoleManager {
       if (typeof activeTool?.onCommandInput === 'function') {
         const handled = activeTool.onCommandInput(trimmed);
         if (handled === false) {
-          this.logSystem(`Entrada no válida: "${trimmed}"`);
+          const tag = this._getActiveCommandTag();
+          const msg = tag ? `${tag} Entrada no válida: "${trimmed}"` : `Entrada no válida: "${trimmed}"`;
+          this.logSystem(msg);
         }
       }
       this.focusInput();
@@ -367,7 +344,7 @@ export class ConsoleManager {
     }
 
     this.logUser(this.formatCommandName(trimmed), 'Comando: ', { grouped: false });
-    this.logSystem(CAD_CATALOG.system.unknownCommand(trimmed), { grouped: false });
+    this.logSystem(`[COMANDO] ${CAD_CATALOG.system.unknownCommand(trimmed)}`, { grouped: false });
     this.focusInput();
   }
 
@@ -393,7 +370,7 @@ export class ConsoleManager {
       }
       this.logUser(clearLabel, 'Comando: ', { grouped: false });
       this.utils.clearCanvas();
-      this.logSystem(CAD_CATALOG.commands.clear.logs.done, { grouped: false });
+      this.logSystem(`[LIMPIAR] ${CAD_CATALOG.commands.clear.logs.done}`, { grouped: false });
       this.lastCommand = clearLabel;
       this.focusInput();
     }
@@ -508,7 +485,9 @@ export class ConsoleManager {
       (this.utils.currentToolMode && this.utils.currentToolMode !== 'select');
 
     if (isCommandRunning) {
-      this.logSystem(CAD_CATALOG.system.cancelled);
+      const tag = this._getActiveCommandTag();
+      const cancelMsg = tag ? `${tag} ${CAD_CATALOG.system.cancelled}` : CAD_CATALOG.system.cancelled;
+      this.logSystem(cancelMsg);
       this.endCommandGroup();
       this.utils.setTool('select');
       const canvas = this.utils.canvasElement || document.getElementById('cadCanvas');

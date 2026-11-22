@@ -46,8 +46,8 @@ export class FloatingConsoleUI {
           </div>
 
           <!-- Log de Entradas y Salidas -->
-          <div id="cmdConsoleLog" class="flex-1 p-3.5 overflow-y-auto bg-[#1e1e24] font-mono text-[11px] flex flex-col gap-1.5 text-zinc-300 select-text"></div>
-
+          <div id="cmdConsoleLog" class="cad-console-log bg-[#1e1e24]"></div>          
+          
           <!-- Renglón 2: Contenedor Unificado (Prompt + Input Flotante) -->
           <div id="floatingConsoleInputRow" class="p-2 border-t border-[#2a2a32] bg-[#1e1e24] shrink-0 flex items-center gap-1.5">
             <div id="floatingCommandInputWrapper" class="flex items-center flex-1 min-w-[120px] h-7 px-2.5 rounded cursor-text overflow-hidden" style="background-color: var(--cad-bg-input);">
@@ -263,7 +263,7 @@ export class FloatingConsoleUI {
           handle.removeEventListener('pointercancel', stopResize);
         };
 
-        handle.addEventListener('pointermove', onPointerMove);
+        handle.addEventListener('pointermove', onPointerMove);          
         handle.addEventListener('pointerup', stopResize);
         handle.addEventListener('pointercancel', stopResize);
       });
@@ -317,7 +317,7 @@ export class FloatingConsoleUI {
   appendUserEntry(text) {
     if (!this.log) return;
     const entry = document.createElement('div');
-    entry.className = 'text-zinc-200 font-medium break-words';
+    entry.className = 'cad-console-entry cad-console-entry--user';
     entry.textContent = text;
     this.log.appendChild(entry);
     this.scrollToBottom();
@@ -326,7 +326,7 @@ export class FloatingConsoleUI {
   appendSystemEntry(text) {
     if (!this.log) return;
     const entry = document.createElement('div');
-    entry.className = 'text-zinc-400 break-words';
+    entry.className = 'cad-console-entry cad-console-entry--system';
     entry.textContent = text;
     this.log.appendChild(entry);
     this.scrollToBottom();
@@ -335,7 +335,7 @@ export class FloatingConsoleUI {
   appendInteractiveEntry(htmlContent) {
     if (!this.log) return;
     const entry = document.createElement('div');
-    entry.className = 'text-zinc-300 my-0.5 break-words';
+    entry.className = 'cad-console-entry cad-console-entry--interactive';
     entry.innerHTML = htmlContent;
     this.log.appendChild(entry);
     this.scrollToBottom();

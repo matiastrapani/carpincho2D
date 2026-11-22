@@ -3,6 +3,7 @@
  */
 import { AddEntityCommand } from '../services/commands/cadCommands.js';
 import { CAD_THEME } from '../config/cadTheme.js';
+import { normalizeCommandKey } from '../config/cadCatalog.js';
 
 export class BaseTool {
   constructor(cadService, cadUtils) {
@@ -11,14 +12,61 @@ export class BaseTool {
     }
     this.service = cadService;
     this.utils = cadUtils;
+    this.commandName = '';
+    this.commandAliases = [];
     this.promptText = 'Comando:';
     this.preservesSelection = false; // false | 'curves' | 'all'
     this.preservesEditMode = false;
     this.clearsHudOnActivate = false;
     this.cursorMode = 'draw';
     this.highlightGripsOnSelect = false;
+    this.toolOptions = {}
   }
 
+  setToolOption(key, value) {
+    if (!this.toolOptions) this.toolOptions = {};
+    this.toolOptions[key] = value;
+  }
+
+  getToolOption(key, defaultValue = null) {
+    if (!this.toolOptions || !(key in this.toolOptions)) {
+      return defaultValue;
+    }
+    return this.toolOptions[key];
+  }
+
+  formatCoords(pt) {
+    if (!pt) return '0.00,0.00';
+    const x = pt.x.toFixed(2);
+    const y = (pt.y === 0 ? 0 : -pt.y).toFixed(2);
+    return `${x},${y}`;
+  }
+
+  getCommandTag() {
+    const clean = normalizeCommandKey(this.commandName);
+    return clean ? `[${clean}]` : '';
+  }
+
+  logTagged(message) {
+    const tag = this.getCommandTag();
+    const fullMsg = tag ? `${tag} ${message}` : message;
+    this.utils.consoleManager?.logSystem(fullMsg);
+  }
+
+  setStep(instruction, options = {}) {
+    this.promptText = `${instruction}:`;
+    const cm = this.utils.consoleManager;
+    if (cm?.setStepPrompt) {
+      cm.setStepPrompt(instruction, options);
+    } else {
+      this.setPrompt(this.promptText);
+    }
+  }
+
+  refreshUndoRedoUI() {
+    (this.utils.cadUI || window.cadUI)?.updateUndoRedoUI?.();
+  }
+  
   get paper() {
     const paperInstance = this.utils.paper || (typeof paper !== 'undefined' ? paper : null);
     if (!paperInstance) {
@@ -196,7 +244,6 @@ export class BaseTool {
     this.exitToSelect();
     return true;
   }
-
 
   /**
    * Limpieza universal de ciclo de vida.

@@ -34,8 +34,8 @@ export class FixedConsoleUI {
         </div>
 
         <!-- CONTENEDOR DEL LOG -->
-        <div id="fixedConsoleLogArea" class="flex-1 flex flex-col justify-start overflow-y-auto overflow-x-hidden font-mono text-[11px] leading-[1.35] text-zinc-300 min-h-0 p-1.5 gap-0 select-text"></div>
-
+        <div id="fixedConsoleLogArea" class="cad-console-log"></div>
+        
         <!-- RENGLÓN INFERIOR FIJO: Contenedor Unificado (Prompt + Input) + Acciones -->
         <div id="fixedConsoleInputRow" class="flex items-center gap-1.5 w-full shrink-0 h-[28px] min-h-[28px] max-h-[28px] relative z-20">
           <div id="fixedCommandInputWrapper" class="flex items-center flex-1 min-w-[120px] h-7 min-h-[28px] px-2.5 rounded cursor-text overflow-hidden" style="background-color: var(--cad-bg-input);">
@@ -108,7 +108,7 @@ export class FixedConsoleUI {
   appendUserEntry(text) {
     if (!this.logArea) return;
     const entry = document.createElement('div');
-    entry.className = 'text-zinc-200 font-medium leading-[1.35] shrink-0 break-words';
+    entry.className = 'cad-console-entry cad-console-entry--user';
     entry.textContent = text;
     this.logArea.appendChild(entry);
     this.scrollToBottom();
@@ -117,7 +117,7 @@ export class FixedConsoleUI {
   appendSystemEntry(text) {
     if (!this.logArea) return;
     const entry = document.createElement('div');
-    entry.className = 'text-zinc-400 leading-[1.35] shrink-0 break-words';
+    entry.className = 'cad-console-entry cad-console-entry--system';
     entry.textContent = text;
     this.logArea.appendChild(entry);
     this.scrollToBottom();
@@ -126,7 +126,7 @@ export class FixedConsoleUI {
   appendInteractiveEntry(htmlContent) {
     if (!this.logArea) return;
     const entry = document.createElement('div');
-    entry.className = 'text-zinc-300 leading-[1.35] shrink-0 break-words';
+    entry.className = 'cad-console-entry cad-console-entry--interactive';
     entry.innerHTML = htmlContent;
     this.logArea.appendChild(entry);
     this.scrollToBottom();
