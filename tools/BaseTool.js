@@ -11,7 +11,7 @@ export class BaseTool {
     }
     this.service = cadService;
     this.utils = cadUtils;
-    this.promptText = 'Command:';
+    this.promptText = 'Comando:';
     this.preservesSelection = false; // false | 'curves' | 'all'
     this.preservesEditMode = false;
     this.clearsHudOnActivate = false;
@@ -142,9 +142,23 @@ export class BaseTool {
   }
 
   setPrompt(text) {
+    if (this.utils && typeof this.utils.setPrompt === 'function') {
+      this.utils.setPrompt(text);
+      return;
+    }
     const cmdPrompt = document.getElementById('commandPrompt');
     if (cmdPrompt) cmdPrompt.innerText = text;
   }
+
+  onUndo() {
+    return false;
+  }
+
+  onCommandInput(rawInput) {
+    return false;
+  }
+
+  onConfirmDefault() {}
 
   onMouseDown(event) {}
   onMouseDrag(event) {}

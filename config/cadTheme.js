@@ -119,7 +119,9 @@ export const CAD_THEME = {
     textMuted: '#71717a',
     textDisabled: '#54545f',
     textBright: '#e4e4e7',
-    accent: '#008800'
+    accent: '#008800',
+    resizerAccent: '#44AA00',
+    consoleSessionBorder: '#44AA00'
   },
 };
 
@@ -139,7 +141,9 @@ export function applyThemeToDocument(theme = CAD_THEME, root = document.document
     '--cad-text-muted': ui.textMuted,
     '--cad-text-disabled': ui.textDisabled,
     '--cad-text-bright': ui.textBright,
-    '--cad-accent': ui.accent
+    '--cad-accent': ui.accent,
+    '--cad-resizerAccent': ui.resizerAccent,
+    '--cad-console-session-border': ui.consoleSessionBorder
   };
 
   Object.entries(vars).forEach(([key, val]) => {

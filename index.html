@@ -113,8 +113,8 @@
           <!-- Hitbox invisible de 9px (expande 4px arriba/abajo y a los bordes para agarre fácil) -->
           <div class="absolute -top-1 -bottom-1 -left-3.5 -right-3.5"></div>
           
-          <!-- Indicador visual: 1px exacto en reposo; se expande simétricamente a 3px verde sin desplazar el layout -->
-          <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 h-[1px] bg-[#2a2a32] group-hover:bg-[#008800] group-hover:h-[3px] group-[.is-dragging]:bg-[#008800] group-[.is-dragging]:h-[3px] transition-all duration-150 pointer-events-none"></div>
+          <!-- Indicador visual centrado (controlado 100% por CSS) -->
+          <div id="sidebarVerticalResizerVisualLine" class="absolute inset-x-0 top-1/2 -translate-y-1/2 pointer-events-none transition-all duration-150"></div>
         </div>
 
         <!-- Capas (Layers) -->

@@ -18,6 +18,7 @@ export class CADService {
     this.hoveredEntity = null;
     this.utils = null;
     this.onHistoryChange = null;
+    this._suppressedExitSnapPoint = null;
 
     this.history = new CommandHistory();
     this.isSnapMasterEnabled = true;
@@ -71,18 +72,39 @@ export class CADService {
   }
 
   executeCommand(command) {
+    this._suppressedExitSnapPoint = null;
     this.history.execute(command);
     this._notifyHistoryChange();
   }
 
-  undo() {
-    this.history.undo();
+  undo(options = {}) {
+    const undone = Boolean(this.history.undo());
     this._notifyHistoryChange();
+    if (!options?.silentLog) {
+      const cm = this.utils?.consoleManager;
+      if (cm) {
+        cm.logUser('Deshacer', 'Comando: ', { grouped: false });
+        if (!undone) {
+          cm.logSystem('No hay acciones para deshacer.', { grouped: false });
+        }
+      }
+    }
+    return undone;
   }
 
-  redo() {
-    this.history.redo();
+  redo(options = {}) {
+    const redone = Boolean(this.history.redo());
     this._notifyHistoryChange();
+    if (!options?.silentLog) {
+      const cm = this.utils?.consoleManager;
+      if (cm) {
+        cm.logUser('Rehacer', 'Comando: ', { grouped: false });
+        if (!redone) {
+          cm.logSystem('No hay acciones para rehacer.', { grouped: false });
+        }
+      }
+    }
+    return redone;
   }
 
   toggleSnapMaster() {
@@ -100,8 +122,30 @@ export class CADService {
     return this.isOrthoEnabled;
   }
 
+  suppressOsnapUntilLeave(pt) {
+    this._suppressedExitSnapPoint = pt ? pt.clone() : null;
+  }
+
   calculateOsnap(mousePoint, renderMarkerFn, activePath = null, ignoreContext = null) {
-    return this.osnapEngine.calculateOsnap(mousePoint, renderMarkerFn, activePath, ignoreContext);
+    let effectiveContext = ignoreContext;
+
+    if (this._suppressedExitSnapPoint && mousePoint) {
+      const p = this._getPaper();
+      const zoom = p.view?.zoom || 1;
+      const leaveThreshold = 14 / zoom;
+
+      if (mousePoint.getDistance(this._suppressedExitSnapPoint) <= leaveThreshold) {
+        const existingCoords = ignoreContext?.selectedPointsCoords || [];
+        effectiveContext = {
+          ...(ignoreContext || {}),
+          selectedPointsCoords: [...existingCoords, this._suppressedExitSnapPoint]
+        };
+      } else {
+        this._suppressedExitSnapPoint = null;
+      }
+    }
+
+    return this.osnapEngine.calculateOsnap(mousePoint, renderMarkerFn, activePath, effectiveContext);
   }
 
   // --- SELECCIÓN ---

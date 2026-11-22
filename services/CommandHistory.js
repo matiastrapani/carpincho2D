@@ -20,19 +20,21 @@ export class CommandHistory {
   }
 
   undo() {
-    if (!this.canUndo()) return;
+    if (!this.canUndo()) return false;
     const command = this.undoStack.pop();
     command.undo();
     this.redoStack.push(command);
-    if (paper && paper.view) paper.view.requestUpdate();
+    if (typeof paper !== 'undefined' && paper.view) paper.view.update();
+    return true;
   }
 
   redo() {
-    if (!this.canRedo()) return;
+    if (!this.canRedo()) return false;
     const command = this.redoStack.pop();
     command.execute();
     this.undoStack.push(command);
-    if (paper && paper.view) paper.view.requestUpdate();
+    if (typeof paper !== 'undefined' && paper.view) paper.view.update();
+    return true;
   }
 
   canUndo() {

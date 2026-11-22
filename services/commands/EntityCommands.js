@@ -24,6 +24,10 @@ export class AddLineCommand {
     }
 
     layerManager?.syncZOrder();
+
+    if (typeof paper !== 'undefined' && paper.view) {
+      paper.view.update();
+    }
   }
 
   undo() {
@@ -35,6 +39,10 @@ export class AddLineCommand {
     this.cadService.deselectEntity(this.lineEntity);
 
     this.lineEntity.remove();
+
+    if (typeof paper !== 'undefined' && paper.view) {
+      paper.view.update();
+    }
   }
 }
 

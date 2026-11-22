@@ -120,23 +120,27 @@ export class InputDispatcher {
     // 4. Deshacer / Rehacer
     if (isCtrlOrCmd && e.key.toLowerCase() === 'z' && !e.shiftKey) {
       e.preventDefault();
-      if (activeTool && typeof activeTool.cancel === 'function') {
-        activeTool.cancel();
+      if (consoleManager && typeof consoleManager.triggerUndo === 'function') {
+        consoleManager.triggerUndo();
+        return;
       }
       this.service?.undo();
       cadUtils?.selectionRenderEngine?.updateEntitiesStroke();
       cadUtils?.selectionRenderEngine?.renderBezierHandles();
+      if (window.paper?.view) window.paper.view.update();
       return;
     }
 
     if ((isCtrlOrCmd && e.key.toLowerCase() === 'y') || (isCtrlOrCmd && e.shiftKey && e.key.toLowerCase() === 'z')) {
       e.preventDefault();
-      if (activeTool && typeof activeTool.cancel === 'function') {
-        activeTool.cancel();
+      if (consoleManager && typeof consoleManager.triggerRedo === 'function') {
+        consoleManager.triggerRedo();
+        return;
       }
       this.service?.redo();
       cadUtils?.selectionRenderEngine?.updateEntitiesStroke();
       cadUtils?.selectionRenderEngine?.renderBezierHandles();
+      if (window.paper?.view) window.paper.view.update();
       return;
     }
 
@@ -154,11 +158,26 @@ export class InputDispatcher {
       return;
     }
 
+    // 4c. Escape siempre cancela el comando activo incluso con el input de consola enfocado
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      if (cadUtils?.closeAllMenus) cadUtils.closeAllMenus();
+      if (cadUtils) cadUtils.selectedHandle = null;
+      if (consoleManager?.fixedUI?.input) consoleManager.fixedUI.input.value = '';
+      if (consoleManager?.floatingUI?.input) consoleManager.floatingUI.input.value = '';
+      if (typeof consoleManager?.handleCancel === 'function') {
+        consoleManager.handleCancel();
+      } else {
+        cadUtils?.setTool?.('select');
+      }
+      return;
+    }
+
     if (isConsoleInput) {
       return;
     }
 
-    // 4c. Zoom Extents alternativo (Shift+Z)
+    // 4d. Zoom Extents alternativo (Shift+Z)
     if (!isCtrlOrCmd && !e.altKey && e.shiftKey && (e.key.toLowerCase() === 'z' || e.code === 'KeyZ')) {
       e.preventDefault();
       cadUtils?.viewportManager?.resetView?.();
@@ -189,15 +208,7 @@ export class InputDispatcher {
       return;
     }
 
-    // 8. Escape, Enter y Espacio pasan por la máquina de estados de la consola
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      if (cadUtils?.closeAllMenus) cadUtils.closeAllMenus();
-      if (cadUtils) cadUtils.selectedHandle = null;
-      if (consoleManager) consoleManager.handleCancel();
-      return;
-    }
-
+    // 8. Enter y Espacio pasan por la máquina de estados de la consola
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       if (cadUtils?.currentToolMode === 'trim' && typeof activeTool?.confirmTrimBoundaries === 'function') {
@@ -215,12 +226,16 @@ export class InputDispatcher {
 
     // 9. Estilo Rhino 3D: Cualquier tecla imprimible va directo a la consola
     if (!isCtrlOrCmd && !e.altKey && e.key.length === 1) {
-      const targetInput = (consoleManager?.floatingUI?.isOpen && consoleManager.floatingUI.input)
-        ? consoleManager.floatingUI.input
-        : consoleManager?.fixedUI.input;
+      const targetInput = consoleManager?.getActiveInput?.() ||
+        ((consoleManager?.floatingUI?.isOpen && consoleManager.floatingUI.input)
+          ? consoleManager.floatingUI.input
+          : consoleManager?.fixedUI.input);
 
-      if (targetInput) {
-        targetInput.focus();
+      if (targetInput && document.activeElement !== targetInput) {
+        e.preventDefault();
+        targetInput.focus({ preventScroll: true });
+        targetInput.value += e.key;
+        targetInput.dispatchEvent(new Event('input', { bubbles: true }));
       }
     }
   }

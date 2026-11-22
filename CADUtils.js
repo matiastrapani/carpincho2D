@@ -16,7 +16,7 @@ import { TrimTool } from './tools/TrimTool.js';
 import { ExtendTool } from './tools/ExtendTool.js';
 import { ToolManager } from './tools/ToolManager.js';
 import { MoveTool } from './tools/MoveTool.js';
-import { DeleteCommand, AddLineCommand, AddEntityCommand, ImportSVGCommand } from './services/commands/cadCommands.js';
+import { DeleteCommand } from './services/commands/cadCommands.js';
 import { HUDManager } from './ui/HUDManager.js';
 import { CanvasViewportManager } from './services/CanvasViewportManager.js';
 import { SelectionRenderEngine } from './services/renderers/SelectionRenderEngine.js';
@@ -61,7 +61,6 @@ export class CADUtils {
 
     // 5. Estado de Dibujo Activo y Previsualización Temporal
     this.activePath = null;
-    this.rubberBandLine = null;
     this.bezierHandlePreviewGroup = null;
     this.isDraggingBezierHandle = false;
     this.extendData = null;
@@ -185,144 +184,6 @@ export class CADUtils {
     this.service.deleteSelectedElements(() => this.selectionRenderEngine.renderBezierHandles());
   }
 
-  executeCommandLine(rawCmd = null) {
-    const val = (rawCmd !== null ? String(rawCmd) : '').trim();
-    if (!val) {
-      const activeTool = this.toolManager?.activeTool;
-      if (activeTool && typeof activeTool.onConfirmDefault === 'function') {
-        activeTool.onConfirmDefault();
-      }
-      return;
-    }
-    if (upperVal === 'POINT' || upperVal === 'PT') { this.setTool('point'); return; }
-    if (upperVal === 'DIVIDE' || upperVal === 'DIV') { this.setTool('divide_count'); return; }
-    if (upperVal === 'MEASURE' || upperVal === 'DIST_DIV') { this.setTool('divide_dist'); return; }
-    if (upperVal === 'LINE' || upperVal === 'L') { this.setTool('line'); return; }
-    if (upperVal === 'POLYLINE' || upperVal === 'PL' || upperVal === 'P') { this.setTool('polyline'); return; }
-    if (upperVal === 'SPLINE' || upperVal === 'S') { this.setTool('spline'); return; }
-    if (upperVal === 'BEZIER' || upperVal === 'B') { this.setTool('bezier'); return; }
-    if (upperVal === 'MOVE' || upperVal === 'M') { this.setTool('move'); return; }
-    if (upperVal === 'TRIM' || upperVal === 'TR' || upperVal === 'T') { this.setTool('trim'); return; }
-    if (upperVal === 'PAN') { this.setTool('pan'); return; }
-    if (upperVal === 'CLEAR') { this.clearCanvas(); return; }
-    if (upperVal === 'EXTEND' || upperVal === 'EX') { this.setTool('extend'); return; }
-    if (upperVal === 'CIRCLE' || upperVal === 'C') { this.setTool('circle'); return; }
-
-    if (this.activePath && ['line', 'polyline', 'spline', 'bezier'].includes(this.currentToolMode)) {
-      const originPt = (this.currentToolMode === 'line')
-        ? this.activePath.firstSegment.point
-        : (this.activePath.lastSegment?.point || this.activePath.firstSegment.point);
-
-      if (val.includes(',')) {
-        const parts = val.split(',');
-        const x = parseFloat(parts[0]);
-        const y = -parseFloat(parts[1]);
-
-        if (!isNaN(x) && !isNaN(y)) {
-          const newPt = new paper.Point(x, y);
-
-          if (this.currentToolMode === 'line') {
-            this.activePath.lastSegment.point = newPt;
-
-            const cmd = new AddLineCommand(this.service, this.activePath);
-            this.service.executeCommand(cmd);
-
-            const startNextPt = newPt.clone();
-            this.activePath = new paper.Path.Line({
-              from: startNextPt,
-              to: startNextPt
-            });
-
-            if (!this.activePath.data) this.activePath.data = {};
-            this.activePath.data.isDynamicStroke = true;
-
-            if (this.propertyManager) {
-              this.propertyManager.applyDefaultSettings(this.activePath);
-            }
-
-            this.selectionRenderEngine.updateEntitiesStroke();
-          } else {
-            this.activePath.add(newPt);
-            if (this.currentToolMode === 'spline') {
-              this.activePath.smooth({ type: 'catmull-rom' });
-            }
-            this.selectionRenderEngine.updateEntitiesStroke();
-            if (this.rubberBandLine) {
-              this.rubberBandLine.firstSegment.point = newPt;
-              this.rubberBandLine.lastSegment.point = newPt;
-            }
-            if (this.hud) {
-              this.hud.updateFeedbackLabels(newPt, newPt);
-            }
-          }
-        }
-      } else {
-        const dist = parseFloat(val);
-        if (!isNaN(dist) && this.rubberBandLine) {
-          const currentVector = this.rubberBandLine.lastSegment.point.subtract(originPt);
-          if (currentVector.length > 0) {
-            const constrainedVector = currentVector.normalize(dist);
-            const newPt = originPt.add(constrainedVector);
-
-            if (this.currentToolMode === 'line') {
-              this.activePath.lastSegment.point = newPt;
-
-              const cmd = new AddLineCommand(this.service, this.activePath);
-              this.service.executeCommand(cmd);
-
-              const startNextPt = newPt.clone();
-              this.activePath = new paper.Path.Line({
-                from: startNextPt,
-                to: startNextPt
-              });
-
-              if (!this.activePath.data) this.activePath.data = {};
-              this.activePath.data.isDynamicStroke = true;
-
-              if (this.propertyManager) {
-                this.propertyManager.applyDefaultSettings(this.activePath);
-              }
-
-              this.selectionRenderEngine.updateEntitiesStroke();
-            } else {
-              this.activePath.add(newPt);
-              this.selectionRenderEngine.updateEntitiesStroke();
-              this.rubberBandLine.firstSegment.point = newPt;
-              this.rubberBandLine.lastSegment.point = newPt;
-              if (this.hud) {
-                this.hud.updateFeedbackLabels(newPt, newPt);
-              }
-            }
-          }
-        }
-      }
-    }
-
-    if (this.currentToolMode === 'circle') {
-      const circleTool = this.toolManager?.activeTool;
-      if (circleTool && circleTool.centerPoint && typeof circleTool.commitCircle === 'function') {
-        if (val.includes(',')) {
-          const parts = val.split(',');
-          const x = parseFloat(parts[0]);
-          const y = -parseFloat(parts[1]);
-
-          if (!isNaN(x) && !isNaN(y)) {
-            const targetPt = new paper.Point(x, y);
-            const radius = circleTool.centerPoint.getDistance(targetPt);
-            if (radius > 0.001) {
-              circleTool.commitCircle(radius);
-            }
-          }
-        } else {
-          const radius = parseFloat(val);
-          if (!isNaN(radius) && radius > 0.001) {
-            circleTool.commitCircle(radius);
-          }
-        }
-      }
-    }
-  }
-
   handleGlobalKeydown(e) {
     return this.inputDispatcher.handleGlobalKeydown(e);
   }
@@ -367,28 +228,28 @@ export class CADUtils {
 
     if (this.consoleManager) {
       if (toolName === 'select' || isPanMode) {
-        this.consoleManager.setPrompt('Command:');
+        this.consoleManager.endCommandGroup?.();
+        this.consoleManager.setPrompt('Comando:');
       } else {
         if (previousTool !== toolName) {
-          this.consoleManager.logSystem(`Comando: ${toolName.toUpperCase()}`);
+          if (!this.consoleManager._skipNextToolEcho) {
+            const rawLabel = this.toolManager?.getToolDisplayName(toolName) || toolName;
+            const cmdLabel = typeof this.consoleManager.formatCommandName === 'function'
+              ? this.consoleManager.formatCommandName(rawLabel)
+              : String(rawLabel).trim().charAt(0).toUpperCase() + String(rawLabel).trim().slice(1).toLowerCase();
+            this.consoleManager.logUser(cmdLabel, 'Comando: ');
+          }
+          this.consoleManager.beginCommandGroup?.();
         }
+        this.consoleManager._skipNextToolEcho = false;
         this.consoleManager.state = 'COMMAND_ACTIVE';
       }
     }
 
     this.toolManager.setTool(toolName);
 
-    if (selectionMode && preservedEntities.length > 0) {
-      this.service.selectedEntities = [...preservedEntities];
-
-      if (typeof targetTool?.onSelectionPreserved === 'function') {
-        targetTool.onSelectionPreserved(preservedEntities, toolName);
-      } else if (toolName === 'divide_count' || toolName === 'divide_dist') {
-        this.divisionSelectedEntities = [...preservedEntities];
-        if (typeof targetTool?.askForDivisionValue === 'function') {
-          targetTool.askForDivisionValue();
-        }
-      }
+    if (this.consoleManager && toolName !== 'select' && !isPanMode) {
+      this.consoleManager.focusInput?.();
     }
 
     this.isChangingTool = false;
@@ -554,7 +415,6 @@ export class CADUtils {
   clearCanvas() {
     this.service.clearCanvas(() => this.selectionRenderEngine.renderBezierHandles());
     if (this.activePath) { this.activePath.remove(); this.activePath = null; }
-    if (this.rubberBandLine) { this.rubberBandLine.remove(); this.rubberBandLine = null; }
     if (this.hud) this.hud.clear();
   }
 
@@ -589,6 +449,7 @@ export class CADUtils {
     isShift = false,
     excludeEntity = null,
     ignoreEntities = null,
+    selectedPointsCoords = null,
     disableFromPoint = false,
     osnapMode = null
   } = {}) {
@@ -598,6 +459,7 @@ export class CADUtils {
     const osnapOptions = {};
     if (fromPoint) osnapOptions.fromPoint = fromPoint;
     if (ignoreEntities) osnapOptions.ignoreEntities = ignoreEntities;
+    if (selectedPointsCoords) osnapOptions.selectedPointsCoords = selectedPointsCoords;
     if (disableFromPoint) osnapOptions.disableFromPoint = true;
     if (osnapMode) osnapOptions.osnapMode = osnapMode;
 
@@ -721,6 +583,5 @@ export class CADUtils {
     }
 
     this.activePath = null;
-    this.rubberBandLine = null;
   }
 }

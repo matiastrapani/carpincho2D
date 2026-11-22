@@ -1,13 +1,13 @@
 /**
  * ui/console/FixedConsoleUI.js - Componente de la Consola Fija Inferior
- * Renderiza el input fijo inferior y expone los métodos de log e interacción.
+ * Renderiza el input fijo inferior con prompt dinámico y expone los métodos de log e interacción.
  */
 export class FixedConsoleUI {
   constructor(containerId = 'fixedConsoleSlot') {
     this.container = typeof containerId === 'string' ? document.getElementById(containerId) : containerId;
     this.isCollapsed = false;
     this.height = 76;
-    this.minHeight = 40; // Altura exacta para el renglón de input + paddings
+    this.minHeight = 40;
     this.maxHeight = 260;
     this.previousHeight = this.height;
 
@@ -30,21 +30,18 @@ export class FixedConsoleUI {
         
         <!-- Resizer Superior -->
         <div id="fixedConsoleResizer" class="group absolute top-0 inset-x-0 h-[8px] cursor-row-resize z-30 flex items-start justify-center">
-          <div class="w-full h-[3px] bg-transparent group-hover:bg-[#008800] group-[.is-dragging]:bg-[#008800] transition-colors duration-150 pointer-events-none"></div>
+          <div id="fixedConsoleResizerVisual" class="w-full h-[3px] bg-transparent transition-colors duration-150 pointer-events-none"></div>
         </div>
 
-        <!-- CONTENEDOR DEL LOG: overflow-y-auto + overflow-x-hidden min-h-0 flex-1 para EVITAR desbordamientos -->
-        <div id="fixedConsoleLogArea" class="flex-1 flex flex-col justify-start overflow-y-auto overflow-x-hidden font-mono text-[11px] text-zinc-300 min-h-0 p-1.5 gap-1 select-text">
-          <div class="flex items-center gap-1.5 text-zinc-400 font-sans text-[11px] shrink-0">
-            <span class="iconify text-sm text-zinc-500 shrink-0" data-icon="lucide:terminal"></span>
-            <span id="fixedCommandPrompt" class="text-zinc-300 leading-none">Command:</span>
-            
-          </div>
-        </div>
+        <!-- CONTENEDOR DEL LOG -->
+        <div id="fixedConsoleLogArea" class="flex-1 flex flex-col justify-start overflow-y-auto overflow-x-hidden font-mono text-[11px] text-zinc-300 min-h-0 p-1.5 gap-1 select-text"></div>
 
-        <!-- RENGLÓN INFERIOR FIJO: Inamovible de 28px -->
+        <!-- RENGLÓN INFERIOR FIJO: Contenedor Unificado (Prompt + Input) + Acciones -->
         <div id="fixedConsoleInputRow" class="flex items-center gap-1.5 w-full shrink-0 h-[28px] min-h-[28px] max-h-[28px] relative z-20">
-          <input id="cmdInput" type="text" autocomplete="off" placeholder="Escribe comando o valor..." class="command-input flex-1 px-2.5 py-1 rounded text-xs h-7 min-h-[28px]" />
+          <div id="fixedCommandInputWrapper" class="flex items-center flex-1 min-w-[120px] h-7 min-h-[28px] px-2.5 rounded cursor-text overflow-hidden" style="background-color: var(--cad-bg-input);">
+            <span id="fixedCommandPrompt" class="text-xs font-normal text-zinc-400 whitespace-nowrap shrink-0 pr-1.5 select-none">Comando:</span>
+            <input id="cmdInput" type="text" autocomplete="off" class="command-input flex-1 min-w-[40px] py-1 text-xs h-full outline-none focus:outline-none" />
+          </div>
           
           <div class="flex items-center gap-1 shrink-0">
             <button id="btnToggleConsole" class="cad-button cad-button-square h-6 w-6 rounded bg-[#27272a] hover:bg-[#3f3f46] text-zinc-300 tooltip-top" data-tooltip="Registro de comandos [{shortcut:console}]">
@@ -64,9 +61,10 @@ export class FixedConsoleUI {
     this.box = document.getElementById('fixedConsoleBox');
     this.resizer = document.getElementById('fixedConsoleResizer');
     this.logArea = document.getElementById('fixedConsoleLogArea');
+    this.inputWrapper = document.getElementById('fixedCommandInputWrapper');
     this.promptEl = document.getElementById('fixedCommandPrompt');
+    this.prompt = this.promptEl;
     this.btnCollapse = document.getElementById('btnCollapseFixedConsole');
-    this.collapseIcon = document.getElementById('fixedConsoleCollapseIcon');
     this.inputRow = document.getElementById('fixedConsoleInputRow');
     this.input = document.getElementById('cmdInput');
   }
@@ -85,6 +83,11 @@ export class FixedConsoleUI {
       window.addEventListener('mouseup', this._onMouseUp);
     });
 
+    this.inputWrapper?.addEventListener('click', (e) => {
+      if (e.target.closest('.cmd-option')) return;
+      this.input?.focus({ preventScroll: true });
+    });
+
     this.btnCollapse?.addEventListener('click', () => this.toggleCollapse());
   }
 
@@ -92,15 +95,21 @@ export class FixedConsoleUI {
 
   setPrompt(text) {
     if (this.promptEl) {
-      this.promptEl.innerHTML = text;
+      this.promptEl.textContent = text;
+    }
+  }
+
+  setPromptHtml(html) {
+    if (this.promptEl) {
+      this.promptEl.innerHTML = html;
     }
   }
 
   appendUserEntry(text) {
     if (!this.logArea) return;
     const entry = document.createElement('div');
-    entry.className = 'flex items-center gap-2 text-zinc-100 font-semibold shrink-0';
-    entry.innerHTML = `<span class="text-emerald-400 font-bold">&gt;</span> <span>${this._escape(text)}</span>`;
+    entry.className = 'text-zinc-200 font-medium shrink-0 break-words';
+    entry.textContent = text;
     this.logArea.appendChild(entry);
     this.scrollToBottom();
   }
@@ -108,8 +117,8 @@ export class FixedConsoleUI {
   appendSystemEntry(text) {
     if (!this.logArea) return;
     const entry = document.createElement('div');
-    entry.className = 'text-zinc-400 pl-2 border-l-2 border-zinc-700/60 my-0.5 shrink-0 break-words';
-    entry.innerText = text;
+    entry.className = 'text-zinc-400 shrink-0 break-words';
+    entry.textContent = text;
     this.logArea.appendChild(entry);
     this.scrollToBottom();
   }
@@ -125,13 +134,7 @@ export class FixedConsoleUI {
 
   clear() {
     if (!this.logArea) return;
-    this.logArea.innerHTML = `
-      <div class="flex items-center gap-1.5 text-zinc-400 font-sans text-[11px] shrink-0">
-        <span class="iconify text-sm text-zinc-500 shrink-0" data-icon="lucide:terminal"></span>
-        <span id="fixedCommandPrompt" class="text-zinc-300 leading-none">${this.promptEl?.innerHTML || 'Command:'}</span>
-      </div>
-    `;
-    this.promptEl = document.getElementById('fixedCommandPrompt');
+    this.logArea.innerHTML = '';
   }
 
   scrollToBottom() {
@@ -191,9 +194,5 @@ export class FixedConsoleUI {
     document.body.style.userSelect = '';
     window.removeEventListener('mousemove', this._onMouseMove);
     window.removeEventListener('mouseup', this._onMouseUp);
-  }
-
-  _escape(str) {
-    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 }

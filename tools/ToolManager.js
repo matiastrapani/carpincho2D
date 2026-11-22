@@ -6,12 +6,95 @@ export class ToolManager {
     this.service = cadService;
     this.utils = cadUtils;
     this.tools = {};
+    this.commandAliases = {};
     this.activeTool = null;
     this.activeToolName = null;
   }
 
+  _normalizeCommandKey(text) {
+    return String(text || '')
+      .trim()
+      .toUpperCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+  }
+
   registerTool(name, toolInstance) {
     this.tools[name] = toolInstance;
+
+    const aliases = Array.isArray(toolInstance?.commandAliases)
+      ? toolInstance.commandAliases
+      : [];
+
+    aliases.forEach((alias) => {
+      const normalized = this._normalizeCommandKey(alias);
+      if (normalized) {
+        this.commandAliases[normalized] = name;
+      }
+    });
+  }
+
+  resolveCommand(rawText) {
+    const normalized = this._normalizeCommandKey(rawText);
+    if (!normalized) return null;
+
+    if (this.commandAliases[normalized]) {
+      return this.commandAliases[normalized];
+    }
+
+    // Respaldo temporal para las herramientas que aún faltan migrar
+    const legacyAliases = {
+      POLILINEA: 'polyline',
+      PL: 'polyline',
+      P: 'polyline',
+      CIRCULO: 'circle',
+      C: 'circle',
+      SPLINE: 'spline',
+      S: 'spline',
+      BEZIER: 'bezier',
+      B: 'bezier',
+      PUNTO: 'point',
+      PT: 'point',
+      DIVIDIR: 'divide_count',
+      DIV: 'divide_count',
+      GRADUAR: 'divide_dist',
+      MEDIR: 'divide_dist',
+      MOVER: 'move',
+      M: 'move',
+      RECORTAR: 'trim',
+      RR: 'trim',
+      R: 'trim',
+      ALARGAR: 'extend',
+      AL: 'extend',
+      ENCUADRE: 'pan',
+      SELECCIONAR: 'select',
+      SEL: 'select'
+    };
+
+    return legacyAliases[normalized] || null;
+  }
+
+  getToolDisplayName(name) {
+    const tool = this.tools[name];
+    if (tool?.commandName) return tool.commandName;
+
+    const fallbackNames = {
+      select: 'SELECCIONAR',
+      pan: 'ENCUADRE',
+      line: 'LÍNEA',
+      polyline: 'POLILÍNEA',
+      circle: 'CÍRCULO',
+      spline: 'SPLINE',
+      bezier: 'BÉZIER',
+      point: 'PUNTO',
+      divide_count: 'DIVIDIR',
+      divide_dist: 'GRADUAR',
+      move: 'MOVER',
+      trim: 'RECORTAR',
+      extend: 'ALARGAR'
+    };
+
+    return fallbackNames[name] || String(name || '').toUpperCase();
   }
 
   /**
@@ -117,6 +200,15 @@ export class ToolManager {
       this.utils.isPointerDown = false;
     }
     if (this.activeTool) this.activeTool.onMouseUp(event);
+
+    if (
+      this.utils?.consoleManager &&
+      this.activeToolName &&
+      this.activeToolName !== 'select' &&
+      this.activeToolName !== 'pan'
+    ) {
+      this.utils.consoleManager.focusInput?.();
+    }
   }
 }
 

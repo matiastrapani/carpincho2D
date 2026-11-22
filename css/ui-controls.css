@@ -35,7 +35,7 @@
 
 .toolbar-resizer:hover,
 .toolbar-resizer:active {
-  background: var(--cad-accent);
+  background: var(--cad-resizerAccent);
 }
 
 .toolbar-floating {
@@ -172,7 +172,7 @@
 #resizer:hover #resizerVisualLine,
 #resizer.is-dragging #resizerVisualLine {
   width: 3px !important;
-  background-color: var(--cad-accent) !important;
+  background-color: var(--cad-resizerAccent) !important;
 }
 
 #resizer.has-docked-border #resizerVisualLine {
@@ -184,7 +184,19 @@
 
 #resizer.has-docked-border:hover #resizerVisualLine,
 #resizer.has-docked-border.is-dragging #resizerVisualLine {
-  background-color: var(--cad-accent) !important;
+  background-color: var(--cad-resizerAccent) !important;
+}
+
+#sidebarVerticalResizerVisualLine {
+  height: 1px;
+  background-color: #2a2a32;
+  transition: background-color 0.15s ease, height 0.15s ease;
+}
+
+#sidebarVerticalResizer:hover #sidebarVerticalResizerVisualLine,
+#sidebarVerticalResizer.is-dragging #sidebarVerticalResizerVisualLine {
+  height: 3px !important;
+  background-color: var(--cad-resizerAccent) !important;
 }
 
 /* ==========================================================================
@@ -338,7 +350,7 @@
 
 #fixedConsoleResizer:hover #fixedConsoleResizerVisual,
 #fixedConsoleResizer.is-dragging #fixedConsoleResizerVisual {
-  background-color: var(--cad-accent) !important;
+  background-color: var(--cad-resizerAccent) !important;
   height: 3px !important;
 }
 
@@ -355,5 +367,5 @@
 
 #cmdConsoleLog::-webkit-scrollbar-thumb:hover,
 #fixedConsoleLogArea::-webkit-scrollbar-thumb:hover {
-  background: var(--cad-accent);
+  background: var(--cad-resizerAccent);
 }

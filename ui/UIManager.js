@@ -644,8 +644,12 @@ export class CADUIManager {
     if (btnUndo) {
       btnUndo.addEventListener('click', (e) => {
         e.preventDefault();
+        const cm = this.cadUtils?.consoleManager || window.consoleManager;
+        if (cm && typeof cm.triggerUndo === 'function') {
+          cm.triggerUndo();
+          return;
+        }
         if (this.cadUtils && this.cadService) {
-          this.cadUtils.finishCurrentDrawing?.();
           this.cadService.undo();
           this.cadUtils.selectionRenderEngine?.updateEntitiesStroke();
           this.cadUtils.selectionRenderEngine?.renderBezierHandles();
@@ -660,8 +664,12 @@ export class CADUIManager {
     if (btnRedo) {
       btnRedo.addEventListener('click', (e) => {
         e.preventDefault();
+        const cm = this.cadUtils?.consoleManager || window.consoleManager;
+        if (cm && typeof cm.triggerRedo === 'function') {
+          cm.triggerRedo();
+          return;
+        }
         if (this.cadUtils && this.cadService) {
-          this.cadUtils.finishCurrentDrawing?.();
           this.cadService.redo();
           this.cadUtils.selectionRenderEngine?.updateEntitiesStroke();
           this.cadUtils.selectionRenderEngine?.renderBezierHandles();
@@ -689,13 +697,17 @@ export class CADUIManager {
     const history = this.cadService?.history;
     if (!history) return;
 
-    const canUndo = typeof history.canUndo === 'function'
-      ? history.canUndo()
-      : Boolean(history.undoStack?.length);
+    const activeTool = this.cadUtils?.toolManager?.activeTool;
+    const toolCanUndo = Boolean(activeTool?.sessionVertices?.length > 0 || activeTool?.canUndo?.());
+    const toolCanRedo = Boolean(activeTool?.redoVertices?.length > 0 || activeTool?.canRedo?.());
 
-    const canRedo = typeof history.canRedo === 'function'
+    const canUndo = toolCanUndo || (typeof history.canUndo === 'function'
+      ? history.canUndo()
+      : Boolean(history.undoStack?.length));
+
+    const canRedo = toolCanRedo || (typeof history.canRedo === 'function'
       ? history.canRedo()
-      : Boolean(history.redoStack?.length);
+      : Boolean(history.redoStack?.length));
 
     if (btnUndo) btnUndo.disabled = !canUndo;
     if (btnRedo) btnRedo.disabled = !canRedo;

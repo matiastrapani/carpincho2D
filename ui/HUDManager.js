@@ -34,6 +34,17 @@ export class HUDManager {
 
   _handlePointerMove(e) {
     this.currentElementUnderCursor = document.elementFromPoint(e.clientX, e.clientY);
+
+    const paperInstance = this.utils?.paper || (typeof paper !== 'undefined' ? paper : null);
+    const canvas = this.utils?.canvasElement || document.getElementById('cadCanvas');
+    if (paperInstance?.view && canvas && this.utils) {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        const viewPt = new paperInstance.Point(e.clientX - rect.left, e.clientY - rect.top);
+        const projectPt = paperInstance.view.viewToProject(viewPt);
+        this.utils.lastMousePoint = projectPt.clone();
+      }
+    }
   }
 
   setupFeedbackLabels() {
@@ -136,7 +147,10 @@ export class HUDManager {
   }
 
   updateFeedbackLabels(fromPt, toPt) {
-    if (!fromPt || !toPt || !this.utils.activePath) {
+    const activeTool = this.utils?.toolManager?.activeTool;
+    const hasActivePreview = Boolean(this.utils?.activePath || activeTool?.previewLine);
+
+    if (!fromPt || !toPt || !hasActivePreview) {
       if (this.feedbackGroup) this.feedbackGroup.visible = false;
       return;
     }

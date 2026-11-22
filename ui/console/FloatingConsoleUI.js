@@ -48,9 +48,12 @@ export class FloatingConsoleUI {
           <!-- Log de Entradas y Salidas -->
           <div id="cmdConsoleLog" class="flex-1 p-3.5 overflow-y-auto bg-[#1e1e24] font-mono text-[11px] flex flex-col gap-1.5 text-zinc-300 select-text"></div>
 
-          <!-- Renglón 2: Input Flotante -->
-          <div id="floatingConsoleInputRow" class="p-2 border-t border-[#2a2a32] bg-[#1e1e24] shrink-0">
-            <input id="cmdInputFloating" type="text" autocomplete="off" placeholder="Escribe comando o valor..." class="command-input flex-1 px-2.5 py-1 rounded text-xs w-full h-7" />
+          <!-- Renglón 2: Contenedor Unificado (Prompt + Input Flotante) -->
+          <div id="floatingConsoleInputRow" class="p-2 border-t border-[#2a2a32] bg-[#1e1e24] shrink-0 flex items-center gap-1.5">
+            <div id="floatingCommandInputWrapper" class="flex items-center flex-1 min-w-[120px] h-7 px-2.5 rounded cursor-text overflow-hidden" style="background-color: var(--cad-bg-input);">
+              <span id="floatingCommandPrompt" class="text-xs font-normal text-zinc-400 whitespace-nowrap shrink-0 pr-1.5 select-none">Comando:</span>
+              <input id="cmdInputFloating" type="text" autocomplete="off" class="command-input flex-1 min-w-[40px] py-1 text-xs h-full outline-none focus:outline-none" />
+            </div>
           </div>
 
         </div>
@@ -66,6 +69,9 @@ export class FloatingConsoleUI {
     this.header = document.getElementById('cmdConsoleHeader');
     this.log = document.getElementById('cmdConsoleLog');
     this.btnClose = document.getElementById('btnCloseConsoleModal');
+    this.inputWrapper = document.getElementById('floatingCommandInputWrapper');
+    this.promptEl = document.getElementById('floatingCommandPrompt');
+    this.prompt = this.promptEl;
     this.input = document.getElementById('cmdInputFloating');
   }
 
@@ -73,6 +79,11 @@ export class FloatingConsoleUI {
     this.btnClose?.addEventListener('click', (e) => {
       e.stopPropagation();
       this.hide();
+    });
+
+    this.inputWrapper?.addEventListener('click', (e) => {
+      if (e.target.closest('.cmd-option')) return;
+      this.input?.focus({ preventScroll: true });
     });
 
     window.addEventListener('resize', this._onWindowResize);
@@ -89,9 +100,14 @@ export class FloatingConsoleUI {
   }
 
   setPrompt(text) {
-    // Si tu ventana flotante tiene un elemento para el prompt (o si no usa prompt visual)
     if (this.promptEl) {
-      this.promptEl.innerHTML = text;
+      this.promptEl.textContent = text;
+    }
+  }
+
+  setPromptHtml(html) {
+    if (this.promptEl) {
+      this.promptEl.innerHTML = html;
     }
   }
 
@@ -301,8 +317,8 @@ export class FloatingConsoleUI {
   appendUserEntry(text) {
     if (!this.log) return;
     const entry = document.createElement('div');
-    entry.className = 'flex items-center gap-2 text-zinc-100 font-semibold';
-    entry.innerHTML = `<span class="text-emerald-400 font-bold">&gt;</span> <span>${this._escape(text)}</span>`;
+    entry.className = 'text-zinc-200 font-medium break-words';
+    entry.textContent = text;
     this.log.appendChild(entry);
     this.scrollToBottom();
   }
@@ -310,10 +326,25 @@ export class FloatingConsoleUI {
   appendSystemEntry(text) {
     if (!this.log) return;
     const entry = document.createElement('div');
-    entry.className = 'text-zinc-400 pl-3 border-l-2 border-zinc-700/60 my-0.5';
-    entry.innerText = text;
+    entry.className = 'text-zinc-400 break-words';
+    entry.textContent = text;
     this.log.appendChild(entry);
     this.scrollToBottom();
+  }
+
+  appendInteractiveEntry(htmlContent) {
+    if (!this.log) return;
+    const entry = document.createElement('div');
+    entry.className = 'text-zinc-300 my-0.5 break-words';
+    entry.innerHTML = htmlContent;
+    this.log.appendChild(entry);
+    this.scrollToBottom();
+  }
+
+  clear() {
+    if (this.log) {
+      this.log.innerHTML = '';
+    }
   }
 
   scrollToBottom() {
@@ -347,35 +378,12 @@ export class FloatingConsoleUI {
     this.syncController = new AbortController();
     const { signal } = this.syncController;
 
-    // Sincronización bidireccional al tipear
     this.input.addEventListener('input', (e) => {
       fixedInputEl.value = e.target.value;
     }, { signal });
 
     fixedInputEl.addEventListener('input', (e) => {
       this.input.value = e.target.value;
-    }, { signal });
-
-    // Control de Enter y Escape desde la consola flotante
-    this.input.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' || e.key === 'Enter') {
-        // Redirigir la tecla al input fijo para que ConsoleManager gestione la cancelación o ejecución
-        const event = new KeyboardEvent('keydown', { key: e.key, bubbles: true });
-        fixedInputEl.dispatchEvent(event);
-        
-        setTimeout(() => {
-          this.input.value = fixedInputEl.value;
-        }, 0);
-      }
-    }, { signal });
-
-    // Sincronizar enter/escape desde el input fijo al flotante
-    fixedInputEl.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === 'Escape') {
-        setTimeout(() => {
-          if (this.input) this.input.value = fixedInputEl.value;
-        }, 0);
-      }
     }, { signal });
   }
 }
