@@ -183,11 +183,6 @@ export class CircleTool extends BaseTool {
     this.paper.view.update();
   }
 
-  cancelAndExit() {
-    this.resetTool();
-    this.exitToSelect();
-  }
-
   cancel() {
     this.resetTool();
   }

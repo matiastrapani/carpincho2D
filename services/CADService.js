@@ -7,6 +7,7 @@ import { OsnapEngine } from './engines/OsnapEngine.js';
 import { GeometryEngine } from './engines/GeometryEngine.js';
 import { SelectionManager } from './SelectionManager.js';
 import { CAD_THEME } from '../config/cadTheme.js';
+import { CAD_CATALOG } from '../config/cadCatalog.js';
 
 export class CADService {
   constructor() {
@@ -19,8 +20,10 @@ export class CADService {
     this.utils = null;
     this.onHistoryChange = null;
     this._suppressedExitSnapPoint = null;
+    this._suppressTransactionLog = false;
 
     this.history = new CommandHistory();
+    this.history.subscribe((tx) => this._handleHistoryTransaction(tx));
     this.isSnapMasterEnabled = true;
     this.isOrthoEnabled = false;
 
@@ -74,37 +77,125 @@ export class CADService {
   executeCommand(command) {
     this._suppressedExitSnapPoint = null;
     this.history.execute(command);
-    this._notifyHistoryChange();
   }
 
   undo(options = {}) {
-    const undone = Boolean(this.history.undo());
-    this._notifyHistoryChange();
-    if (!options?.silentLog) {
-      const cm = this.utils?.consoleManager;
-      if (cm) {
-        cm.logUser('Deshacer', 'Comando: ', { grouped: false });
-        if (!undone) {
-          cm.logSystem('No hay acciones para deshacer.', { grouped: false });
-        }
-      }
+    const cm = this.utils?.consoleManager;
+    const silent = Boolean(options?.silentLog);
+
+    this._suppressTransactionLog = silent;
+    let undoneCommand = null;
+    try {
+      undoneCommand = this.history.undo();
+    } finally {
+      this._suppressTransactionLog = false;
     }
-    return undone;
+
+    if (!undoneCommand && !silent && cm) {
+      cm.logSystem(`Deshacer: ${CAD_CATALOG.commands.undo.logs.empty}`, { grouped: false });
+    }
+
+    return Boolean(undoneCommand);
   }
 
   redo(options = {}) {
-    const redone = Boolean(this.history.redo());
-    this._notifyHistoryChange();
-    if (!options?.silentLog) {
-      const cm = this.utils?.consoleManager;
-      if (cm) {
-        cm.logUser('Rehacer', 'Comando: ', { grouped: false });
-        if (!redone) {
-          cm.logSystem('No hay acciones para rehacer.', { grouped: false });
-        }
-      }
+    const cm = this.utils?.consoleManager;
+    const silent = Boolean(options?.silentLog);
+
+    this._suppressTransactionLog = silent;
+    let redoneCommand = null;
+    try {
+      redoneCommand = this.history.redo();
+    } finally {
+      this._suppressTransactionLog = false;
     }
-    return redone;
+
+    if (!redoneCommand && !silent && cm) {
+      cm.logSystem(`Rehacer: ${CAD_CATALOG.commands.redo.logs.empty}`, { grouped: false });
+    }
+
+    return Boolean(redoneCommand);
+  }
+
+  _handleHistoryTransaction({ type, command }) {
+    this._notifyHistoryChange();
+
+    if (this._suppressTransactionLog || !command) return;
+    const cm = this.utils?.consoleManager;
+    if (!cm) return;
+
+    const info = this._describeCommand(command);
+    if (!info?.label) return;
+
+    if (type === 'execute') {
+      if (!info.skipExecuteLog) {
+        cm.logSystem(info.label, { grouped: false });
+      }
+    } else if (type === 'undo') {
+      cm.logSystem(`Deshacer: ${info.label}`, { grouped: false });
+    } else if (type === 'redo') {
+      cm.logSystem(`Rehacer: ${info.label}`, { grouped: false });
+    }
+  }
+
+  _describeCommand(command) {
+    if (typeof command.getDescription === 'function') {
+      const desc = command.getDescription();
+      return typeof desc === 'string' ? { label: desc } : desc;
+    }
+
+    const typeName = command.constructor?.name || '';
+    const entity = command.lineEntity || command.pointEntity || command.entity;
+
+    if (typeName === 'AddLineCommand' || typeName === 'AddPointCommand' || typeName === 'AddEntityCommand') {
+      const entityName = entity?.name || 'Entidad';
+      return { label: entityName, skipExecuteLog: true };
+    }
+
+    if (typeName === 'ChangeOpacityCommand') {
+      return { label: `Opacidad a ${Math.round((command.newOpacity ?? 1) * 100)}%` };
+    }
+
+    if (typeName === 'UpdateEntityPropertyCommand') {
+      const count = Array.isArray(command.entities) ? command.entities.length : 1;
+      return { label: `Propiedades (${count} ${count === 1 ? 'entidad' : 'entidades'})` };
+    }
+
+    if (typeName === 'UpdateDefaultSettingsCommand') {
+      return { label: 'Propiedades por defecto actualizadas' };
+    }
+
+    if (typeName === 'MoveCommand') {
+      return { label: 'Desplazamiento' };
+    }
+
+    if (typeName === 'DeleteCommand') {
+      return { label: 'Eliminar elementos' };
+    }
+
+    if (typeName === 'DivideCommand') {
+      const pts = command.pointsCreated?.length || 0;
+      return { label: `División (${pts} puntos)` };
+    }
+
+    if (typeName === 'TrimCommand' || typeName === 'BatchTrimCommand') {
+      return { label: 'Recorte' };
+    }
+
+    if (typeName === 'ExtendCommand') {
+      return { label: 'Alargamiento' };
+    }
+
+    if (typeName === 'TransformEntityCommand') {
+      return { label: 'Transformación de entidad' };
+    }
+
+    if (typeName === 'ImportSVGCommand') {
+      const count = command.importedEntities?.length || 0;
+      return { label: `Importar SVG (${count} entidades)` };
+    }
+
+    return null;
   }
 
   toggleSnapMaster() {

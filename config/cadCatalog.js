@@ -96,14 +96,14 @@ export const CAD_CATALOG = {
       aliases: ['LINEA', 'L'],
       ui: { buttonId: 'btnLineGroup', iconId: 'currentLineIcon', iconName: 'custom:line' },
       prompts: {
-        start: 'Punto de inicio',
+        start: 'Especifique punto de inicio',
         next: 'Especifique el siguiente punto'
       },
       options: {
         undo: { key: 'D', label: 'Deshacer' },
         finish: { key: 'T', label: 'Terminar' }
       },
-      logs: {
+    logs: {
         created: ({ name, length, angle }) => `${name} creada: Longitud = ${length}, Ángulo = ${angle}°`,
         undoStart: ({ coords }) => `Deshacer: Punto inicial ${coords}`,
         undoSegment: ({ coords }) => `Deshacer: Último tramo. Punto actual: ${coords}`,
@@ -113,7 +113,7 @@ export const CAD_CATALOG = {
         needStart: 'Marque primero el punto de inicio o ingrese coordenadas X,Y.',
         invalidDistance: 'La distancia debe ser mayor a cero.',
         needDirection: 'Mueva el cursor sobre el lienzo para indicar la dirección.',
-        finished: 'Trazo de línea finalizado.'
+        finished: 'Trazado de línea finalizado.'
       }
     },
     polyline: {

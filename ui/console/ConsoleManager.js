@@ -4,6 +4,12 @@
 import { FixedConsoleUI } from './FixedConsoleUI.js';
 import { FloatingConsoleUI } from './FloatingConsoleUI.js';
 import { CAD_THEME } from '../../config/cadTheme.js';
+import {
+  CAD_CATALOG,
+  formatCommandDisplay,
+  resolveCatalogEntry,
+  normalizeCommandKey
+} from '../../config/cadCatalog.js';
 
 export class ConsoleManager {
   constructor(slotId = 'fixedConsoleSlot', cadUtils = null) {
@@ -59,11 +65,10 @@ export class ConsoleManager {
   // --- AGRUPACIÓN DE LOGS POR HERRAMIENTA ---
   _createGroupElement() {
     const group = document.createElement('div');
-    group.className = 'cmd-session-group';
-    const borderColor = CAD_THEME?.ui?.consoleSessionBorder || '#88ff00';
-    group.style.borderLeft = `2px solid var(--cad-console-session-border, ${borderColor})`;
-    group.style.paddingLeft = '8px';
-    group.style.margin = '4px 0';
+    group.className = 'cmd-session-group flex flex-col gap-0.5 leading-[1.35]';
+    group.style.borderLeft = '2px solid transparent';
+    group.style.paddingLeft = '10px';
+    group.style.margin = '2px 0 0 0';
     return group;
   }
 
@@ -92,6 +97,10 @@ export class ConsoleManager {
     const lastChild = logContainer.lastElementChild;
     if (lastChild && lastChild !== groupEl) {
       groupEl.appendChild(lastChild);
+      const borderColor = CAD_THEME?.ui?.consoleSessionBorder || '#88ff00';
+      groupEl.style.borderLeftColor = groupEl.children.length > 1
+        ? `var(--cad-console-session-border, ${borderColor})`
+        : 'transparent';
       logContainer.scrollTop = logContainer.scrollHeight;
     }
   }
@@ -111,9 +120,7 @@ export class ConsoleManager {
   }
 
   formatCommandName(rawText) {
-    const clean = String(rawText || '').trim();
-    if (!clean) return '';
-    return clean.charAt(0).toUpperCase() + clean.slice(1).toLowerCase();
+    return formatCommandDisplay(rawText);
   }
 
   _formatOptionHtml(opt, interactive = true) {
@@ -146,12 +153,21 @@ export class ConsoleManager {
       activeTool?.commandName ||
       toolManager?.getToolDisplayName?.(this.utils?.currentToolMode) ||
       '';
-    const clean = String(rawName)
-      .trim()
-      .toUpperCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '');
+    const clean = normalizeCommandKey(rawName);
     return clean ? `[${clean}]` : '';
+  }
+
+  _matchesActiveToolOption(rawText, activeTool) {
+    if (!activeTool) return false;
+    const opts = typeof activeTool.getCurrentOptions === 'function'
+      ? activeTool.getCurrentOptions()
+      : (typeof activeTool._getCurrentOptions === 'function'
+          ? activeTool._getCurrentOptions()
+          : (Array.isArray(activeTool.options) ? activeTool.options : []));
+    const key = normalizeCommandKey(rawText);
+    return opts.some(
+      (opt) => normalizeCommandKey(opt.key) === key || normalizeCommandKey(opt.label) === key
+    );
   }
 
   setPrompt(text) {
@@ -210,6 +226,8 @@ export class ConsoleManager {
       }
       if (grouped) {
         this._syncGroupedEntries();
+      } else {
+        this._applyTopLevelBlockSpacing();
       }
       return;
     }
@@ -218,7 +236,28 @@ export class ConsoleManager {
     this.floatingUI.appendUserEntry(text);
     if (grouped) {
       this._syncGroupedEntries();
+    } else {
+      this._applyTopLevelBlockSpacing();
     }
+  }
+
+  logSystem(text, { grouped = true } = {}) {
+    this.fixedUI.appendSystemEntry(text);
+    this.floatingUI.appendSystemEntry(text);
+    if (grouped) {
+      this._syncGroupedEntries();
+    } else {
+      this._applyTopLevelBlockSpacing();
+    }
+  }
+
+  _applyTopLevelBlockSpacing() {
+    [this.fixedUI.logArea, this.floatingUI.log].forEach((container) => {
+      const lastEl = container?.lastElementChild;
+      if (lastEl && container.children.length > 1) {
+        lastEl.classList.add('mt-2');
+      }
+    });
   }
 
   logSystem(text, { grouped = true } = {}) {
@@ -269,7 +308,6 @@ export class ConsoleManager {
 
   handleExecute(cmdText) {
     const trimmed = (cmdText || '').trim();
-
     if (!this.utils) {
       throw new Error('ConsoleManager: falta referencia obligatoria a cadUtils.');
     }
@@ -281,121 +319,101 @@ export class ConsoleManager {
       this.utils.currentToolMode !== 'select' &&
       this.utils.currentToolMode !== 'pan';
 
-    // 1. ENTER / ESPACIO CON INPUT VACÍO
     if (!trimmed) {
       if (isCommandRunning) {
-        if (activeTool && typeof activeTool.onCommandInput === 'function') {
+        if (typeof activeTool?.onCommandInput === 'function') {
           activeTool.onCommandInput('');
-        } else if (activeTool && typeof activeTool.onConfirmDefault === 'function') {
+        } else if (typeof activeTool?.onConfirmDefault === 'function') {
           activeTool.onConfirmDefault();
         }
         this.focusInput();
-        return;
-      }
-
-      if (this.lastCommand) {
+      } else if (this.lastCommand) {
         this.handleExecute(this.lastCommand);
       }
       return;
     }
 
-    const upperCmd = trimmed.toUpperCase();
-    const isUndoCmd = upperCmd === 'DESHACER' || upperCmd === 'UNDO' || upperCmd === 'U';
-    const isRedoCmd = upperCmd === 'REHACER' || upperCmd === 'REDO';
-
-    // 2. HERRAMIENTA ACTIVA: Entregar primero el dato u opción a la herramienta
     if (isCommandRunning) {
-      this.logStepInput(trimmed);
+      const catalogMatch = resolveCatalogEntry(trimmed);
+      if (catalogMatch?.kind === 'command' && (catalogMatch.id === 'undo' || catalogMatch.id === 'redo')) {
+        this._executeCatalogCommand(catalogMatch.id, true);
+        return;
+      }
 
-      if (activeTool && typeof activeTool.onCommandInput === 'function') {
+      this.logStepInput(trimmed);
+      if (typeof activeTool?.onCommandInput === 'function') {
         const handled = activeTool.onCommandInput(trimmed);
-        if (handled !== false) {
-          this.focusInput();
-          return;
+        if (handled === false) {
+          this.logSystem(`Entrada no válida: "${trimmed}"`);
         }
       }
-    }
-
-    // 3. COMANDOS INSTANTÁNEOS DESHACER / REHACER (sin grupo | y con formato "Comando: Deshacer/Rehacer")
-    if (isUndoCmd) {
-      if (isCommandRunning && activeTool && typeof activeTool.onUndo === 'function' && activeTool.onUndo()) {
-        this.utils.selectionRenderEngine?.updateEntitiesStroke();
-        this.utils.selectionRenderEngine?.renderBezierHandles();
-        if (window.paper?.view) window.paper.view.update();
-        this.focusInput();
-        return;
-      }
-      if (isCommandRunning) {
-        this.handleCancel();
-      }
-      this.lastCommand = 'Deshacer';
-      this.utils.service?.undo();
-      this.utils.selectionRenderEngine?.updateEntitiesStroke();
-      this.utils.selectionRenderEngine?.renderBezierHandles();
-      if (window.paper?.view) window.paper.view.update();
       this.focusInput();
       return;
     }
 
-    if (isRedoCmd) {
-      if (isCommandRunning && activeTool && typeof activeTool.onRedo === 'function' && activeTool.onRedo()) {
-        this.utils.selectionRenderEngine?.updateEntitiesStroke();
-        this.utils.selectionRenderEngine?.renderBezierHandles();
-        if (window.paper?.view) window.paper.view.update();
-        this.focusInput();
-        return;
-      }
-      if (isCommandRunning) {
-        this.handleCancel();
-      }
-      this.lastCommand = 'Rehacer';
-      this.utils.service?.redo();
-      this.utils.selectionRenderEngine?.updateEntitiesStroke();
-      this.utils.selectionRenderEngine?.renderBezierHandles();
-      if (window.paper?.view) window.paper.view.update();
+    const catalogMatch = resolveCatalogEntry(trimmed);
+    if (catalogMatch?.kind === 'command') {
+      this._executeCatalogCommand(catalogMatch.id, false);
+      return;
+    }
+
+    const targetTool =
+      toolManager?.resolveCommand?.(trimmed) ||
+      (catalogMatch?.kind === 'tool' ? catalogMatch.id : null);
+
+    if (targetTool) {
+      this._switchToToolFromConsole(targetTool, trimmed);
+      return;
+    }
+
+    this.logUser(this.formatCommandName(trimmed), 'Comando: ', { grouped: false });
+    this.logSystem(CAD_CATALOG.system.unknownCommand(trimmed), { grouped: false });
+    this.focusInput();
+  }
+
+  _executeCatalogCommand(commandId, isCommandRunning) {
+    if (commandId === 'undo') {
+      this.triggerUndo();
+      this.lastCommand = CAD_CATALOG.commands.undo.displayName;
       this.focusInput();
       return;
     }
 
-    // 4. ACCIÓN GLOBAL DE DOCUMENTO
-    if (upperCmd === 'LIMPIAR') {
-      const clearLabel = this.formatCommandName('LIMPIAR');
-      if (!isCommandRunning) {
-        this.logUser(clearLabel, 'Comando: ');
+    if (commandId === 'redo') {
+      this.triggerRedo();
+      this.lastCommand = CAD_CATALOG.commands.redo.displayName;
+      this.focusInput();
+      return;
+    }
+
+    if (commandId === 'clear') {
+      const clearLabel = CAD_CATALOG.commands.clear.displayName;
+      if (isCommandRunning) {
+        this.endCommandGroup();
       }
-      this.endCommandGroup();
+      this.logUser(clearLabel, 'Comando: ', { grouped: false });
       this.utils.clearCanvas();
-      this.logSystem('Lienzo limpiado.');
+      this.logSystem(CAD_CATALOG.commands.clear.logs.done, { grouped: false });
       this.lastCommand = clearLabel;
       this.focusInput();
-      return;
     }
+  }
 
-    // 5. RESOLVER HERRAMIENTA POR ALIAS EN ESPAÑOL
-    const targetTool = toolManager?.resolveCommand?.(trimmed) || null;
-    if (targetTool) {
-      const rawDisplayName = toolManager?.getToolDisplayName?.(targetTool) || trimmed;
-      const displayLabel = this.formatCommandName(rawDisplayName);
+  _switchToToolFromConsole(targetTool, rawText) {
+    const toolManager = this.utils.toolManager;
+    const rawDisplayName = toolManager?.getToolDisplayName?.(targetTool) || rawText;
+    const displayLabel = this.formatCommandName(rawDisplayName);
 
-      if (!isCommandRunning) {
-        this.logUser(displayLabel, 'Comando: ');
-      }
+    this.endCommandGroup();
+    this.logUser(displayLabel, 'Comando: ', { grouped: false });
 
-      this.lastCommand = displayLabel;
-      this._skipNextToolEcho = true;
-      try {
-        this.utils.setTool(targetTool);
-      } finally {
-        this._skipNextToolEcho = false;
-      }
-      this.focusInput();
-      return;
+    this.lastCommand = displayLabel;
+    this._skipNextToolEcho = true;
+    try {
+      this.utils.setTool(targetTool);
+    } finally {
+      this._skipNextToolEcho = false;
     }
-
-    if (!isCommandRunning) {
-      this.logUser(this.formatCommandName(trimmed), 'Comando: ');
-    }
-    this.logSystem(`Comando desconocido: "${trimmed}"`);
     this.focusInput();
   }
 
@@ -490,7 +508,7 @@ export class ConsoleManager {
       (this.utils.currentToolMode && this.utils.currentToolMode !== 'select');
 
     if (isCommandRunning) {
-      this.logSystem('Comando cancelado.');
+      this.logSystem(CAD_CATALOG.system.cancelled);
       this.endCommandGroup();
       this.utils.setTool('select');
       const canvas = this.utils.canvasElement || document.getElementById('cadCanvas');
@@ -498,7 +516,7 @@ export class ConsoleManager {
       return;
     }
 
-    if (activeTool && typeof activeTool.cancel === 'function') {
+    if (typeof activeTool?.cancel === 'function') {
       activeTool.cancel();
     }
     this.utils.service?.deselectAllEntities?.();
@@ -506,24 +524,26 @@ export class ConsoleManager {
     this.utils.service?.deselectAllHandles?.();
     this.utils.selectionRenderEngine?.updateEntitiesStroke?.();
     this.utils.selectionRenderEngine?.renderBezierHandles?.();
-    if (window.paper?.view) window.paper.view.update();
+    this.utils.paper?.view?.update();
     this.setPrompt('Comando:');
   }
 
-  triggerUndo() {
+  _runHistoryAction(direction) {
     if (!this.utils) return false;
 
+    const isUndo = direction === 'undo';
     const activeTool = this.utils.toolManager?.activeTool;
+    const toolHook = isUndo ? activeTool?.onUndo : activeTool?.onRedo;
     const isCommandRunning =
       this.state === 'COMMAND_ACTIVE' &&
       this.utils.currentToolMode !== 'select' &&
       this.utils.currentToolMode !== 'pan';
 
-    if (isCommandRunning && activeTool && typeof activeTool.onUndo === 'function' && activeTool.onUndo()) {
+    if (isCommandRunning && typeof toolHook === 'function' && toolHook.call(activeTool)) {
       this.utils.selectionRenderEngine?.updateEntitiesStroke();
       this.utils.selectionRenderEngine?.renderBezierHandles();
-      if (window.paper?.view) window.paper.view.update();
-      (this.utils.cadUI || window.cadUI)?.updateUndoRedoUI?.();
+      this.utils.paper?.view?.update();
+      this.utils.uiManager?.updateUndoRedoUI?.();
       this.focusInput();
       return true;
     }
@@ -532,42 +552,22 @@ export class ConsoleManager {
       this.handleCancel();
     }
 
-    const undone = Boolean(this.utils.service?.undo());
+    const changed = isUndo
+      ? Boolean(this.utils.service?.undo())
+      : Boolean(this.utils.service?.redo());
+
     this.utils.selectionRenderEngine?.updateEntitiesStroke();
     this.utils.selectionRenderEngine?.renderBezierHandles();
-    if (window.paper?.view) window.paper.view.update();
-    (this.utils.cadUI || window.cadUI)?.updateUndoRedoUI?.();
-    return undone;
+    this.utils.paper?.view?.update();
+    return changed;
+  }
+
+  triggerUndo() {
+    return this._runHistoryAction('undo');
   }
 
   triggerRedo() {
-    if (!this.utils) return false;
-
-    const activeTool = this.utils.toolManager?.activeTool;
-    const isCommandRunning =
-      this.state === 'COMMAND_ACTIVE' &&
-      this.utils.currentToolMode !== 'select' &&
-      this.utils.currentToolMode !== 'pan';
-
-    if (isCommandRunning && activeTool && typeof activeTool.onRedo === 'function' && activeTool.onRedo()) {
-      this.utils.selectionRenderEngine?.updateEntitiesStroke();
-      this.utils.selectionRenderEngine?.renderBezierHandles();
-      if (window.paper?.view) window.paper.view.update();
-      (this.utils.cadUI || window.cadUI)?.updateUndoRedoUI?.();
-      this.focusInput();
-      return true;
-    }
-
-    if (isCommandRunning) {
-      this.handleCancel();
-    }
-
-    const redone = Boolean(this.utils.service?.redo());
-    this.utils.selectionRenderEngine?.updateEntitiesStroke();
-    this.utils.selectionRenderEngine?.renderBezierHandles();
-    if (window.paper?.view) window.paper.view.update();
-    (this.utils.cadUI || window.cadUI)?.updateUndoRedoUI?.();
-    return redone;
+    return this._runHistoryAction('redo');
   }
 
   cleanup() {

@@ -22,6 +22,7 @@ import { CanvasViewportManager } from './services/CanvasViewportManager.js';
 import { SelectionRenderEngine } from './services/renderers/SelectionRenderEngine.js';
 import { InputDispatcher } from './services/input/InputDispatcher.js';
 import { CADIOService } from './services/io/IOService.js';
+import { getToolCatalogEntry } from './config/cadCatalog.js';
 
 
 import { CAD_THEME } from './config/cadTheme.js';
@@ -208,12 +209,6 @@ export class CADUtils {
       Boolean(targetTool?.shouldPreserveEditMode?.(toolName) ?? targetTool?.preservesEditMode);
     const clearsHud = Boolean(targetTool?.shouldClearHudOnActivate?.(toolName) ?? targetTool?.clearsHudOnActivate);
 
-    const preservedEntities = selectionMode
-      ? this.service.selectedEntities.filter(
-          (ent) => ent && (selectionMode === 'all' || !ent.data?.isPointEntity)
-        )
-      : [];
-
     if (!preservesEditMode) {
       this.service.editingEntities = [];
       this.service.deselectAllSegments();
@@ -232,12 +227,13 @@ export class CADUtils {
         this.consoleManager.setPrompt('Comando:');
       } else {
         if (previousTool !== toolName) {
+          this.consoleManager.endCommandGroup?.();
           if (!this.consoleManager._skipNextToolEcho) {
             const rawLabel = this.toolManager?.getToolDisplayName(toolName) || toolName;
             const cmdLabel = typeof this.consoleManager.formatCommandName === 'function'
               ? this.consoleManager.formatCommandName(rawLabel)
               : String(rawLabel).trim().charAt(0).toUpperCase() + String(rawLabel).trim().slice(1).toLowerCase();
-            this.consoleManager.logUser(cmdLabel, 'Comando: ');
+            this.consoleManager.logUser(cmdLabel, 'Comando: ', { grouped: false });
           }
           this.consoleManager.beginCommandGroup?.();
         }
@@ -254,50 +250,19 @@ export class CADUtils {
 
     this.isChangingTool = false;
 
-    const allButtons = document.querySelectorAll('.cad-button');
-    allButtons.forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.cad-button').forEach((btn) => btn.classList.remove('active'));
+    document.getElementById('btnSnap')?.classList.toggle('active', Boolean(this.service.isSnapMasterEnabled));
+    document.getElementById('btnGrid')?.classList.toggle('active', Boolean(this.isGridVisible));
+    document.getElementById('btnOrtho')?.classList.toggle('active', Boolean(this.service.isOrthoEnabled));
 
-    const btnSnap = document.getElementById('btnSnap');
-    if (btnSnap && this.service.isSnapMasterEnabled) {
-      btnSnap.classList.add('active');
-    }
-
-    const btnGrid = document.getElementById('btnGrid');
-    if (btnGrid && this.isGridVisible) {
-      btnGrid.classList.add('active');
-    }
-    const btnOrtho = document.getElementById('btnOrtho');
-    if (btnOrtho && this.service.isOrthoEnabled) {
-      btnOrtho.classList.add('active');
-    }
-
-    const toolBtnMap = {
-      'select': 'btnSelect',
-      'pan': 'btnPan',
-      'point': 'btnPointGroup',
-      'divide_count': 'btnPointGroup',
-      'divide_dist': 'btnPointGroup',
-      'line': 'btnLineGroup',
-      'polyline': 'btnLineGroup',
-      'spline': 'btnCurveGroup',
-      'bezier': 'btnCurveGroup',
-      'circle': 'btn-circle-tool',
-      'move': 'btnMove',
-      'trim': 'btnTrim',
-      'extend': 'btnExtend'
-    };
-
-    const activeBtnId = toolBtnMap[toolName];
-    if (activeBtnId) {
-      const activeBtn = document.getElementById(activeBtnId);
-      if (activeBtn) activeBtn.classList.add('active');
+    const uiMeta = getToolCatalogEntry(toolName)?.ui;
+    if (uiMeta?.buttonId) {
+      document.getElementById(uiMeta.buttonId)?.classList.add('active');
     }
 
     const canvas = this.canvasElement || document.getElementById('cadCanvas');
     if (canvas) {
-      const cursorMode = isPanMode
-        ? 'pan'
-        : (targetTool?.getCursorMode?.(toolName) || 'draw');
+      const cursorMode = isPanMode ? 'pan' : (targetTool?.getCursorMode?.(toolName) || 'draw');
       canvas.className = `tool-${cursorMode}`;
     }
 
@@ -305,25 +270,12 @@ export class CADUtils {
       this.hud.clear();
     }
 
-    const iconMap = {
-      'point': { btn: 'btnPointGroup', icon: 'currentPointIcon', name: 'custom:dot' },
-      'divide_count': { btn: 'btnPointGroup', icon: 'currentPointIcon', name: 'custom:divide' },
-      'divide_dist': { btn: 'btnPointGroup', icon: 'currentPointIcon', name: 'custom:dividelength' },
-      'line': { btn: 'btnLineGroup', icon: 'currentLineIcon', name: 'custom:line' },
-      'polyline': { btn: 'btnLineGroup', icon: 'currentLineIcon', name: 'custom:polyline' },
-      'spline': { btn: 'btnCurveGroup', icon: 'currentCurveIcon', name: 'custom:spline' },
-      'bezier': { btn: 'btnCurveGroup', icon: 'currentCurveIcon', name: 'custom:bezier' },
-      'trim': { btn: 'btnTrim', icon: 'currentModifyIcon', name: 'custom:trim' },
-      'extend': { btn: 'btnExtend', icon: 'currentModifyIcon', name: 'custom:extend' }
-    };
-
-    const config = iconMap[toolName];
-    if (config) {
-      const btnEl = document.getElementById(config.btn);
-      const iconEl = document.getElementById(config.icon);
+    if (uiMeta?.iconId && uiMeta?.iconName) {
+      const btnEl = uiMeta.buttonId ? document.getElementById(uiMeta.buttonId) : null;
+      const iconEl = document.getElementById(uiMeta.iconId);
       if (btnEl) btnEl.setAttribute('data-default-tool', toolName);
       if (iconEl) {
-        iconEl.setAttribute('data-icon', config.name);
+        iconEl.setAttribute('data-icon', uiMeta.iconName);
         if (window.Iconify) window.Iconify.scan(iconEl.parentElement);
       }
     }

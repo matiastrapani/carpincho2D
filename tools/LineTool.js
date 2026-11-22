@@ -5,6 +5,7 @@
 import { BaseTool } from './BaseTool.js';
 import { AddLineCommand } from '../services/commands/cadCommands.js';
 import { CommandInputParser } from '../services/input/CommandInputParser.js';
+import { CAD_CATALOG } from '../config/cadCatalog.js';
 
 export class LineTool extends BaseTool {
   constructor(cadService, cadUtils) {
@@ -309,7 +310,7 @@ export class LineTool extends BaseTool {
     if (this.startPoint) {
       this.service.suppressOsnapUntilLeave?.(this.startPoint);
     }
-    this.utils.consoleManager?.logSystem('Trazo de línea finalizado.');
+    this.utils.consoleManager?.logSystem(CAD_CATALOG.tools.line.logs.finished);
     this.exitToSelect();
   }
 
@@ -403,17 +404,22 @@ export class LineTool extends BaseTool {
   }
 
   onContextMenu(event) {
-    if (this.sessionVertices.length >= 2) {
-      this._finishTool();
-    } else if (this.sessionVertices.length === 1) {
-      this.resetTool(true);
-    } else {
-      this.exitToSelect();
+    if (event?.preventDefault) event.preventDefault();
+    if (event?.event?.preventDefault) event.event.preventDefault();
+
+    if (this.utils.consoleManager) {
+      this.utils.consoleManager.handleCancel();
+      return;
     }
-    return true;
+
+    this.cancel();
+    this.exitToSelect();
   }
 
   cancel() {
+    if (this.startPoint) {
+      this.service.suppressOsnapUntilLeave?.(this.startPoint);
+    }
     this.resetTool(false);
   }
 }

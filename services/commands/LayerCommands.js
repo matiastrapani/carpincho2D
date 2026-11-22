@@ -9,6 +9,12 @@ export class CreateLayerCommand {
     this.createdLayerId = layerData?.id || null;
   }
 
+  getDescription() {
+    const layer = this.createdLayerId ? this.manager.layers.get(this.createdLayerId) : null;
+    const name = layer?.name || this.layerData?.name || 'Nueva';
+    return `Capa "${name}" creada`;
+  }
+
   execute() {
     const layer = this.manager.createLayer({
       ...this.layerData,
@@ -39,6 +45,12 @@ export class SetActiveLayerCommand {
     const targetLayer = this.manager.layers.get(newLayerId);
     this.wasVisible = targetLayer ? targetLayer.visible : true;
     this.wasLocked = targetLayer ? targetLayer.locked : false;
+  }
+
+  getDescription() {
+    const layer = this.manager.layers.get(this.newLayerId);
+    const name = layer?.name || this.newLayerId;
+    return `Capa activa: "${name}"`;
   }
 
   execute() {
@@ -76,6 +88,11 @@ export class DeleteLayerCommand {
     this.layerBackup = { ...this.manager.layers.get(this.layerId) };
     this.oldActiveLayerId = String(this.manager.activeLayerId);
     this.affectedEntities = [];
+  }
+
+  getDescription() {
+    const name = this.layerBackup?.name || this.layerId;
+    return `Capa "${name}" eliminada`;
   }
 
   execute() {
@@ -181,6 +198,36 @@ export class UpdateLayerPropertyCommand {
     }
   }
 
+  getDescription() {
+    const layer = this.manager.layers.get(this.layerId);
+    const name = layer?.name || this.layerId;
+
+    if (this.newProps) {
+      const keys = Object.keys(this.newProps);
+      if (keys.includes('color') && keys.includes('opacity')) {
+        return `Color y opacidad de capa "${name}" actualizados`;
+      }
+      if (keys.includes('color')) {
+        return `Color de capa "${name}" actualizado`;
+      }
+      if (keys.includes('opacity')) {
+        const pct = Math.round((this.newProps.opacity ?? 1) * 100);
+        return `Opacidad de capa "${name}" actualizada a ${pct}%`;
+      }
+      return `Propiedades de capa "${name}" actualizadas`;
+    }
+
+    const propLabels = {
+      visible: `Visibilidad de capa "${name}": ${this.newValue ? 'visible' : 'oculta'}`,
+      locked: `Bloqueo de capa "${name}": ${this.newValue ? 'bloqueada' : 'desbloqueada'}`,
+      color: `Color de capa "${name}" actualizado`,
+      opacity: `Opacidad de capa "${name}" actualizada a ${Math.round((this.newValue ?? 1) * 100)}%`,
+      strokeWidth: `Grosor de capa "${name}" actualizado a ${Number(this.newValue || 0).toFixed(2)} px`
+    };
+
+    return propLabels[this.property] || `Propiedad de capa "${name}" actualizada`;
+  }
+
   execute() {
     if (this.newProps) {
       Object.entries(this.newProps).forEach(([prop, val]) => {
@@ -210,6 +257,10 @@ export class RenameLayerCommand {
     this.newName = newName;
   }
 
+  getDescription() {
+    return `Capa renombrada: "${this.oldName}" -> "${this.newName}"`;
+  }
+
   execute() {
     this.manager.updateLayerProperty(this.layerId, 'name', this.newName);
   }
@@ -224,6 +275,10 @@ export class ReorderLayersCommand {
     this.manager = layerManager;
     this.oldOrderEntries = oldOrderEntries;
     this.newOrderEntries = newOrderEntries;
+  }
+
+  getDescription() {
+    return `Capa renombrada: "${this.oldName}" -> "${this.newName}"`;
   }
 
   execute() {
