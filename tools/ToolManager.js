@@ -1,6 +1,13 @@
 /**
  * tools/ToolManager.js - Administrador central del ciclo de vida de herramientas
  */
+import {
+  CAD_CATALOG,
+  normalizeCommandKey,
+  getToolCatalogEntry,
+  resolveCatalogEntry
+} from '../config/cadCatalog.js';
+
 export class ToolManager {
   constructor(cadService, cadUtils) {
     this.service = cadService;
@@ -12,22 +19,18 @@ export class ToolManager {
   }
 
   _normalizeCommandKey(text) {
-    return String(text || '')
-      .trim()
-      .toUpperCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '');
+    return normalizeCommandKey(text);
   }
 
   registerTool(name, toolInstance) {
     this.tools[name] = toolInstance;
 
-    const aliases = Array.isArray(toolInstance?.commandAliases)
-      ? toolInstance.commandAliases
-      : [];
+    const catalogEntry = getToolCatalogEntry(name);
+    const catalogAliases = Array.isArray(catalogEntry?.aliases) ? catalogEntry.aliases : [];
+    const instanceAliases = Array.isArray(toolInstance?.commandAliases) ? toolInstance.commandAliases : [];
 
-    aliases.forEach((alias) => {
-      const normalized = this._normalizeCommandKey(alias);
+    [...catalogAliases, ...instanceAliases].forEach((alias) => {
+      const normalized = normalizeCommandKey(alias);
       if (normalized) {
         this.commandAliases[normalized] = name;
       }
@@ -35,66 +38,37 @@ export class ToolManager {
   }
 
   resolveCommand(rawText) {
-    const normalized = this._normalizeCommandKey(rawText);
+    const normalized = normalizeCommandKey(rawText);
     if (!normalized) return null;
 
     if (this.commandAliases[normalized]) {
       return this.commandAliases[normalized];
     }
 
-    // Respaldo temporal para las herramientas que aún faltan migrar
-    const legacyAliases = {
-      POLILINEA: 'polyline',
-      PL: 'polyline',
-      P: 'polyline',
-      CIRCULO: 'circle',
-      C: 'circle',
-      SPLINE: 'spline',
-      S: 'spline',
-      BEZIER: 'bezier',
-      B: 'bezier',
-      PUNTO: 'point',
-      PT: 'point',
-      DIVIDIR: 'divide_count',
-      DIV: 'divide_count',
-      GRADUAR: 'divide_dist',
-      MEDIR: 'divide_dist',
-      MOVER: 'move',
-      M: 'move',
-      RECORTAR: 'trim',
-      RR: 'trim',
-      R: 'trim',
-      ALARGAR: 'extend',
-      AL: 'extend',
-      ENCUADRE: 'pan',
-      SELECCIONAR: 'select',
-      SEL: 'select'
-    };
+    const resolved = resolveCatalogEntry(normalized);
+    if (resolved?.kind === 'tool' && this.tools[resolved.id]) {
+      return resolved.id;
+    }
 
-    return legacyAliases[normalized] || null;
+    return null;
   }
 
   getToolDisplayName(name) {
+    const catalogEntry = getToolCatalogEntry(name);
+    if (catalogEntry?.displayName) {
+      return catalogEntry.displayName;
+    }
+
     const tool = this.tools[name];
-    if (tool?.commandName) return tool.commandName;
+    if (tool?.commandName) {
+      return tool.commandName;
+    }
 
-    const fallbackNames = {
-      select: 'SELECCIONAR',
-      pan: 'ENCUADRE',
-      line: 'LÍNEA',
-      polyline: 'POLILÍNEA',
-      circle: 'CÍRCULO',
-      spline: 'SPLINE',
-      bezier: 'BÉZIER',
-      point: 'PUNTO',
-      divide_count: 'DIVIDIR',
-      divide_dist: 'GRADUAR',
-      move: 'MOVER',
-      trim: 'RECORTAR',
-      extend: 'ALARGAR'
-    };
+    return String(name || '');
+  }
 
-    return fallbackNames[name] || String(name || '').toUpperCase();
+  getToolMetadata(name) {
+    return getToolCatalogEntry(name);
   }
 
   /**
