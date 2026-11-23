@@ -1,4 +1,8 @@
 export const CAD_THEME = {
+  fonts: {
+    primary: "'Inter', system-ui, -apple-system, sans-serif"
+  },
+
   // Fondo general del área de trabajo y ejes cartesianos
   canvas: {
     backgroundColor: '#10141D', //#10141D

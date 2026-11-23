@@ -125,6 +125,14 @@ export class CircleTool extends BaseTool {
     this.previewRadiusLine.opacity = style.opacity;
   }
 
+  _getFeedbackOptions(pt) {
+    const dist = this.centerPoint ? this.centerPoint.getDistance(pt) : 0;
+    return {
+      primaryLabel: this.isDiameterMode ? 'D' : 'R',
+      primaryValue: dist
+    };
+  }
+
   _refreshPreviewFromMouse() {
     const cursorPt = this.utils?.lastMousePoint;
     if (this.centerPoint && cursorPt) {
@@ -136,7 +144,7 @@ export class CircleTool extends BaseTool {
       });
       this.utils.hud.updateHUD(pt);
       this._updatePreview(pt);
-      this.utils.hud.updateFeedbackLabels(this.centerPoint, pt);
+      this.utils.hud.updateFeedbackLabels(this.centerPoint, pt, this._getFeedbackOptions(pt));
       this.paper.view.update();
     }
   }
@@ -289,7 +297,7 @@ export class CircleTool extends BaseTool {
 
     if (this.centerPoint) {
       this._updatePreview(pt);
-      this.utils.hud.updateFeedbackLabels(this.centerPoint, pt);
+      this.utils.hud.updateFeedbackLabels(this.centerPoint, pt, this._getFeedbackOptions(pt));
     }
   }
 

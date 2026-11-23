@@ -70,7 +70,15 @@ export class SelectKeyHandler {
 
   cancelActiveDrag() {
     let cancelled = false;
-    const { activeModule, segmentEditHandler, dragHandler, boxSelectHandler } = this.tool;
+    const {
+      activeModule,
+      segmentEditHandler,
+      dragHandler,
+      boxSelectHandler,
+      selectionMenuHandler
+    } = this.tool;
+
+    selectionMenuHandler.clearPendingMenu();
 
     if (activeModule) {
       if (typeof activeModule.cancelDrag === 'function') {
@@ -80,7 +88,7 @@ export class SelectKeyHandler {
       }
       this.tool.activeModule = null;
       cancelled = true;
-    } else if (segmentEditHandler.isDragging()) {
+    } else if (segmentEditHandler.isDragging() || segmentEditHandler.session?.mouseStartPt) {
       segmentEditHandler.cancelDrag();
       cancelled = true;
     } else if (dragHandler.cancelDrag() || boxSelectHandler.selectionStartPoint) {
@@ -97,6 +105,7 @@ export class SelectKeyHandler {
   }
 
   cancel() {
+    this.cancelActiveDrag();
     this.tool.cleanBox();
     this.utils.hud.clear();
     this.service.deselectAllEditingEntities();

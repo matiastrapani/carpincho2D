@@ -51,6 +51,7 @@ canvas {
   height: 100%;
   display: block;
   background-color: var(--cad-bg-canvas);
+  font-variant-numeric: tabular-nums;
 }
 
 canvas.tool-pan { cursor: grab; }
@@ -224,3 +225,26 @@ canvas.tool-trim { cursor: cell; }
   padding-top: 0.2rem !important;
 }
 
+.hud-feedback-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: none;
+  flex-direction: column;
+  gap: 1px;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  line-height: 1.25;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 15;
+}
+
+.hud-feedback-primary {
+  font-weight: 600;
+}
+
+.hud-feedback-secondary {
+  font-weight: 500;
+}

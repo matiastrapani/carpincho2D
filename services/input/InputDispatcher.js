@@ -158,22 +158,25 @@ export class InputDispatcher {
       return;
     }
 
-    // 4c. Escape siempre cancela el comando activo incluso con el input de consola enfocado
+    // 4c. Escape siempre cancela el comando o arrastre activo incluso con el input de consola enfocado
     if (e.key === 'Escape') {
       e.preventDefault();
       if (cadUtils?.closeAllMenus) cadUtils.closeAllMenus();
-      if (cadUtils) cadUtils.selectedHandle = null;
       if (consoleManager?.fixedUI?.input) consoleManager.fixedUI.input.value = '';
       if (consoleManager?.floatingUI?.input) consoleManager.floatingUI.input.value = '';
+
+      if (cadUtils?.currentToolMode === 'select' && activeTool && typeof activeTool.onKeyDown === 'function') {
+        if (activeTool.onKeyDown(e)) {
+          return;
+        }
+      }
+
+      if (cadUtils) cadUtils.selectedHandle = null;
       if (typeof consoleManager?.handleCancel === 'function') {
         consoleManager.handleCancel();
       } else {
         cadUtils?.setTool?.('select');
       }
-      return;
-    }
-
-    if (isConsoleInput) {
       return;
     }
 

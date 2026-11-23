@@ -10,7 +10,7 @@ export class HUDManager {
     this.utils = cadUtils;
     this.cadUtils = cadUtils;
 
-    this.feedbackGroup = null;
+    this.feedbackEl = null;
     this.feedbackTextDistance = null;
     this.feedbackTextAngle = null;
 
@@ -47,39 +47,6 @@ export class HUDManager {
     }
   }
 
-  setupFeedbackLabels() {
-    const hudLayer = this.utils?.hudLayer || paper.project?.layers?.['hudLayer'];
-    if (hudLayer) hudLayer.activate();
-
-    if (this.feedbackGroup) this.feedbackGroup.remove();
-    this.feedbackGroup = new paper.Group();
-    this.feedbackGroup.name = 'feedbackGroup';
-
-    this.feedbackTextDistance = new paper.PointText({
-      point: [0, 0],
-      content: '',
-      fillColor: '#00e5ff',
-      fontFamily: 'monospace',
-      fontWeight: 'bold',
-      fontSize: 11
-    });
-
-    this.feedbackTextAngle = new paper.PointText({
-      point: [0, 0],
-      content: '',
-      fillColor: '#34d399',
-      fontFamily: 'monospace',
-      fontSize: 10
-    });
-
-    this.feedbackGroup.addChild(this.feedbackTextDistance);
-    this.feedbackGroup.addChild(this.feedbackTextAngle);
-    this.feedbackGroup.visible = false;
-
-    const drawLayer = this.utils?.drawLayer || paper.project?.layers?.['drawLayer'];
-    if (drawLayer) drawLayer.activate();
-  }
-
   updateHUD(point) {
     if (!paper || !paper.view) return;
 
@@ -99,6 +66,148 @@ export class HUDManager {
     if (targetPoint) {
       if (this.hudX) this.hudX.innerText = targetPoint.x.toFixed(2);
       if (this.hudY) this.hudY.innerText = (-targetPoint.y).toFixed(2);
+    }
+  }
+
+
+  setupFeedbackLabels() {
+    if (this.feedbackGroup) {
+      this.feedbackGroup.remove();
+      this.feedbackGroup = null;
+    }
+
+    if (this.feedbackEl) {
+      this.feedbackEl.remove();
+    }
+
+    const container = document.getElementById('mainViewport') || document.body;
+    const wrapper = document.createElement('div');
+    wrapper.className = 'hud-feedback-label';
+
+    const primaryLine = document.createElement('span');
+    primaryLine.className = 'hud-feedback-primary';
+
+    const secondaryLine = document.createElement('span');
+    secondaryLine.className = 'hud-feedback-secondary';
+
+    wrapper.appendChild(primaryLine);
+    wrapper.appendChild(secondaryLine);
+    container.appendChild(wrapper);
+
+    this.feedbackEl = wrapper;
+    this.feedbackTextDistance = primaryLine;
+    this.feedbackTextAngle = secondaryLine;
+  }
+
+  _resolveFeedbackColors(explicitColor = null) {
+    let rawColor = explicitColor;
+
+    if (!rawColor) {
+      const service = this.utils?.service;
+      const targetEnt = service?.editingEntities?.[0] || service?.selectedEntities?.[0] || null;
+
+      if (targetEnt) {
+        const layerId = String(targetEnt.data?.layerId || '0');
+        const layer = this.utils?.layerManager?.layers?.get(layerId);
+        const isByLayer = !targetEnt.data?.color || targetEnt.data?.color === 'BYLAYER';
+        rawColor = isByLayer
+          ? (layer?.color || targetEnt.strokeColor)
+          : targetEnt.data.color;
+      } else {
+        const defaults = this.utils?.propertyManager?.defaultSettings;
+        const activeLayer = this.utils?.layerManager?.getActiveLayer?.();
+        const isColorByLayer = !defaults?.color || defaults.color === 'BYLAYER';
+        rawColor = isColorByLayer
+          ? (activeLayer?.color || CAD_THEME.properties.customFallbackColor)
+          : defaults.color;
+      }
+    }
+
+    const primaryColor = new paper.Color(rawColor || CAD_THEME.properties.defaultColor);
+    const secondaryColor = primaryColor.clone();
+
+    if (secondaryColor.brightness < 0.45) {
+      secondaryColor.brightness = 0.55;
+    }
+    secondaryColor.alpha = (primaryColor.alpha ?? 1) * 0.8;
+
+    return {
+      primaryCss: primaryColor.toCSS(false),
+      secondaryCss: secondaryColor.toCSS(false)
+    };
+  }
+
+  updateFeedbackLabels(fromPt, toPt, options = {}) {
+    const activeTool = this.utils?.toolManager?.activeTool;
+    const hasActivePreview = Boolean(
+      options.force ||
+      this.utils?.activePath ||
+      activeTool?.previewLine ||
+      activeTool?.previewCircle ||
+      activeTool?.previewRadiusLine ||
+      this.dragRubberBand
+    );
+
+    if (!fromPt || !toPt || !hasActivePreview || !paper?.view) {
+      if (this.feedbackEl) this.feedbackEl.style.display = 'none';
+      return;
+    }
+
+    if (!this.feedbackEl || !this.feedbackEl.isConnected) {
+      this.setupFeedbackLabels();
+    }
+
+    const vector = toPt.subtract(fromPt);
+    const primaryLabel = options.primaryLabel || 'L';
+    const primaryValue = typeof options.primaryValue === 'number'
+      ? options.primaryValue
+      : vector.length;
+
+    let angle = -vector.angle;
+    if (angle < 0) angle += 360;
+
+    const { primaryCss, secondaryCss } = this._resolveFeedbackColors(options.color || null);
+
+    this.feedbackTextDistance.style.color = primaryCss;
+    this.feedbackTextDistance.textContent = `${primaryLabel}: ${primaryValue.toFixed(2)}`;
+
+    this.feedbackTextAngle.style.color = secondaryCss;
+    this.feedbackTextAngle.textContent = `A: ${angle.toFixed(1)}°`;
+
+    this.feedbackEl.style.display = 'flex';
+
+    const anchorPt = (this.utils?.lastMousePoint && Number.isFinite(this.utils.lastMousePoint.x))
+      ? this.utils.lastMousePoint
+      : toPt;
+    const viewPx = paper.view.projectToView(anchorPt);
+    const viewSize = paper.view.viewSize;
+
+    const gapX = 16;
+    const marginX = 10;
+    const marginY = 8;
+    const boxW = this.feedbackEl.offsetWidth || 64;
+    const boxH = this.feedbackEl.offsetHeight || 28;
+
+    let leftPx;
+    if (viewPx.x + gapX + boxW <= viewSize.width - marginX) {
+      leftPx = viewPx.x + gapX;
+      this.feedbackEl.style.alignItems = 'flex-start';
+      this.feedbackEl.style.textAlign = 'left';
+    } else {
+      leftPx = Math.max(marginX, viewPx.x - gapX - boxW);
+      this.feedbackEl.style.alignItems = 'flex-end';
+      this.feedbackEl.style.textAlign = 'right';
+    }
+
+    let topPx = viewPx.y - (boxH / 2);
+    topPx = Math.max(marginY, Math.min(viewSize.height - marginY - boxH, topPx));
+
+    this.feedbackEl.style.transform = `translate3d(${Math.round(leftPx)}px, ${Math.round(topPx)}px, 0)`;
+  }
+  
+  hideFeedbackLabels() {
+    if (this.feedbackEl) {
+      this.feedbackEl.style.display = 'none';
     }
   }
 
@@ -146,41 +255,6 @@ export class HUDManager {
     if (!this.hudZoom || !this.hudZoom.isConnected) this.hudZoom = document.getElementById('hudZoom');
   }
 
-  updateFeedbackLabels(fromPt, toPt) {
-    const activeTool = this.utils?.toolManager?.activeTool;
-    const hasActivePreview = Boolean(this.utils?.activePath || activeTool?.previewLine);
-
-    if (!fromPt || !toPt || !hasActivePreview) {
-      if (this.feedbackGroup) this.feedbackGroup.visible = false;
-      return;
-    }
-
-    if (!this.feedbackGroup) {
-      this.setupFeedbackLabels();
-    }
-
-    const vector = toPt.subtract(fromPt);
-    const distance = vector.length;
-    let angle = -vector.angle;
-    if (angle < 0) angle += 360;
-
-    const zoom = paper.view.zoom;
-    this.feedbackGroup.visible = true;
-
-    const offset = new paper.Point(15 / zoom, -15 / zoom);
-    const labelPos = toPt.add(offset);
-
-    this.feedbackTextDistance.position = labelPos;
-    this.feedbackTextDistance.fontSize = 11 / zoom;
-    this.feedbackTextDistance.content = `L: ${distance.toFixed(2)}`;
-
-    if (this.feedbackTextAngle) {
-      this.feedbackTextAngle.position = labelPos.add(new paper.Point(0, 14 / zoom));
-      this.feedbackTextAngle.fontSize = 10 / zoom;
-      this.feedbackTextAngle.content = `A: ${angle.toFixed(1)}°`;
-    }
-  }
-
   updateDragRubberBand(fromPt, toPt) {
     if (!fromPt || !toPt) return;
 
@@ -212,6 +286,8 @@ export class HUDManager {
   }
 
   clearDragRubberBand() {
+    this.hideFeedbackLabels();
+
     if (this.dragRubberBand) {
       this.dragRubberBand.remove();
       this.dragRubberBand = null;
@@ -224,9 +300,7 @@ export class HUDManager {
     }
     this.lastSnapPoint = null;
     this.lastSnapType = null;
-    if (this.feedbackGroup) {
-      this.feedbackGroup.visible = false;
-    }
+    this.hideFeedbackLabels();
   }
 
   cleanup() {
@@ -238,10 +312,12 @@ export class HUDManager {
       this.feedbackGroup.remove();
       this.feedbackGroup = null;
     }
-    if (this.snapMarkersGroup) {
-      this.snapMarkersGroup.remove();
-      this.snapMarkersGroup = null;
+    if (this.feedbackEl) {
+      this.feedbackEl.remove();
+      this.feedbackEl = null;
     }
+    this.feedbackTextDistance = null;
+    this.feedbackTextAngle = null;
 
     this.hudX = null;
     this.hudY = null;

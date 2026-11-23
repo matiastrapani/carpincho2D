@@ -415,7 +415,9 @@ export class CanvasViewportManager {
       if (typeof this.utils.hud?.updateHUD === 'function') {
         this.utils.hud.updateHUD(updatedProjectPt);
       }
-      if (view) {
+      if (typeof this.utils.refreshActivePreview === 'function') {
+        this.utils.refreshActivePreview();
+      } else if (view) {
         view.update();
       }
     }
@@ -564,6 +566,40 @@ export class CanvasViewportManager {
     }
   }
 
+  _syncOverlaysAfterViewportChange(fallbackPoint = null) {
+    if (typeof this.utils.selectionRenderEngine?.updateEntitiesStroke === 'function') {
+      this.utils.selectionRenderEngine.updateEntitiesStroke();
+    }
+    if (typeof this.utils.selectionRenderEngine?.updatePointEntitiesScale === 'function') {
+      this.utils.selectionRenderEngine.updatePointEntitiesScale();
+    }
+    if (typeof this.utils.selectionRenderEngine?.renderBezierHandles === 'function') {
+      this.utils.selectionRenderEngine.renderBezierHandles();
+    }
+    if (typeof this.utils.hud?.refreshSnapMarkerScale === 'function') {
+      this.utils.hud.refreshSnapMarkerScale();
+    }
+
+    let updatedProjectPt = null;
+    if (typeof this._lastClientX === 'number' && typeof this._lastClientY === 'number') {
+      const candidate = this._clientToProject(this._lastClientX, this._lastClientY);
+      if (candidate && Number.isFinite(candidate.x) && Number.isFinite(candidate.y)) {
+        updatedProjectPt = candidate;
+        this.lastMousePoint = candidate.clone();
+        this.utils.lastMousePoint = candidate.clone();
+      }
+    }
+
+    const hudPt = updatedProjectPt || this.lastMousePoint || fallbackPoint || paper.view.center;
+    if (typeof this.utils.hud?.updateHUD === 'function') {
+      this.utils.hud.updateHUD(hudPt);
+    }
+
+    if (typeof this.utils.refreshActivePreview === 'function') {
+      this.utils.refreshActivePreview();
+    }
+  }
+
   animateViewportTo(targetCenter, targetZoom) {
     if (this.zoomAnimationRequestId) {
       cancelAnimationFrame(this.zoomAnimationRequestId);
@@ -596,33 +632,14 @@ export class CanvasViewportManager {
 
       paper.view.matrix.set(currentA, currentB, currentC, currentD, currentTx, currentTy);
 
-      if (typeof this.utils.selectionRenderEngine?.updateEntitiesStroke === 'function') {
-        this.utils.selectionRenderEngine.updateEntitiesStroke();
-      }
-
-      this.drawGrid();
-
-      if (typeof this.utils.selectionRenderEngine?.updatePointEntitiesScale === 'function') {
-        this.utils.selectionRenderEngine.updatePointEntitiesScale();
-      }
-      if (typeof this.utils.selectionRenderEngine?.renderBezierHandles === 'function') {
-        this.utils.selectionRenderEngine.renderBezierHandles();
-      }
-      if (typeof this.utils.hud?.updateHUD === 'function') {
-        this.utils.hud.updateHUD(this.lastMousePoint || paper.view.center);
-      }
-
       if (progress < 1) {
+        this.drawGrid();
+        this._syncOverlaysAfterViewportChange();
         this.zoomAnimationRequestId = requestAnimationFrame(animateStep);
       } else {
         this.zoomAnimationRequestId = null;
         this.drawGrid(true);
-        if (typeof this.utils.selectionRenderEngine?.updateEntitiesStroke === 'function') {
-          this.utils.selectionRenderEngine.updateEntitiesStroke();
-        }
-        if (typeof this.utils.hud?.refreshSnapMarkerScale === 'function') {
-          this.utils.hud.refreshSnapMarkerScale();
-        }
+        this._syncOverlaysAfterViewportChange();
       }
     };
 
@@ -643,18 +660,7 @@ export class CanvasViewportManager {
       paper.view.center = targetCenter;
       paper.view.zoom = targetZoom;
       this.drawGrid(true);
-      if (typeof this.utils.selectionRenderEngine?.updatePointEntitiesScale === 'function') {
-        this.utils.selectionRenderEngine.updatePointEntitiesScale();
-      }
-      if (typeof this.utils.selectionRenderEngine?.updateEntitiesStroke === 'function') {
-        this.utils.selectionRenderEngine.updateEntitiesStroke();
-      }
-      if (typeof this.utils.selectionRenderEngine?.renderBezierHandles === 'function') {
-        this.utils.selectionRenderEngine.renderBezierHandles();
-      }
-      if (typeof this.utils.hud?.updateHUD === 'function') {
-        this.utils.hud.updateHUD(paper.view.center);
-      }
+      this._syncOverlaysAfterViewportChange(targetCenter);
       return;
     }
 
@@ -674,25 +680,14 @@ export class CanvasViewportManager {
 
       paper.view.zoom = startZoom + (targetZoom - startZoom) * easeOut;
 
-      this.drawGrid();
-      if (typeof this.utils.selectionRenderEngine?.updatePointEntitiesScale === 'function') {
-        this.utils.selectionRenderEngine.updatePointEntitiesScale();
-      }
-      if (typeof this.utils.selectionRenderEngine?.updateEntitiesStroke === 'function') {
-        this.utils.selectionRenderEngine.updateEntitiesStroke();
-      }
-      if (typeof this.utils.selectionRenderEngine?.renderBezierHandles === 'function') {
-        this.utils.selectionRenderEngine.renderBezierHandles();
-      }
-      if (typeof this.utils.hud?.updateHUD === 'function') {
-        this.utils.hud.updateHUD(paper.view.center);
-      }
-
       if (progress < 1) {
+        this.drawGrid();
+        this._syncOverlaysAfterViewportChange(paper.view.center);
         this.zoomAnimationRequestId = requestAnimationFrame(animateZoom);
       } else {
         this.zoomAnimationRequestId = null;
         this.drawGrid(true);
+        this._syncOverlaysAfterViewportChange(paper.view.center);
       }
     };
 

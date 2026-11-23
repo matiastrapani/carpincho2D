@@ -64,14 +64,17 @@ bloqueo y visibilidad global por entidades selecciondas
 
 no permitir la seleccion de imagen como elemento en trim/extend
 agregar en linetool los colores de la etiqueta de rubberband
-resolver el punto de incio con estilo punto en division por distancia
+  [x] resolver el punto de incio con estilo punto en division por distancia
 
 
 mejorar el nombre de las entidades agregando para separar el tag #
 
-resolver la barra de desplazamiento horizontal en el panel de propiedades al reducir el tamaño sin overflow
+  [x] resolver la barra de desplazamiento horizontal en el panel de propiedades al reducir el tamaño sin overflow
 resolver que hacer con la opacidad en capa
 autocompletado en consola
   [x] La tangente en circulos no es con la linea del radio sino que es con la curva
   [x] El movimiento de arrastre y osnap perpendicular
 implementar clases para las entidades
+
+cancelacion de arrastre en tiradores no restaura
+zoom y rubberband
