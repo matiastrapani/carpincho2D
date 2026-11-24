@@ -109,6 +109,49 @@ export class SelectionManager {
     this._notify();
   }
 
+  selectEntities(entities, addToSelection = false) {
+    const list = Array.isArray(entities) ? entities : [];
+    const viewportManager = this._getUtils()?.canvasViewportManager;
+    if (viewportManager) {
+      viewportManager.previousViewState = null;
+    }
+
+    if (!addToSelection) {
+      this._selectedEntities = [];
+      this.selectedSegments = [];
+      this.deselectAllHandles();
+    }
+
+    const selectedSet = new Set(this._selectedEntities);
+    let changed = !addToSelection;
+
+    for (let i = 0; i < list.length; i++) {
+      const entity = list[i];
+      if (!entity || selectedSet.has(entity) || !this._isLayerEditable(entity)) continue;
+
+      if (!entity.data) entity.data = {};
+      if (!entity.data.origStrokeColor && entity.strokeColor) {
+        entity.data.origStrokeColor = entity.strokeColor.toCSS ? entity.strokeColor.toCSS() : entity.strokeColor;
+      }
+      if (!entity.data.origFillColor && entity.fillColor) {
+        entity.data.origFillColor = entity.fillColor.toCSS ? entity.fillColor.toCSS() : entity.fillColor;
+      }
+      if (!entity.data.origStrokeWidth && entity.strokeWidth) {
+        entity.data.origStrokeWidth = entity.strokeWidth;
+      }
+
+      this._selectedEntities.push(entity);
+      selectedSet.add(entity);
+      entity.selected = false;
+      changed = true;
+    }
+
+    if (changed) {
+      this._refreshRender();
+      this._notify();
+    }
+  }
+
   deselectAllEntities() {
     this._selectedEntities = [];
     this.selectedSegments = [];
@@ -174,6 +217,30 @@ export class SelectionManager {
     this._notify();
   }
 
+  deselectEntities(entities) {
+    const list = Array.isArray(entities) ? entities : [];
+    if (list.length === 0 || this._selectedEntities.length === 0) return;
+
+    const viewportManager = this._getUtils()?.canvasViewportManager;
+    if (viewportManager) {
+      viewportManager.previousViewState = null;
+    }
+
+    const toRemove = new Set(list);
+    const prevLen = this._selectedEntities.length;
+    this._selectedEntities = this._selectedEntities.filter((ent) => !toRemove.has(ent));
+
+    const paperInst = this._getPaper();
+    if (paperInst && this.selectedSegments.length > 0) {
+      this.selectedSegments = this.selectedSegments.filter((seg) => !seg?.path || !toRemove.has(seg.path));
+    }
+
+    if (this._selectedEntities.length !== prevLen) {
+      this._refreshRender();
+      this._notify();
+    }
+  }  
+
   deselectAllEditingEntities() {
     this.editingEntities = [];
     this.deselectAllEntities();
@@ -194,6 +261,33 @@ export class SelectionManager {
 
     this._refreshRender({ stroke: false, handles: true });
     this._notify();
+  }
+
+  selectSegments(segments, addToSelection = false) {
+    const list = Array.isArray(segments) ? segments : [];
+
+    if (!addToSelection) {
+      this._clearSelectedEntitiesOnly(false);
+      this.selectedSegments = [];
+    }
+
+    const selectedSet = new Set(this.selectedSegments);
+    let changed = !addToSelection;
+
+    for (let i = 0; i < list.length; i++) {
+      const segment = list[i];
+      if (!segment || !segment.path || selectedSet.has(segment)) continue;
+      if (!this._isLayerEditable(segment.path)) continue;
+
+      this.selectedSegments.push(segment);
+      selectedSet.add(segment);
+      changed = true;
+    }
+
+    if (changed) {
+      this._refreshRender({ stroke: false, handles: true });
+      this._notify();
+    }
   }
 
   deselectSegment(segment) {

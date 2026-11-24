@@ -33,7 +33,7 @@ export const CAD_CATALOG = {
     point: {
       id: 'point',
       displayName: 'Punto',
-      aliases: ['PUNTO', 'PT'],
+      aliases: ['PUNTO', 'PT', 'P'],
       ui: { buttonId: 'btnPointGroup', iconId: 'currentPointIcon', iconName: 'custom:dot' },
       prompts: {
         start: 'Especifique ubicación del punto',
@@ -107,7 +107,7 @@ export const CAD_CATALOG = {
     polyline: {
       id: 'polyline',
       displayName: 'Polilínea',
-      aliases: ['POLILINEA', 'PL', 'P'],
+      aliases: ['POLILINEA', 'PL'],
       ui: { buttonId: 'btnLineGroup', iconId: 'currentLineIcon', iconName: 'custom:polyline' },
       prompts: {
         start: 'Punto de inicio',
@@ -161,13 +161,65 @@ export const CAD_CATALOG = {
       id: 'spline',
       displayName: 'Spline',
       aliases: ['SPLINE', 'SPL', 'S'],
-      ui: { buttonId: 'btnCurveGroup', iconId: 'currentCurveIcon', iconName: 'custom:spline' }
+      ui: { buttonId: 'btnCurveGroup', iconId: 'currentCurveIcon', iconName: 'custom:spline' },
+      prompts: {
+        start: 'Especifique punto inicial de la spline',
+        next: 'Especifique el siguiente punto'
+      },
+      options: {
+        undo: { key: 'D', label: 'Deshacer' },
+        close: { key: 'C', label: 'Cerrar' },
+        finish: { key: 'T', label: 'Terminar' }
+      },
+      logs: {
+        created: ({ name, vertexCount, totalLength, closed }) =>
+          `${name} creada${closed ? ' (cerrada)' : ''}: Puntos = ${vertexCount}, Longitud = ${totalLength}`,
+        undoStart: ({ coords }) => `Deshacer: Punto inicial ${coords}`,
+        undoVertex: ({ coords }) => `Deshacer: Último punto. Punto actual: ${coords}`,
+        redoStart: ({ coords }) => `Rehacer: Punto inicial ${coords}`,
+        redoVertex: ({ coords }) => `Rehacer: Punto restaurado en ${coords}`,
+        samePoint: 'El punto coincide con el punto anterior.',
+        needStart: 'Marque primero el punto inicial o ingrese coordenadas X,Y.',
+        invalidDistance: 'La distancia debe ser mayor a cero.',
+        needDirection: 'Mueva el cursor sobre el lienzo para indicar la dirección.',
+        discarded: 'Trazado de spline descartado.'
+      }
     },
     bezier: {
       id: 'bezier',
       displayName: 'Bézier',
       aliases: ['BEZIER', 'BZ', 'B'],
-      ui: { buttonId: 'btnCurveGroup', iconId: 'currentCurveIcon', iconName: 'custom:bezier' }
+      ui: { buttonId: 'btnCurveGroup', iconId: 'currentCurveIcon', iconName: 'custom:bezier' },
+      prompts: {
+        start: 'Especifique punto inicial de la curva',
+        next: 'Especifique el siguiente punto (arrastre para definir tiradores)',
+        handle: 'Especifique extremo de manija (X,Y, @dx,dy, @dist<ang o distancia)'
+      },
+      options: {
+        handle: { key: 'M', label: 'Manija' },
+        asymmetric: { key: 'A', label: 'Asimétrica' },
+        undo: { key: 'D', label: 'Deshacer' },
+        close: { key: 'C', label: 'Cerrar' },
+        finish: { key: 'T', label: 'Terminar' }
+      },
+      logs: {
+        created: ({ name, vertexCount, totalLength, closed }) =>
+          `${name} Bézier creada${closed ? ' (cerrada)' : ''}: Nodos = ${vertexCount}, Longitud = ${totalLength}`,
+        handleSet: ({ coords, length, asymmetric }) =>
+          `Manija (${asymmetric ? 'asimétrica' : 'simétrica'}) fijada: Extremo = (${coords}), Longitud = ${length}`,
+        handleModeChanged: ({ asymmetric }) =>
+          `Modo de manija: ${asymmetric ? 'Asimétrica (solo salida)' : 'Simétrica (entrada y salida)'}`,
+        handleCancelled: 'Edición de manija cancelada.',
+        undoStart: ({ coords }) => `Deshacer: Punto inicial ${coords}`,
+        undoVertex: ({ coords }) => `Deshacer: Último nodo. Punto actual: ${coords}`,
+        redoStart: ({ coords }) => `Rehacer: Punto inicial ${coords}`,
+        redoVertex: ({ coords }) => `Rehacer: Nodo restaurado en ${coords}`,
+        samePoint: 'El punto coincide con el nodo anterior.',
+        needStart: 'Marque primero el punto inicial o ingrese coordenadas X,Y.',
+        invalidDistance: 'La distancia debe ser mayor a cero.',
+        needDirection: 'Mueva el cursor sobre el lienzo para indicar la dirección.',
+        discarded: 'Trazado de curva Bézier descartado.'
+      }
     },
     circle: {
       id: 'circle',
@@ -176,8 +228,8 @@ export const CAD_CATALOG = {
       ui: { buttonId: 'btn-circle-tool' },
       prompts: {
         center: 'Especifique el centro del círculo',
-        radius: 'Especifique el radio o un punto en el círculo',
-        diameter: 'Especifique el diámetro o un punto en el círculo'
+        radius: 'Especifique el radio',
+        diameter: 'Especifique el diámetro'
       },
       options: {
         diameter: { key: 'D', label: 'Diámetro' },
@@ -194,7 +246,25 @@ export const CAD_CATALOG = {
       id: 'move',
       displayName: 'Mover',
       aliases: ['MOVER', 'M'],
-      ui: { buttonId: 'btnMove' }
+      ui: { buttonId: 'btnMove' },
+      prompts: {
+        select: 'Seleccione objetos y presione Enter o clic derecho',
+        basePoint: 'Especifique punto base',
+        destPoint: 'Especifique segundo punto o desplazamiento'
+      },
+      options: {
+        undo: { key: 'C', label: 'Cancelar' }
+      },
+      logs: {
+        moved: ({ dx, dy, distance }) =>
+          `Desplazamiento aplicado: ΔX = ${dx}, ΔY = ${dy}, Distancia = ${distance}`,
+        undoBasePoint: 'Deshacer: Punto base reiniciado.',
+        samePoint: 'El punto destino coincide con el punto base.',
+        needSelection: 'Seleccione al menos un objeto antes de continuar.',
+        needBasePoint: 'Especifique primero el punto base (clic o coordenadas X,Y).',
+        invalidDistance: 'La distancia debe ser mayor a cero.',
+        needDirection: 'Mueva el cursor sobre el lienzo para indicar la dirección.'
+      }
     },
     trim: {
       id: 'trim',
@@ -209,6 +279,26 @@ export const CAD_CATALOG = {
       ui: { buttonId: 'btnExtend', iconId: 'currentModifyIcon', iconName: 'custom:extend' }
     }
   },
+  import: {
+      id: 'import',
+      displayName: 'Importar',
+      aliases: ['IMPORTAR', 'IMP']
+    },
+    import_image: {
+      id: 'import_image',
+      displayName: 'Importar imagen',
+      aliases: ['IMAGEN', 'IMPORTARIMAGEN', 'IMG']
+    },
+    import_svg: {
+      id: 'import_svg',
+      displayName: 'Importar SVG',
+      aliases: ['SVG', 'IMPORTARSVG']
+    },
+    export_svg: {
+      id: 'export_svg',
+      displayName: 'Exportar SVG',
+      aliases: ['EXPORTAR', 'EXPORTARSVG', 'EXP']
+    },
   commands: {
     undo: {
       id: 'undo',

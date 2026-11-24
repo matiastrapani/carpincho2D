@@ -1,5 +1,5 @@
 /**
- * modules/IOService.js - Exportación e Importación de archivos
+ * services/io/IOService.js - Exportación e Importación de archivos (Imágenes y SVG)
  */
 import { ImageController } from '../../controllers/ImageController.js';
 import { AddEntityCommand, ImportSVGCommand } from '../commands/cadCommands.js';
@@ -13,7 +13,6 @@ export class CADIOService {
     this.service = cadService;
     this.utils = cadUtils;
 
-    // Referencias guardadas para poder desvincular los eventos en cleanup()
     this._attachedCanvas = null;
     this._preventDefaultHandler = (e) => { e.preventDefault(); e.stopPropagation(); };
     this._dragOverHandler = this._handleDragOver.bind(this);
@@ -21,10 +20,122 @@ export class CADIOService {
     this._dropHandler = this._handleDrop.bind(this);
   }
 
-  // --- IMPORTACIÓN DE ARCHIVOS ---
+  _formatCoords(pt) {
+    if (!pt) return '0.00, 0.00';
+    const x = pt.x.toFixed(2);
+    const y = (pt.y === 0 ? 0 : -pt.y).toFixed(2);
+    return `${x}, ${y}`;
+  }
 
-  importImageToCanvas(imageSrc, dropPosition = null) {
+  _logImport(message, { commandTitle = null } = {}) {
+    const cm = this.utils?.consoleManager || window.consoleManager;
+    if (!cm) return;
+
+    if (commandTitle) {
+      cm.beginCompactBlock?.();
+      cm.logUser(commandTitle, 'Comando: ', { grouped: true });
+      cm.logSystem(`[IMPORTAR] ${message}`, { grouped: true });
+      cm.endCompactBlock?.();
+    } else if (cm.hasActiveCompactBlock?.()) {
+      cm.logSystem(`[IMPORTAR] ${message}`, { grouped: true });
+      cm.endCompactBlock?.();
+    } else {
+      cm.logSystem(`[IMPORTAR] ${message}`, { grouped: false });
+    }
+  }
+
+  _syncUndoRedoUI() {
+    (this.utils?.cadUI || window.cadUI)?.updateUndoRedoUI?.();
+  }
+
+  // --- SELECTOR Y LECTURA UNIFICADA DE ARCHIVOS ---
+
+  promptFileImport({ accept = '.svg,image/*', source = 'console' } = {}) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = accept;
+    Object.assign(input.style, {
+      position: 'fixed',
+      top: '0',
+      left: '0',
+      width: '1px',
+      height: '1px',
+      opacity: '0',
+      pointerEvents: 'none'
+    });
+
+    const cleanupInput = (cancelled = false) => {
+      if (input.parentNode) input.remove();
+      if (cancelled && source === 'console') {
+        const cm = this.utils?.consoleManager || window.consoleManager;
+        if (cm?.hasActiveCompactBlock?.()) {
+          cm.logSystem('[IMPORTAR] Cancelado.', { grouped: true });
+          cm.endCompactBlock?.();
+        }
+      }
+    };
+
+    input.addEventListener('change', (e) => {
+      const file = e.target?.files?.[0];
+      cleanupInput(false);
+      if (!file) return;
+      this.importFile(file, null, { source });
+    }, { once: true });
+
+    input.addEventListener('cancel', () => cleanupInput(true), { once: true });
+
+    document.body.appendChild(input);
+    input.click();
+  }
+
+  importFile(file, dropPosition = null, { source = 'ui' } = {}) {
+    if (!file) return;
+
+    const isSvg = file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg');
+    const isImage = !isSvg && file.type.startsWith('image/');
+
+    if (!isSvg && !isImage) {
+      this._logImport(`Formato no soportado: "${file.name}". Use SVG, PNG, JPG o WEBP.`);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onerror = () => {
+      this._logImport(`Error al leer el archivo "${file.name}".`);
+    };
+
+    if (isSvg) {
+      reader.onload = (event) => {
+        this.importSVGToCanvas(event.target.result, dropPosition, {
+          fileName: file.name,
+          source
+        });
+      };
+      reader.readAsText(file);
+    } else {
+      reader.onload = (event) => {
+        this.importImageToCanvas(event.target.result, dropPosition, {
+          fileName: file.name,
+          source
+        });
+      };
+      reader.readAsDataURL(file);
+    }
+  }
+
+  // --- IMPORTACIÓN DE IMÁGENES Y SVG ---
+
+  importImageToCanvas(imageSrc, dropPosition = null, options = {}) {
+    const { fileName = '', source = 'ui' } = options;
     const raster = new paper.Raster(imageSrc);
+
+    raster.on('error', () => {
+      raster.remove();
+      const label = fileName ? ` "${fileName}"` : '';
+      this._logImport(`No se pudo cargar la imagen${label}.`, {
+        commandTitle: source !== 'console' ? 'Importar imagen' : null
+      });
+    });
 
     raster.on('load', () => {
       const utils = this.utils;
@@ -33,14 +144,12 @@ export class CADIOService {
 
       if (!raster.data) raster.data = {};
       raster.data.isImageEntity = true;
-      raster.position = dropPosition || paper.view.center.clone();
+      raster.position = dropPosition ? dropPosition.clone() : paper.view.center.clone();
 
-      // 1. Asignar nombre correlativo ("Imagen 1", "Imagen 2")
       const imageName = utils.generateNextEntityName ? utils.generateNextEntityName('Imagen') : 'Imagen';
       raster.name = imageName;
       raster.data.name = imageName;
 
-      // 2. Vincular propiedades por defecto y capa activa
       if (utils.propertyManager) {
         utils.propertyManager.applyDefaultSettings(raster);
       }
@@ -54,46 +163,71 @@ export class CADIOService {
       raster.sendToBack();
       if (utils.gridGroup) utils.gridGroup.sendToBack();
 
-      // 3. Registrar comando en el historial para Undo / Redo
       const cmd = new AddEntityCommand(cadService, raster);
       cadService.executeCommand(cmd);
 
       cadService.selectEntity(raster, false);
-      if (utils.selectionRenderEngine?.updateEntitiesStroke) {
-        utils.selectionRenderEngine.updateEntitiesStroke();
-      }
-      if (utils.selectionRenderEngine?.renderBezierHandles) {
-        utils.selectionRenderEngine.renderBezierHandles();
-      }
+      utils.selectionRenderEngine?.updateEntitiesStroke?.();
+      utils.selectionRenderEngine?.renderBezierHandles?.();
+      this._syncUndoRedoUI();
 
-      if (utils.setPrompt) utils.setPrompt('Imagen importada al lienzo.');
+      const width = Math.round(raster.size?.width || raster.bounds?.width || 0);
+      const height = Math.round(raster.size?.height || raster.bounds?.height || 0);
+      const coords = this._formatCoords(raster.position);
+      const fileLabel = fileName ? ` (${fileName})` : '';
+
+      this._logImport(
+        `${imageName}${fileLabel} importada en (${coords}) — ${width} × ${height} px.`,
+        { commandTitle: source !== 'console' ? 'Importar imagen' : null }
+      );
     });
   }
 
-  importSVGToCanvas(svgString, dropPosition) {
+  _getNextEntityStartIndex(prefix) {
+    const regex = new RegExp(`^${prefix}\\s+(\\d+)$`, 'i');
+    let maxNum = 0;
+    for (const ent of this.service.entities || []) {
+      const name = ent?.name || ent?.data?.name || '';
+      const match = regex.exec(name);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    }
+    return maxNum + 1;
+  }
+
+  importSVGToCanvas(svgString, dropPosition = null, options = {}) {
+    const { fileName = '', source = 'ui' } = options;
     const utils = this.utils;
     const cadService = this.service;
 
     const layerManager = cadService.layerManager || utils.layerManager;
     const activeCadLayer = layerManager ? layerManager.getActiveLayer() : null;
-
     const targetContainer = activeCadLayer?.paperGroup || utils.drawLayer || paper.project.activeLayer;
 
-    if (targetContainer && typeof targetContainer.activate === 'function') {
-      targetContainer.activate();
-    }
+    const commandTitle = source !== 'console' ? 'Importar SVG' : null;
+    const fileLabel = fileName ? `"${fileName}"` : 'SVG';
 
     paper.project.importSVG(svgString, {
       expandShapes: true,
-      insert: true,
+      insert: false,
+      onError: () => {
+        this._logImport(`Error al interpretar el archivo ${fileLabel}.`, { commandTitle });
+      },
       onLoad: (item) => {
-        if (!item) return;
+        if (!item) {
+          this._logImport(`El archivo ${fileLabel} está vacío o no es válido.`, { commandTitle });
+          return;
+        }
 
+        const targetPos = dropPosition ? dropPosition.clone() : paper.view.center.clone();
         item.applyMatrix = true;
-        item.position = dropPosition || paper.view.center.clone();
+        item.position = targetPos;
 
         const importedEntities = [];
-        const layerColor = activeCadLayer?.color || (activeCadLayer?.data && activeCadLayer.data.color) || null;
+        const layerColor = activeCadLayer?.color || activeCadLayer?.data?.color || null;
+        let nextCurveIndex = this._getNextEntityStartIndex('Curva');
 
         const processVectorEntity = (ent) => {
           if (!ent) return;
@@ -102,6 +236,10 @@ export class CADIOService {
           if (layerColor) {
             ent.strokeColor = layerColor;
           }
+
+          const entityName = `Curva ${nextCurveIndex++}`;
+          ent.name = entityName;
+          ent.data.name = entityName;
 
           ent.data.origStrokeColor = ent.strokeColor ? (ent.strokeColor.toCSS ? ent.strokeColor.toCSS() : ent.strokeColor) : null;
           ent.data.origFillColor = ent.fillColor ? (ent.fillColor.toCSS ? ent.fillColor.toCSS() : ent.fillColor) : null;
@@ -141,17 +279,35 @@ export class CADIOService {
         registerChildren(item);
         item.remove();
 
-        if (importedEntities.length > 0) {
-          const cmd = new ImportSVGCommand(cadService, utils, importedEntities, []);
-          if (cadService && typeof cadService.executeCommand === 'function') {
-            cadService.executeCommand(cmd);
-          }
+        if (importedEntities.length === 0) {
+          this._logImport(`No se encontraron trazados vectoriales válidos en ${fileLabel}.`, { commandTitle });
+          return;
         }
 
-        if (utils.selectionRenderEngine?.updateEntitiesStroke) utils.selectionRenderEngine.updateEntitiesStroke();
-        if (utils.selectionRenderEngine?.renderBezierHandles) utils.selectionRenderEngine.renderBezierHandles();
+        const cmd = new ImportSVGCommand(cadService, utils, importedEntities, []);
+        cadService.executeCommand?.(cmd);
+
+        cadService.deselectAllEntities?.();
+        cadService.selectedEntities = [...importedEntities];
+        utils.uiManager?.updatePropertyPanel?.(
+          importedEntities.length === 1 ? importedEntities[0] : null
+        );
+        cadService.selectionManager?.onSelectionChange?.(cadService.selectedEntities);
+
+        utils.selectionRenderEngine?.updateEntitiesStroke?.();
+        utils.selectionRenderEngine?.renderBezierHandles?.();
         if (paper.view) paper.view.update();
-        if (utils.setPrompt) utils.setPrompt('Dibujo SVG importado en la capa activa.');
+        this._syncUndoRedoUI();
+
+        const layerName = activeCadLayer?.name || 'Capa 0';
+        const count = importedEntities.length;
+        const countLabel = count === 1 ? '1 trazado' : `${count} trazados`;
+        const coords = this._formatCoords(targetPos);
+
+        this._logImport(
+          `${fileLabel} importado en "${layerName}" (${coords}): ${countLabel}.`,
+          { commandTitle }
+        );
       }
     });
   }
@@ -160,7 +316,6 @@ export class CADIOService {
     const canvas = canvasElement || this.utils?.canvasElement || document.getElementById('cadCanvas');
     if (!canvas) return;
 
-    // Si ya existía un canvas enganchado previo, limpiamos sus listeners primero
     if (this._attachedCanvas) {
       this.cleanup();
     }
@@ -183,24 +338,18 @@ export class CADIOService {
   }
 
   // --- EXPORTACIÓN DE ARCHIVOS ---
-  
+
   async exportSVG(defaultFileName = 'dibujo_carpincho.svg') {
     if (!paper || !paper.project) return;
 
-    // Array para almacenar y restaurar lo que desconectaremos del proyecto
     const detachedItems = [];
 
-    // 1. DESCONECTAR temporalmente del proyecto la capa HUD, la Grilla y las Guías
-    // (Simplemente hacer `visible = false` no impide que Paper.js los guarde en el XML)
-    
-    // A) Capa HUD
     const hudLayer = paper.project.layers.find(l => l.name === 'hudLayer');
     if (hudLayer) {
       hudLayer.remove();
       detachedItems.push({ item: hudLayer, parent: paper.project, isLayer: true });
     }
 
-    // B) Grupo de Grilla y Ejes Principales
     if (this.utils.gridGroup) {
       const grid = this.utils.gridGroup;
       const parent = grid.parent;
@@ -210,7 +359,6 @@ export class CADIOService {
       }
     }
 
-    // C) Controles visuales y manejadores temporales
     if (this.utils.controlHandlesGroup) {
       const handles = this.utils.controlHandlesGroup;
       const parent = handles.parent;
@@ -220,15 +368,13 @@ export class CADIOService {
       }
     }
 
-    // 2. Exportación limpia: ahora el proyecto SOLO contiene las geometrías dibujadas
     const svgString = paper.project.exportSVG({
       asString: true,
-      bounds: 'content',   // Enmarca exclusivamente el dibujo real
-      matchShapes: true,   // Mantiene etiquetas SVG nativas (<circle>, <rect>)
+      bounds: 'content',
+      matchShapes: true,
       precision: 4
     });
 
-    // 3. RE-CONECTAR inmediatamente la interfaz y la grilla al Canvas
     detachedItems.forEach(({ item, parent, isLayer }) => {
       if (isLayer) {
         paper.project.addLayer(item);
@@ -239,7 +385,6 @@ export class CADIOService {
 
     paper.view.update();
 
-    // 4. Guardar archivo con la API nativa "Guardar como..." del SO
     const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
 
     if ('showSaveFilePicker' in window) {
@@ -254,14 +399,14 @@ export class CADIOService {
         const writable = await handle.createWritable();
         await writable.write(blob);
         await writable.close();
+        this.utils?.consoleManager?.logSystem(`[EXPORTAR] Archivo "${handle.name || defaultFileName}" guardado correctamente.`, { grouped: false });
         return;
       } catch (err) {
-        if (err.name === 'AbortError') return; // Cancelado por el usuario
+        if (err.name === 'AbortError') return;
         console.warn('Fallback a descarga tradicional:', err);
       }
     }
 
-    // Respaldo para navegadores que no soportan File System Access API
     let chosenName = prompt('Ingrese el nombre para guardar el archivo:', defaultFileName);
     if (!chosenName) return;
     if (!chosenName.toLowerCase().endsWith('.svg')) {
@@ -276,6 +421,7 @@ export class CADIOService {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+    this.utils?.consoleManager?.logSystem(`[EXPORTAR] Archivo "${chosenName}" descargado.`, { grouped: false });
   }
 
   _handleDragOver() {
@@ -289,28 +435,10 @@ export class CADIOService {
   _handleDrop(e) {
     if (this._attachedCanvas) this._attachedCanvas.classList.remove('drag-over');
 
-    const dt = e.dataTransfer;
-    const files = dt.files;
-
-    if (files && files.length > 0) {
-      const file = files[0];
+    const file = e.dataTransfer?.files?.[0];
+    if (file) {
       const viewPoint = paper.view.getEventPoint(e);
-
-      if (file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg')) {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          const svgString = event.target.result;
-          this.importSVGToCanvas(svgString, viewPoint);
-        };
-        reader.readAsText(file);
-      } else if (file.type.startsWith('image/')) {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          const imageSrc = event.target.result;
-          this.importImageToCanvas(imageSrc, viewPoint);
-        };
-        reader.readAsDataURL(file);
-      }
+      this.importFile(file, viewPoint, { source: 'drop' });
     }
   }
 

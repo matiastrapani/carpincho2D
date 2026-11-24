@@ -153,8 +153,9 @@ export class MixedDragSnapshot {
     });
   }
 
-  commitMoveCommand() {
+  commitMoveCommand({ skipTargetLog = false } = {}) {
     let hasMoved = false;
+    let appliedDelta = null;
 
     const entitiesData = (this.entitiesStart || [])
       .filter((i) => i.entity)
@@ -173,18 +174,24 @@ export class MixedDragSnapshot {
             }))
           : null;
 
-        if (
-          isPath &&
-          finalSegments.some(
+        if (isPath) {
+          const movedIdx = finalSegments.findIndex(
             (s, idx) =>
               !s.point.equals(item.initialSegments[idx].point) ||
               !s.handleIn.equals(item.initialSegments[idx].handleIn) ||
               !s.handleOut.equals(item.initialSegments[idx].handleOut)
-          )
-        ) {
+          );
+          if (movedIdx !== -1) {
+            hasMoved = true;
+            if (!appliedDelta) {
+              appliedDelta = finalSegments[movedIdx].point.subtract(item.initialSegments[movedIdx].point);
+            }
+          }
+        } else if (finalPos && item.initialPos && !finalPos.equals(item.initialPos)) {
           hasMoved = true;
-        } else if (!isPath && finalPos && item.initialPos && !finalPos.equals(item.initialPos)) {
-          hasMoved = true;
+          if (!appliedDelta) {
+            appliedDelta = finalPos.subtract(item.initialPos);
+          }
         }
 
         return {
@@ -203,7 +210,12 @@ export class MixedDragSnapshot {
         const finalPt = item.segment.point.clone();
         const finalHandleIn = item.segment.handleIn.clone();
         const finalHandleOut = item.segment.handleOut.clone();
-        if (!finalPt.equals(item.initialPt)) hasMoved = true;
+        if (!finalPt.equals(item.initialPt)) {
+          hasMoved = true;
+          if (!appliedDelta) {
+            appliedDelta = finalPt.subtract(item.initialPt);
+          }
+        }
         return { ...item, finalPt, finalHandleIn, finalHandleOut };
       });
 
@@ -211,7 +223,12 @@ export class MixedDragSnapshot {
       .filter((i) => i.segment && i.path)
       .map((item) => {
         const finalVector = item.segment[item.handleType].clone();
-        if (!finalVector.equals(item.initialVector)) hasMoved = true;
+        if (!finalVector.equals(item.initialVector)) {
+          hasMoved = true;
+          if (!appliedDelta) {
+            appliedDelta = finalVector.subtract(item.initialVector);
+          }
+        }
         return { ...item, finalVector };
       });
 
@@ -221,11 +238,12 @@ export class MixedDragSnapshot {
           type: 'mixed',
           entities: entitiesData,
           segments: segmentsData,
-          handles: handlesData
+          handles: handlesData,
+          skipExecuteLog: Boolean(skipTargetLog)
         })
       );
     }
 
-    return hasMoved;
+    return { hasMoved, delta: appliedDelta };
   }
 }

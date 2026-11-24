@@ -16,7 +16,6 @@ el export svg exporta los colores de la seleccion, y los puntos escalados por zo
 
 unificar el estilo para data-tooltips en capas y properties
 
-
 espesores y zoom, escalar bordes?
 
 
@@ -63,7 +62,7 @@ espesores y zoom, escalar bordes?
 bloqueo y visibilidad global por entidades selecciondas
 
 no permitir la seleccion de imagen como elemento en trim/extend
-agregar en linetool los colores de la etiqueta de rubberband
+  [x] agregar en linetool los colores de la etiqueta de rubberband
   [x] resolver el punto de incio con estilo punto en division por distancia
 
 
@@ -76,5 +75,5 @@ autocompletado en consola
   [x] El movimiento de arrastre y osnap perpendicular
 implementar clases para las entidades
 
-cancelacion de arrastre en tiradores no restaura
-zoom y rubberband
+  [x] cancelacion de arrastre en tiradores no restaura
+  [x] zoom y rubberband

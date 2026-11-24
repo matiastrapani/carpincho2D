@@ -26,10 +26,11 @@ export class ToolManager {
     this.tools[name] = toolInstance;
 
     const catalogEntry = getToolCatalogEntry(name);
-    const catalogAliases = Array.isArray(catalogEntry?.aliases) ? catalogEntry.aliases : [];
-    const instanceAliases = Array.isArray(toolInstance?.commandAliases) ? toolInstance.commandAliases : [];
+    const aliases = catalogEntry
+      ? (Array.isArray(catalogEntry.aliases) ? catalogEntry.aliases : [])
+      : (Array.isArray(toolInstance?.commandAliases) ? toolInstance.commandAliases : []);
 
-    [...catalogAliases, ...instanceAliases].forEach((alias) => {
+    aliases.forEach((alias) => {
       const normalized = normalizeCommandKey(alias);
       if (normalized) {
         this.commandAliases[normalized] = name;

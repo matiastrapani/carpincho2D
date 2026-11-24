@@ -163,63 +163,50 @@ export class BoxSelectHandler {
 
     // A. CUADRO EN MODO EDICIÓN DE NODOS (siempre selección convencional)
     if (hasEditingEntities) {
-      if (!isShift) {
-        this.service.deselectAllSegments();
-      }
+      const segmentsToSelect = [];
+      const seenSegments = new Set(isShift ? this.service.selectedSegments : []);
 
       this.service.editingEntities.forEach((entity) => {
         if (paperInst && entity instanceof paperInst.Path && entity.segments && !entity.data?.isPointEntity) {
           if (entity.bounds && !boxBounds.intersects(entity.bounds)) return;
 
-          const selectedInThisEntity = new Set();
-
-          // 1. Nodos cuyo punto está totalmente dentro del recuadro (Window y Crossing)
           entity.segments.forEach((seg) => {
-            if (boxBounds.contains(seg.point)) {
-              selectedInThisEntity.add(seg);
+            if (boxBounds.contains(seg.point) && !seenSegments.has(seg)) {
+              seenSegments.add(seg);
+              segmentsToSelect.push(seg);
             }
           });
 
-          // 2. Si es Selección por Cruzamiento (Derecha -> Izquierda), incluir los nodos de los tramos que cruzan la caja
           if (!isWindowSelection && entity.curves) {
             entity.curves.forEach((curve) => {
               if (this._curveIntersectsBox(curve, boxBounds)) {
-                if (curve.segment1) selectedInThisEntity.add(curve.segment1);
-                if (curve.segment2) selectedInThisEntity.add(curve.segment2);
+                if (curve.segment1 && !seenSegments.has(curve.segment1)) {
+                  seenSegments.add(curve.segment1);
+                  segmentsToSelect.push(curve.segment1);
+                }
+                if (curve.segment2 && !seenSegments.has(curve.segment2)) {
+                  seenSegments.add(curve.segment2);
+                  segmentsToSelect.push(curve.segment2);
+                }
               }
             });
           }
-
-          selectedInThisEntity.forEach((seg) => {
-            if (!this.service.selectedSegments.includes(seg)) {
-              this.service.selectSegment(seg, true);
-            }
-          });
         }
       });
+
+      this.service.selectionManager.selectSegments(segmentsToSelect, isShift);
     }
 
     // B. CUADRO EN MODO SELECCIÓN DE OBJETOS (aditivo/sustractivo dentro de herramientas)
     if (!hasEditingEntities) {
       const entitiesToSelect = this.getEntitiesInBox(boxBounds, isWindowSelection);
 
-      if (!isAdditiveObjectMode && !isShift) {
-        this.service.deselectAllEntities();
+      if (isAdditiveObjectMode && isShift) {
+        this.service.selectionManager.deselectEntities(entitiesToSelect);
+      } else {
+        this.service.selectionManager.selectEntities(entitiesToSelect, isAdditiveObjectMode || isShift);
       }
-
-      entitiesToSelect.forEach((ent) => {
-        if (isAdditiveObjectMode && isShift) {
-          if (this.service.selectedEntities.includes(ent)) {
-            this.service.deselectEntity(ent);
-          }
-        } else if (!this.service.selectedEntities.includes(ent)) {
-          this.service.selectEntity(ent, true);
-        }
-      });
     }
-
-    if (this.utils?.selectionRenderEngine?.updateEntitiesStroke) this.utils.selectionRenderEngine.updateEntitiesStroke();
-    if (this.utils?.selectionRenderEngine?.renderBezierHandles) this.utils.selectionRenderEngine.renderBezierHandles();
 
     this.clean();
   }

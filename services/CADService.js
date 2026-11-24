@@ -128,29 +128,8 @@ export class CADService {
     if (!info?.label) return;
 
     if (type === 'execute') {
-      if (!info.skipExecuteLog) {
-        cm.logSystem(info.label, { grouped: false });
-      }
-    } else if (type === 'undo') {
-      cm.logSystem(`Deshacer: ${info.label}`, { grouped: false });
-    } else if (type === 'redo') {
-      cm.logSystem(`Rehacer: ${info.label}`, { grouped: false });
-    }
-  }
-
-  _handleHistoryTransaction({ type, command }) {
-    this._notifyHistoryChange();
-
-    if (this._suppressTransactionLog || !command) return;
-    const cm = this.utils?.consoleManager;
-    if (!cm) return;
-
-    const info = this._describeCommand(command);
-    if (!info?.label) return;
-
-    if (type === 'execute') {
       if (info.skipExecuteLog) return;
-      const isGrouped = Boolean(cm.hasActiveCommandGroup?.());
+      const isGrouped = Boolean(cm.hasActiveCommandGroup?.() || cm.hasActiveCompactBlock?.());
       const text = info.raw ? info.label : (info.tag ? `[${info.tag}] ${info.label}` : info.label);
       cm.logSystem(text, { grouped: isGrouped });
       return;
@@ -193,12 +172,31 @@ export class CADService {
     }
 
     if (typeName === 'MoveCommand') {
-      const items = Array.isArray(command.moveData)
-        ? command.moveData
-        : (command.moveData?.entities || (command.moveData?.entity ? [command.moveData.entity] : []));
+      const data = command.moveData || {};
+      const items = Array.isArray(data)
+        ? data
+        : (data.entities || (data.entity ? [data.entity] : []));
       const names = items.map((it) => it?.entity?.name || it?.name).filter(Boolean);
-      const target = names.length === 1 ? names[0] : `${names.length || 1} entidades`;
-      return { tag: 'MOVER', label: target, historyLabel: `Desplazamiento ${target}` };
+      const segCount = data.segments?.length || 0;
+      const handleCount = data.handles?.length || 0;
+      let target;
+      if (names.length === 1) {
+        target = names[0];
+      } else if (names.length > 1) {
+        target = `${names.length} entidades`;
+      } else if (segCount > 0) {
+        target = segCount === 1 ? '1 nodo' : `${segCount} nodos`;
+      } else if (handleCount > 0) {
+        target = handleCount === 1 ? '1 tirador' : `${handleCount} tiradores`;
+      } else {
+        target = '1 entidad';
+      }
+      return {
+        tag: 'MOVER',
+        label: target,
+        historyLabel: `Desplazamiento ${target}`,
+        skipExecuteLog: Boolean(data.skipExecuteLog)
+      };
     }
 
     if (typeName === 'DeleteCommand') {
@@ -229,8 +227,9 @@ export class CADService {
     }
 
     if (typeName === 'ImportSVGCommand') {
-      const count = command.importedEntities?.length || 0;
-      return { tag: 'IMPORTAR', label: `SVG (${count} entidades)` };
+      const count = (command.entities || command.importedEntities)?.length || 0;
+      const label = count === 1 ? 'SVG (1 trazado)' : `SVG (${count} trazados)`;
+      return { tag: 'IMPORTAR', label, skipExecuteLog: true };
     }
 
     return null;

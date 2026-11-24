@@ -3,7 +3,7 @@
  */
 import { FixedConsoleUI } from './FixedConsoleUI.js';
 import { FloatingConsoleUI } from './FloatingConsoleUI.js';
-import { CAD_THEME } from '../../config/cadTheme.js';
+import { ConsoleLogRenderer } from './ConsoleLogRenderer.js';
 import {
   CAD_CATALOG,
   formatCommandDisplay,
@@ -16,13 +16,15 @@ export class ConsoleManager {
     this.utils = cadUtils;
     this.state = 'IDLE'; // 'IDLE' | 'COMMAND_ACTIVE'
     this.lastCommand = null;
-    this.currentPromptText = 'Comando:';
-    this.currentPromptHtml = 'Comando:';
     this._skipNextToolEcho = false;
-    this._activeGroups = { fixed: null, floating: null };
 
     this.fixedUI = new FixedConsoleUI(slotId);
     this.floatingUI = new FloatingConsoleUI();
+    this.renderer = new ConsoleLogRenderer(this.fixedUI, this.floatingUI, {
+      getCommandTag: () => this._getActiveCommandTag(),
+      onStateChange: (nextState) => { this.state = nextState; },
+      onFocusRequest: () => this.focusInput()
+    });
 
     this._onInputKeyDown = this._handleInputKeyDown.bind(this);
     this._onOptionMouseDown = this._handleOptionMouseDown.bind(this);
@@ -30,6 +32,22 @@ export class ConsoleManager {
 
     this.initSync();
     this.initInputEvents();
+  }
+
+  get currentPromptText() {
+    return this.renderer.currentPromptText;
+  }
+
+  set currentPromptText(val) {
+    this.renderer.currentPromptText = val;
+  }
+
+  get currentPromptHtml() {
+    return this.renderer.currentPromptHtml;
+  }
+
+  set currentPromptHtml(val) {
+    this.renderer.currentPromptHtml = val;
   }
 
   setUtils(cadUtils) {
@@ -62,88 +80,6 @@ export class ConsoleManager {
     floatingConsoleEl?.addEventListener('contextmenu', this._onConsoleContextMenu);
   }
 
-  // --- AGRUPACIÓN DE LOGS POR HERRAMIENTA ---
-  hasActiveCommandGroup() {
-    return Boolean(this._activeGroups.fixed || this._activeGroups.floating);
-  }
-
-  _createGroupElement() {
-    const group = document.createElement('div');
-    group.className = 'cad-console-group';
-    return group;
-  }
-
-  beginCommandGroup() {
-    this.endCommandGroup();
-
-    if (this.fixedUI.logArea) {
-      const group = this._createGroupElement();
-      this.fixedUI.logArea.appendChild(group);
-      this._activeGroups.fixed = group;
-    }
-    if (this.floatingUI.log) {
-      const group = this._createGroupElement();
-      this.floatingUI.log.appendChild(group);
-      this._activeGroups.floating = group;
-    }
-  }
-
-  endCommandGroup() {
-    this._activeGroups.fixed = null;
-    this._activeGroups.floating = null;
-  }
-
-  _relocateLastEntryToGroup(logContainer, groupEl) {
-    if (!logContainer || !groupEl) return;
-    const lastChild = logContainer.lastElementChild;
-    if (lastChild && lastChild !== groupEl) {
-      groupEl.appendChild(lastChild);
-      groupEl.classList.toggle('is-multiline', groupEl.children.length > 1);
-      logContainer.scrollTop = logContainer.scrollHeight;
-    }
-  }
-
-  _syncGroupedEntries() {
-    this._relocateLastEntryToGroup(this.fixedUI.logArea, this._activeGroups.fixed);
-    this._relocateLastEntryToGroup(this.floatingUI.log, this._activeGroups.floating);
-  }
-
-  // --- MÉTODOS ESPEJADOS EN AMBAS CONSOLAS ---
-
-  _escapeHtml(text) {
-    return String(text ?? '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-  }
-
-  formatCommandName(rawText) {
-    return formatCommandDisplay(rawText);
-  }
-
-  _formatOptionHtml(opt, interactive = true) {
-    const label = String(opt.label || '');
-    const key = String(opt.key || '');
-    const idx = key ? label.toLowerCase().indexOf(key.toLowerCase()) : -1;
-
-    let labelHtml;
-    if (idx >= 0) {
-      const before = this._escapeHtml(label.slice(0, idx));
-      const match = this._escapeHtml(label.slice(idx, idx + key.length));
-      const after = this._escapeHtml(label.slice(idx + key.length));
-      labelHtml = `${before}<u class="decoration-1 underline-offset-2">${match}</u>${after}`;
-    } else {
-      labelHtml = `<u class="decoration-1 underline-offset-2">${this._escapeHtml(key)}</u> - ${this._escapeHtml(label)}`;
-    }
-
-    if (!interactive) {
-      return `<span>[${labelHtml}]</span>`;
-    }
-
-    const activeClass = opt.active ? ' active' : '';
-    return `<span class="cmd-option group cursor-pointer select-none${activeClass}" data-cmd="${this._escapeHtml(key)}">[<span class="group-hover:underline decoration-1 underline-offset-2">${labelHtml}</span>]</span>`;
-  }
-
   _getActiveCommandTag() {
     const toolManager = this.utils?.toolManager;
     const activeTool = toolManager?.activeTool;
@@ -155,132 +91,33 @@ export class ConsoleManager {
     return clean ? `[${clean}]` : '';
   }
 
-  _matchesActiveToolOption(rawText, activeTool) {
-    if (!activeTool) return false;
-    const opts = typeof activeTool.getCurrentOptions === 'function'
-      ? activeTool.getCurrentOptions()
-      : (typeof activeTool._getCurrentOptions === 'function'
-          ? activeTool._getCurrentOptions()
-          : (Array.isArray(activeTool.options) ? activeTool.options : []));
-    const key = normalizeCommandKey(rawText);
-    return opts.some(
-      (opt) => normalizeCommandKey(opt.key) === key || normalizeCommandKey(opt.label) === key
-    );
+  formatCommandName(rawText) {
+    return formatCommandDisplay(rawText);
   }
 
-  setPrompt(text) {
-    const formatted = text || 'Comando:';
-    this.currentPromptText = formatted;
-    this.currentPromptHtml = this._escapeHtml(formatted);
-    this.state = (formatted === 'Comando:' || formatted === 'Command:') ? 'IDLE' : 'COMMAND_ACTIVE';
-    this.fixedUI.setPrompt(formatted);
-    this.floatingUI.setPrompt(formatted);
-  }
-
-  /**
-   * Actualiza la pregunta activa directamente en el prompt del input (sin ensuciar el display).
-   */
-  /**
-   * Actualiza la pregunta activa directamente en el prompt del input (sin ensuciar el display).
-   */
-  setStepPrompt(instruction, { defaultValue = null, options = [] } = {}) {
-    const tag = this._getActiveCommandTag();
-    const tagPrefix = tag ? `${tag} ` : '';
-    const hasDefault = defaultValue !== null && defaultValue !== undefined && defaultValue !== '';
-    const plainDefault = hasDefault ? ` <${defaultValue}>` : '';
-    const plainOptions = options.length > 0
-      ? ' ' + options.map((opt) => `[${opt.label}]`).join('')
-      : '';
-    const plainFull = `${tagPrefix}${instruction}${plainDefault}${plainOptions}:`;
-
-    const htmlDefault = hasDefault ? ` &lt;${this._escapeHtml(defaultValue)}&gt;` : '';
-    const htmlOptionsStatic = options.length > 0
-      ? ' ' + options.map((opt) => this._formatOptionHtml(opt, false)).join('')
-      : '';
-    this.currentPromptText = plainFull;
-    this.currentPromptHtml = `${this._escapeHtml(tagPrefix)}${this._escapeHtml(instruction)}${htmlDefault}${htmlOptionsStatic}:`;
-
-    this.state = 'COMMAND_ACTIVE';
-    this.fixedUI.setPrompt(plainFull);
-    this.floatingUI.setPrompt(plainFull);
-
-    if (options.length > 0) {
-      const htmlOptionsInteractive = ' ' + options.map((opt) => this._formatOptionHtml(opt, true)).join('');
-      const htmlFullInteractive = `${this._escapeHtml(tagPrefix)}${this._escapeHtml(instruction)}${htmlDefault}${htmlOptionsInteractive}:`;
-
-      if (this.fixedUI.prompt) this.fixedUI.prompt.innerHTML = htmlFullInteractive;
-      if (this.floatingUI.prompt) this.floatingUI.prompt.innerHTML = htmlFullInteractive;
-    }
-
-    this.focusInput();
-  }
-
-  logUser(text, prefix = '', { grouped = true } = {}) {
-    if (prefix) {
-      const html = `<span class="text-zinc-400 font-normal">${this._escapeHtml(prefix)}</span><span class="text-white font-bold">${this._escapeHtml(text)}</span>`;
-      this.fixedUI.appendInteractiveEntry(html);
-      if (typeof this.floatingUI.appendInteractiveEntry === 'function') {
-        this.floatingUI.appendInteractiveEntry(html);
-      }
-      if (grouped) {
-        this._syncGroupedEntries();
-      }
-      return;
-    }
-
-    this.fixedUI.appendUserEntry(text);
-    this.floatingUI.appendUserEntry(text);
-    if (grouped) {
-      this._syncGroupedEntries();
-    }
-  }
-
-  logSystem(text, { grouped = true } = {}) {
-    this.fixedUI.appendSystemEntry(text);
-    this.floatingUI.appendSystemEntry(text);
-    if (grouped) {
-      this._syncGroupedEntries();
-    }
-  }
-
-  logStepInput(valueText) {
-    const promptPrefixHtml = this.currentPromptHtml ? `${this.currentPromptHtml} ` : '';
-    const html = `<span class="text-zinc-400 font-normal">${promptPrefixHtml}</span><span class="text-white font-bold">${this._escapeHtml(valueText)}</span>`;
-    this.fixedUI.appendInteractiveEntry(html);
-    if (typeof this.floatingUI.appendInteractiveEntry === 'function') {
-      this.floatingUI.appendInteractiveEntry(html);
-    }
-    this._syncGroupedEntries();
-  }
-
-  log(message) {
-    this.logSystem(message);
-  }
-
-  logResult(title, metricsSummary = '') {
-    const suffix = metricsSummary ? `: ${metricsSummary}` : '';
-    this.logSystem(`${title}${suffix}`);
-  }
-
-  logInteractive(htmlContent) {
-    this.fixedUI.appendInteractiveEntry(htmlContent);
-    if (typeof this.floatingUI.appendInteractiveEntry === 'function') {
-      this.floatingUI.appendInteractiveEntry(htmlContent);
-    }
-    this._syncGroupedEntries();
-  }
-
-  clear() {
-    this.endCommandGroup();
-    this.fixedUI.clear();
-    this.floatingUI.clear();
-  }
+  // --- DELEGACIÓN DE LOGS, PROMPTS Y GRUPOS ---
+  hasActiveCommandGroup() { return this.renderer.hasActiveCommandGroup(); }
+  beginCommandGroup() { this.renderer.beginCommandGroup(); }
+  endCommandGroup() { this.renderer.endCommandGroup(); }
+  hasActiveCompactBlock() { return this.renderer.hasActiveCompactBlock(); }
+  beginCompactBlock() { this.renderer.beginCompactBlock(); }
+  endCompactBlock() { this.renderer.endCompactBlock(); }
+  setPrompt(text) { this.renderer.setPrompt(text); }
+  setStepPrompt(instruction, options) { this.renderer.setStepPrompt(instruction, options); }
+  logUser(text, prefix = '', options) { this.renderer.logUser(text, prefix, options); }
+  logSystem(text, options) { this.renderer.logSystem(text, options); }
+  logStepInput(valueText) { this.renderer.logStepInput(valueText); }
+  log(message) { this.renderer.logSystem(message); }
+  logResult(title, metricsSummary = '') { this.renderer.logResult(title, metricsSummary); }
+  logInteractive(htmlContent) { this.renderer.logInteractive(htmlContent); }
+  clear() { this.renderer.clear(); }
 
   // ALIAS DE COMPATIBILIDAD
   appendUserEntry(text) { this.logUser(text); }
   appendSystemEntry(text) { this.logSystem(text); }
   appendInteractiveEntry(html) { this.logInteractive(html); }
 
+  // --- EJECUCIÓN Y DESPACHO DE COMANDOS ---
   handleExecute(cmdText) {
     const trimmed = (cmdText || '').trim();
     if (!this.utils) {
@@ -302,6 +139,14 @@ export class ConsoleManager {
           activeTool.onConfirmDefault();
         }
         this.focusInput();
+      } else if (
+        this.utils.currentToolMode === 'select' &&
+        this.utils.lastActiveToolMode &&
+        toolManager?.tools?.[this.utils.lastActiveToolMode]
+      ) {
+        const lastTool = this.utils.lastActiveToolMode;
+        const rawDisplayName = toolManager.getToolDisplayName?.(lastTool) || lastTool;
+        this._switchToToolFromConsole(lastTool, rawDisplayName);
       } else if (this.lastCommand) {
         this.handleExecute(this.lastCommand);
       }
@@ -374,6 +219,34 @@ export class ConsoleManager {
       this.lastCommand = clearLabel;
       this.focusInput();
     }
+    if (['import', 'import_image', 'import_svg'].includes(commandId)) {
+      const entry = CAD_CATALOG.commands[commandId];
+      this.beginCompactBlock();
+      this.logUser(entry.displayName, 'Comando: ', { grouped: true });
+      this.lastCommand = entry.displayName;
+
+      const accept =
+        commandId === 'import_svg'
+          ? '.svg,image/svg+xml'
+          : commandId === 'import_image'
+            ? 'image/*'
+            : '.svg,image/*';
+
+      const ioService = this.utils.ioService || window.cadIOService;
+      ioService?.promptFileImport?.({ accept, source: 'console' });
+      return;
+    }
+
+    if (commandId === 'export_svg') {
+      const exportLabel = CAD_CATALOG.commands.export_svg.displayName;
+      this.beginCompactBlock();
+      this.logUser(exportLabel, 'Comando: ', { grouped: true });
+      this.lastCommand = exportLabel;
+      const ioService = this.utils.ioService || window.cadIOService;
+      ioService?.exportSVG?.();
+      this.focusInput();
+      return;
+    }
   }
 
   _switchToToolFromConsole(targetTool, rawText) {
@@ -394,17 +267,20 @@ export class ConsoleManager {
     this.focusInput();
   }
 
+  _clearInputs() {
+    if (this.fixedUI?.input) this.fixedUI.input.value = '';
+    if (this.floatingUI?.input) this.floatingUI.input.value = '';
+  }
+
   _handleInputKeyDown(e) {
     const sourceInput = e.currentTarget || this.fixedUI.input;
     if (!sourceInput) return;
 
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
+      e.stopPropagation();
       const value = sourceInput.value;
-
-      if (this.fixedUI.input) this.fixedUI.input.value = '';
-      if (this.floatingUI.input) this.floatingUI.input.value = '';
-
+      this._clearInputs();
       this.handleExecute(value);
     } else if (e.key === 'Escape') {
       e.preventDefault();
@@ -412,6 +288,8 @@ export class ConsoleManager {
       this.handleCancel();
     } else if ((e.key === 'Delete' || e.key === 'Backspace') && sourceInput.value === '') {
       e.preventDefault();
+      if (this.utils?.currentToolMode !== 'select') return;
+
       if (this.utils?.deleteSelectedHandleOrSegment) {
         this.utils.deleteSelectedHandleOrSegment();
       } else if (this.utils?.service?.deleteSelectedElements) {
@@ -420,26 +298,9 @@ export class ConsoleManager {
     }
   }
 
-  _handleOptionClick(e) {
-    const optionEl = e.target.closest('.cmd-option');
-    if (!optionEl) return;
-
-    e.preventDefault();
-    e.stopPropagation();
-    const optionValue = optionEl.dataset.cmd || optionEl.textContent.trim();
-    if (!optionValue) return;
-
-    if (this.fixedUI.input) this.fixedUI.input.value = '';
-    if (this.floatingUI.input) this.floatingUI.input.value = '';
-
-    this.handleExecute(optionValue);
-    this.focusInput();
-  }
-
   _handleOptionMouseDown(e) {
     const optEl = e.target?.closest?.('.cmd-option');
     if (!optEl) return;
-
     if (typeof e.button === 'number' && e.button !== 0) return;
 
     e.preventDefault();
@@ -448,9 +309,7 @@ export class ConsoleManager {
     const cmd = optEl.getAttribute('data-cmd');
     if (!cmd) return;
 
-    if (this.fixedUI?.input) this.fixedUI.input.value = '';
-    if (this.floatingUI?.input) this.floatingUI.input.value = '';
-
+    this._clearInputs();
     this.handleExecute(cmd);
   }
 
@@ -463,21 +322,12 @@ export class ConsoleManager {
 
     e.preventDefault();
     e.stopPropagation();
-
-    if (typeof this.handleCancel === 'function') {
-      this.handleCancel();
-    } else if (this.utils?.toolManager?.activeTool?.cancel) {
-      this.utils.toolManager.activeTool.cancel();
-    } else {
-      this.utils?.setTool?.('select');
-    }
+    this.handleCancel();
   }
 
   handleCancel() {
     if (!this.utils) return;
-
-    if (this.fixedUI?.input) this.fixedUI.input.value = '';
-    if (this.floatingUI?.input) this.floatingUI.input.value = '';
+    this._clearInputs();
 
     const activeTool = this.utils.toolManager?.activeTool;
     const isCommandRunning =
@@ -564,6 +414,9 @@ export class ConsoleManager {
 
     fixedConsoleEl?.removeEventListener('contextmenu', this._onConsoleContextMenu);
     floatingConsoleEl?.removeEventListener('contextmenu', this._onConsoleContextMenu);
+
+    this.fixedUI?.cleanup?.();
+    this.floatingUI?.destroy?.();
   }
 
   getActiveInput() {
@@ -583,5 +436,15 @@ export class ConsoleManager {
   toggleFloating() {
     this.floatingUI.toggle();
     this.focusInput();
+  }
+
+  showWelcomeMessage() {
+    this.beginCompactBlock();
+    this.logUser('Carpincho', 'Bienvenido a ', { grouped: true });
+    this.logSystem('A dibujar crack!', { grouped: true });
+    this.endCompactBlock();
+  }
+  showWelcomeMessage(htmlContent = null) {
+    this.renderer.showWelcomeMessage(htmlContent);
   }
 }

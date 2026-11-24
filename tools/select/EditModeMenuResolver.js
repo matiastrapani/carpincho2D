@@ -41,88 +41,6 @@ export class EditModeMenuResolver {
       || '#aaff00';
   }
 
-  _collectHandleCandidates(point, tolerance) {
-    const group = this.utils?.controlHandlesGroup;
-    if (!group) return [];
-
-    const options = {
-      fill: true,
-      stroke: true,
-      segments: true,
-      tolerance,
-      match: (res) => {
-        const data = res.item?.data;
-        if (!data || !data.segment) return false;
-        if (data.type === 'arm') return false;
-
-        const parentPath = data.segment.path;
-        if (!parentPath || !this.service.editingEntities.includes(parentPath)) return false;
-        if (this.service.selectedEntities.includes(parentPath)) return false;
-        return true;
-      }
-    };
-
-    const rawHits = typeof group.hitTestAll === 'function'
-      ? group.hitTestAll(point, options)
-      : [group.hitTest(point, options)].filter(Boolean);
-
-    const uniqueMap = new Map();
-
-    for (const res of rawHits) {
-      const data = res?.item?.data;
-      const seg = data?.segment;
-      const parentPath = seg?.path;
-      if (!data || !seg || !parentPath) continue;
-
-      const key = `${data.type}:${parentPath.id}:${seg.index}`;
-      if (uniqueMap.has(key)) continue;
-
-      const targetPt = data.type === 'handleIn'
-        ? seg.point.add(seg.handleIn)
-        : (data.type === 'handleOut' ? seg.point.add(seg.handleOut) : seg.point);
-
-      const dist = targetPt.getDistance(point);
-      const segNumber = (seg.index ?? 0) + 1;
-      const entityName = this._getEntityName(parentPath);
-      const color = this._getEntityColor(parentPath);
-
-      let label = `Nodo ${segNumber}`;
-      if (data.type === 'handleIn') label = `Manija entrada (Nodo ${segNumber})`;
-      else if (data.type === 'handleOut') label = `Manija salida (Nodo ${segNumber})`;
-
-      const isSelected = data.type === 'anchor'
-        ? Boolean(this.service.selectedSegments?.includes(seg))
-        : Boolean(this.service.isSelectedHandle?.(seg, data.type));
-
-      uniqueMap.set(key, {
-        kind: data.type === 'anchor' ? 'anchor' : 'handle',
-        handleData: data,
-        segment: seg,
-        entity: parentPath,
-        label,
-        sublabel: entityName,
-        color,
-        isSelected,
-        distance: dist,
-        onPreview: () => {
-          this.utils.hoveredCurve = null;
-          this.utils.hoveredHandle = data;
-          this.utils.selectionRenderEngine?.renderBezierHandles?.();
-        }
-      });
-    }
-
-    const candidates = Array.from(uniqueMap.values());
-    candidates.sort((a, b) => {
-      if (a.kind !== b.kind) {
-        return a.kind === 'anchor' ? -1 : 1;
-      }
-      return a.distance - b.distance;
-    });
-
-    return candidates;
-  }
-
   _collectCurveCandidates(point, tolerance) {
     const paperInst = this._getPaper();
     if (!paperInst) return [];
@@ -191,8 +109,131 @@ export class EditModeMenuResolver {
     return this._collectCurveCandidates(point, tolerance);
   }
 
+  _buildHandleCandidate(res, point) {
+    const data = res?.item?.data;
+    const seg = data?.segment;
+    const parentPath = seg?.path;
+    if (!data || !seg || !parentPath) return null;
+
+    let kind = 'handle';
+    if (data.type === 'anchor') kind = 'anchor';
+    else if (data.type === 'arm') kind = 'arm';
+
+    let dist = Infinity;
+    if (data.type === 'arm') {
+      const nearestPt = res.point || res.item?.getNearestPoint?.(point);
+      dist = nearestPt ? nearestPt.getDistance(point) : seg.point.getDistance(point);
+    } else {
+      const targetPt = data.type === 'handleIn'
+        ? seg.point.add(seg.handleIn)
+        : (data.type === 'handleOut' ? seg.point.add(seg.handleOut) : seg.point);
+      dist = targetPt.getDistance(point);
+    }
+
+    const segNumber = (seg.index ?? 0) + 1;
+    const entityName = this._getEntityName(parentPath);
+    const color = this._getEntityColor(parentPath);
+
+    let label = `Nodo ${segNumber}`;
+    if (data.type === 'handleIn') {
+      label = `Manija entrada (Nodo ${segNumber})`;
+    } else if (data.type === 'handleOut') {
+      label = `Manija salida (Nodo ${segNumber})`;
+    } else if (data.type === 'arm') {
+      const armDir = data.handleType === 'handleIn' ? 'entrada' : 'salida';
+      label = `Brazo ${armDir} (Nodo ${segNumber})`;
+    }
+
+    let isSelected = false;
+    if (data.type === 'anchor') {
+      isSelected = Boolean(this.service.selectedSegments?.includes(seg));
+    } else if (data.type === 'arm') {
+      isSelected = Boolean(
+        this.service.selectedSegments?.includes(seg) &&
+        this.service.isSelectedHandle?.(seg, data.handleType)
+      );
+    } else {
+      isSelected = Boolean(this.service.isSelectedHandle?.(seg, data.type));
+    }
+
+    return {
+      kind,
+      handleData: data,
+      segment: seg,
+      entity: parentPath,
+      label,
+      sublabel: entityName,
+      color,
+      isSelected,
+      distance: dist,
+      onPreview: () => {
+        this.utils.hoveredCurve = null;
+        this.utils.hoveredHandle = data;
+        this.utils.selectionRenderEngine?.renderBezierHandles?.();
+      }
+    };
+  }
+
+  _collectHandleCandidates(point, tolerance) {
+    const group = this.utils?.controlHandlesGroup;
+    if (!group) return [];
+
+    const options = {
+      fill: true,
+      stroke: true,
+      segments: true,
+      tolerance,
+      match: (res) => {
+        const data = res.item?.data;
+        if (!data || !data.segment) return false;
+
+        const parentPath = data.segment.path;
+        if (!parentPath || !this.service.editingEntities.includes(parentPath)) return false;
+        if (this.service.selectedEntities.includes(parentPath)) return false;
+        return true;
+      }
+    };
+
+    const rawHits = typeof group.hitTestAll === 'function'
+      ? group.hitTestAll(point, options)
+      : [group.hitTest(point, options)].filter(Boolean);
+
+    const uniqueMap = new Map();
+
+    for (const res of rawHits) {
+      const data = res?.item?.data;
+      const seg = data?.segment;
+      const parentPath = seg?.path;
+      if (!data || !seg || !parentPath) continue;
+
+      const key = `${data.type}:${data.handleType || ''}:${parentPath.id}:${seg.index}`;
+      if (uniqueMap.has(key)) continue;
+
+      const candidate = this._buildHandleCandidate(res, point);
+      if (candidate) {
+        uniqueMap.set(key, candidate);
+      }
+    }
+
+    let candidates = Array.from(uniqueMap.values());
+    const hasPointControl = candidates.some((c) => c.kind === 'anchor' || c.kind === 'handle');
+    if (hasPointControl) {
+      candidates = candidates.filter((c) => c.kind !== 'arm');
+    }
+
+    const priority = { anchor: 0, handle: 1, arm: 2 };
+    candidates.sort((a, b) => {
+      const pA = priority[a.kind] ?? 3;
+      const pB = priority[b.kind] ?? 3;
+      if (pA !== pB) return pA - pB;
+      return a.distance - b.distance;
+    });
+
+    return candidates;
+  }
+
   _activateCandidateWithDrag(candidate, point, isShift, nativeEvent) {
-    if (candidate.kind === 'anchor' || candidate.kind === 'handle') {
+    if (candidate.kind === 'anchor' || candidate.kind === 'handle' || candidate.kind === 'arm') {
       this.handleModule.selectAndPrepareDrag(candidate.handleData, point, isShift, true, nativeEvent);
       return this.handleModule;
     }
@@ -205,7 +246,7 @@ export class EditModeMenuResolver {
   applyChoice(chosenHit, point, isShift) {
     if (!chosenHit) return;
 
-    if (chosenHit.kind === 'anchor' || chosenHit.kind === 'handle') {
+    if (chosenHit.kind === 'anchor' || chosenHit.kind === 'handle' || chosenHit.kind === 'arm') {
       this.handleModule.selectAndPrepareDrag(chosenHit.handleData, point, isShift, false);
     } else if (chosenHit.kind === 'curve') {
       this.segmentEditHandler.selectCurveAndPrepareDrag(chosenHit.curve, point, isShift, false);

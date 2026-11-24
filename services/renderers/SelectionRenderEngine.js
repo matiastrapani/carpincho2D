@@ -119,6 +119,9 @@ export class SelectionRenderEngine {
       entitiesToUpdate.push(activePath);
     }
 
+    const editingSet = new Set(this.service?.editingEntities || []);
+    const selectedSet = new Set(this.service?.selectedEntities || []);
+
     entitiesToUpdate.forEach((ent) => {
       if (!ent) return;
       if (!ent.data) ent.data = {};
@@ -136,8 +139,8 @@ export class SelectionRenderEngine {
         ? layerOpacity
         : (ent.data.origOpacity !== undefined ? ent.data.origOpacity : (ent.opacity ?? 1.0));
 
-      const isEditing = Boolean(this.service?.editingEntities?.includes(ent));
-      const isSelected = !isLayerLocked && Boolean(this.service?.selectedEntities?.includes(ent));
+      const isEditing = editingSet.has(ent);
+      const isSelected = !isLayerLocked && selectedSet.has(ent);
       const isHovered = !isLayerLocked && !isEditing && (this.service?.hoveredEntity === ent);
 
       // NODOS / PUNTOS
@@ -299,6 +302,7 @@ export class SelectionRenderEngine {
     );
 
     const renderedParametric = new Set();
+    const selectableSet = new Set(selectableEntities);
 
     activeEntities.forEach((entity) => {
       if (entity.visible && entity.data?.controller) {
@@ -312,7 +316,7 @@ export class SelectionRenderEngine {
           activeParametricGrip,
           showCornerGrips: true,
           showCenterGrip: true,
-          forceActiveHighlight: selectableEntities.includes(entity)
+          forceActiveHighlight: selectableSet.has(entity)
         });
       }
     });

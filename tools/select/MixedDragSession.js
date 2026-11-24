@@ -3,6 +3,7 @@
  */
 
 import { MixedDragSnapshot, isPointEntityItem } from './MixedDragSnapshot.js';
+import { CAD_CATALOG } from '../../config/cadCatalog.js';
 
 export class MixedDragSession {
   constructor(cadService, cadUtils) {
@@ -165,8 +166,32 @@ export class MixedDragSession {
     this.snapshot.restore();
   }
 
-  commitMoveCommand() {
-    return this.snapshot.commitMoveCommand();
+  commitMoveCommand({ skipTargetLog = false } = {}) {
+    const cm = this.utils?.consoleManager;
+    const useCompactBlock = Boolean(cm && !cm.hasActiveCommandGroup?.());
+    if (useCompactBlock) {
+      cm.beginCompactBlock();
+    }
+
+    try {
+      const { hasMoved, delta } = this.snapshot.commitMoveCommand({ skipTargetLog });
+
+      if (hasMoved && delta) {
+        const movedText = CAD_CATALOG.tools.move?.logs?.moved?.({
+          dx: delta.x.toFixed(2),
+          dy: delta.y.toFixed(2),
+          distance: delta.length.toFixed(2)
+        }) || `Desplazamiento aplicado: ΔX = ${delta.x.toFixed(2)}, ΔY = ${delta.y.toFixed(2)}, Distancia = ${delta.length.toFixed(2)}`;
+
+        cm?.logSystem(`[MOVER] ${movedText}`, { grouped: true });
+      }
+
+      return hasMoved;
+    } finally {
+      if (useCompactBlock) {
+        cm.endCompactBlock();
+      }
+    }
   }
 
   cancel() {

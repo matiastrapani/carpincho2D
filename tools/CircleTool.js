@@ -18,6 +18,7 @@ export class CircleTool extends BaseTool {
     this.previewCircle = null;
     this.previewRadiusLine = null;
     this._unitCircleSegments = null;
+    this.hasCreatedInSession = false; // <-- agregar
     this.setToolOption('isDiameterMode', false);
   }
 
@@ -30,6 +31,7 @@ export class CircleTool extends BaseTool {
   }
 
   onActivate() {
+    this.hasCreatedInSession = false;
     this.resetTool(true);
   }
 
@@ -201,8 +203,8 @@ export class CircleTool extends BaseTool {
       }));
     }
 
-    this.resetTool(false);
-    this.exitToSelect();
+    this.hasCreatedInSession = true;
+    this.resetTool(true);
   }
 
   commitDefaultRadius() {
@@ -217,7 +219,12 @@ export class CircleTool extends BaseTool {
   }
 
   onConfirmDefault() {
-    return this.commitDefaultRadius();
+    if (this.centerPoint) return this.commitDefaultRadius();
+    if (this.hasCreatedInSession) {
+      this.exitToSelect();
+      return true;
+    }
+    return false;
   }
 
   onCommandInput(rawInput) {
@@ -230,7 +237,8 @@ export class CircleTool extends BaseTool {
 
     switch (parsed.type) {
       case 'ACCEPT_DEFAULT':
-        this.commitDefaultRadius();
+        if (this.centerPoint) this.commitDefaultRadius();
+        else if (this.hasCreatedInSession) this.exitToSelect();
         return true;
 
       case 'OPTION':
@@ -273,9 +281,14 @@ export class CircleTool extends BaseTool {
 
   onKeyDown(event) {
     const key = event.key || event.code;
-    if ((key === 'Enter' || key === 'NumpadEnter') && this.centerPoint) {
-      if (this.commitDefaultRadius()) {
+    if (key === 'Enter' || key === 'NumpadEnter') {
+      if (this.centerPoint && this.commitDefaultRadius()) {
         if (typeof event.preventDefault === 'function') event.preventDefault();
+        return true;
+      }
+      if (!this.centerPoint && this.hasCreatedInSession) {
+        if (typeof event.preventDefault === 'function') event.preventDefault();
+        this.exitToSelect();
         return true;
       }
     }
@@ -323,6 +336,7 @@ export class CircleTool extends BaseTool {
   }
 
   cancel() {
+    this.hasCreatedInSession = false;
     this.resetTool(false);
   }
 
@@ -331,6 +345,11 @@ export class CircleTool extends BaseTool {
     if (event?.event?.preventDefault) event.event.preventDefault();
 
     if (this.centerPoint && this.commitDefaultRadius()) {
+      return true;
+    }
+
+    if (this.hasCreatedInSession) {
+      this.exitToSelect();
       return true;
     }
 

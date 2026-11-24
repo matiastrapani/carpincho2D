@@ -70,3 +70,10 @@
   border-left-color: var(--cad-console-session-border, #88ff00);
   margin-bottom: var(--console-group-extra-bottom);
 }
+
+/* Bloque compacto de 2 líneas sin barra verde (ej. Importar/Exportar, Mover por arrastre) */
+.cad-console-compact {
+  display: flex;
+  flex-direction: column;
+  gap: var(--console-inner-gap);
+}

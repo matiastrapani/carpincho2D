@@ -16,12 +16,15 @@ export class BezierHandlesRenderer {
       getResolvedStrokeWidth
     } = context;
 
+    const selectedEntitiesSet = new Set(service.selectedEntities || []);
+    const selectedSegmentsSet = new Set(service.selectedSegments || []);
+
     // 1. OVERLAY BASE DE ENTIDADES EN MODO EDICIÓN
     activeEntities.forEach((entity) => {
       if (!entity.visible) return;
 
       if (entity instanceof paper.Path && entity.segments && entity.segments.length >= 2 && !entity.data?.isPointEntity) {
-        const isEntitySelected = Boolean(service.selectedEntities?.includes(entity));
+        const isEntitySelected = selectedEntitiesSet.has(entity);
         const styleConfig = entity.data?.isCircleEntity
           ? (typeof CAD_THEME !== 'undefined' && CAD_THEME?.selection?.circle ? CAD_THEME.selection.circle : {})
           : (typeof CAD_THEME !== 'undefined' && CAD_THEME?.selection?.line ? CAD_THEME.selection.line : {});
@@ -54,7 +57,7 @@ export class BezierHandlesRenderer {
       if (!entity.visible) return;
 
       if (entity instanceof paper.Path && entity.segments && entity.segments.length >= 2 && !entity.data?.isPointEntity) {
-        const isEntitySelected = Boolean(service.selectedEntities?.includes(entity));
+        const isEntitySelected = selectedEntitiesSet.has(entity);
         const highlightMult = getSelectionMultiplier(entity);
         const highlightWidth = getResolvedStrokeWidth(entity, highlightMult, zoom);
 
@@ -68,13 +71,13 @@ export class BezierHandlesRenderer {
 
         if (entity.curves && !isEntitySelected) {
           this._renderSelectedChains(entity, controlHandlesGroup, {
-            service,
+            selectedSegmentsSet,
             cfg,
             highlightWidth
           });
 
           this._renderHoveredCurve(entity, controlHandlesGroup, {
-            service,
+            selectedSegmentsSet,
             hoveredCurve,
             resolvedBaseColor,
             highlightWidth
@@ -84,6 +87,7 @@ export class BezierHandlesRenderer {
         entity.segments.forEach((segment) => {
           this._renderSegmentControls(segment, controlHandlesGroup, {
             service,
+            selectedSegmentsSet,
             zoom,
             cfg,
             hoveredHandle,
@@ -95,14 +99,14 @@ export class BezierHandlesRenderer {
     });
   }
 
-  _renderSelectedChains(entity, controlHandlesGroup, { service, cfg, highlightWidth }) {
+  _renderSelectedChains(entity, controlHandlesGroup, { selectedSegmentsSet, cfg, highlightWidth }) {
     const selectedChains = [];
     let currentChain = [];
 
     entity.curves.forEach((curve) => {
       const isCurveSelected =
-        service.selectedSegments?.includes(curve.segment1) &&
-        service.selectedSegments?.includes(curve.segment2);
+        selectedSegmentsSet.has(curve.segment1) &&
+        selectedSegmentsSet.has(curve.segment2);
 
       if (isCurveSelected) {
         if (currentChain.length === 0) {
@@ -159,13 +163,13 @@ export class BezierHandlesRenderer {
     });
   }
 
-  _renderHoveredCurve(entity, controlHandlesGroup, { service, hoveredCurve, resolvedBaseColor, highlightWidth }) {
+  _renderHoveredCurve(entity, controlHandlesGroup, { selectedSegmentsSet, hoveredCurve, resolvedBaseColor, highlightWidth }) {
     if (!hoveredCurve || hoveredCurve.path !== entity) return;
 
     const c = hoveredCurve;
     const isHoveredSelected =
-      service.selectedSegments?.includes(c.segment1) &&
-      service.selectedSegments?.includes(c.segment2);
+      selectedSegmentsSet.has(c.segment1) &&
+      selectedSegmentsSet.has(c.segment2);
 
     if (isHoveredSelected) return;
 
@@ -186,8 +190,8 @@ export class BezierHandlesRenderer {
     controlHandlesGroup.addChild(hoveredCurvePath);
   }
 
-  _renderSegmentControls(segment, controlHandlesGroup, { service, zoom, cfg, hoveredHandle, isEntitySelected, handleBaseColor }) {
-    const isSegSelected = !isEntitySelected && service.selectedSegments?.includes(segment);
+  _renderSegmentControls(segment, controlHandlesGroup, { service, selectedSegmentsSet, zoom, cfg, hoveredHandle, isEntitySelected, handleBaseColor }) {
+    const isSegSelected = !isEntitySelected && selectedSegmentsSet.has(segment);
 
     ['handleIn', 'handleOut'].forEach((handleType) => {
       if (!segment[handleType].isZero()) {
@@ -298,8 +302,10 @@ export class BezierHandlesRenderer {
     const paperInst = paperArg || (typeof paper !== 'undefined' ? paper : null);
     if (!paperInst) return;
 
+    const activeEntitiesSet = new Set(activeEntities || []);
+
     selectableEntities.forEach((entity) => {
-      if (!entity.visible || activeEntities.includes(entity) || entity.data?.isPointEntity) {
+      if (!entity.visible || activeEntitiesSet.has(entity) || entity.data?.isPointEntity) {
         return;
       }
 

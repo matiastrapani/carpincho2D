@@ -16,9 +16,16 @@ export class PointTool extends BaseTool {
     this.lastInsertedPoint = null;
   }
 
+  _resolvePointMode() {
+    const mode = this.utils?.currentToolMode;
+    return (mode === 'point' || mode === 'divide_count' || mode === 'divide_dist')
+      ? mode
+      : 'point';
+  }
+
   get commandName() {
     if (this._commandName) return this._commandName;
-    const mode = this.utils?.currentToolMode || 'point';
+    const mode = this._resolvePointMode();
     return (CAD_CATALOG.tools[mode]?.displayName || 'PUNTO').toUpperCase();
   }
 
@@ -28,7 +35,7 @@ export class PointTool extends BaseTool {
 
   get commandAliases() {
     if (this._commandAliases && this._commandAliases.length > 0) return this._commandAliases;
-    const mode = this.utils?.currentToolMode || 'point';
+    const mode = this._resolvePointMode();
     return CAD_CATALOG.tools[mode]?.aliases || ['PUNTO', 'PT'];
   }
 
@@ -325,6 +332,10 @@ export class PointTool extends BaseTool {
     }
 
     if (mode === 'divide_count' || mode === 'divide_dist') {
+      if (!String(input || '').trim()) {
+        this.onConfirmDefault();
+        return true;
+      }
       this.divisionSelector.handleCommandInput(
         input,
         mode,

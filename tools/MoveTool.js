@@ -5,6 +5,8 @@
 import { BaseTool } from './BaseTool.js';
 import { MixedDragSession } from './select/MixedDragSession.js';
 import { CommandSelectionHandler } from './select/CommandSelectionHandler.js';
+import { CommandInputParser } from '../services/input/CommandInputParser.js';
+import { CAD_CATALOG } from '../config/cadCatalog.js';
 
 export class MoveTool extends BaseTool {
   constructor(cadService, cadUtils) {
@@ -12,6 +14,11 @@ export class MoveTool extends BaseTool {
     if (!cadService || !cadUtils) {
       throw new Error('MoveTool requiere instancias válidas de cadService y cadUtils.');
     }
+
+    const meta = CAD_CATALOG.tools.move;
+    this.commandName = 'MOVER';
+    this.commandAliases = meta.aliases;
+    this.promptText = `${meta.prompts.select}:`;
 
     this.preservesSelection = 'all';
     this.preservesEditMode = true;
@@ -21,12 +28,12 @@ export class MoveTool extends BaseTool {
     this.session = new MixedDragSession(cadService, cadUtils);
     this.selectionPhase = new CommandSelectionHandler(cadService, cadUtils, {
       commandLabel: 'Mover',
-      setPrompt: (text) => this.setPrompt(text),
+      setPrompt: (text) => this._setStepFromSelectionPrompt(text),
       onRefresh: () => this._refreshView()
     });
     this.phase = 'SELECT_OBJECTS';
     this.basePoint = null;
-    this.promptText = 'Mover — Selecciona objetos y presiona Enter o clic derecho:';
+    this.lastCursorPoint = null;
   }
 
   getCursorMode() {
@@ -37,11 +44,33 @@ export class MoveTool extends BaseTool {
     return this.utils?.paper || (typeof paper !== 'undefined' ? paper : null);
   }
 
-  setPrompt(text) {
-    super.setPrompt(text);
-    if (typeof this.utils?.setPrompt === 'function') {
-      this.utils.setPrompt(text);
+  _setStepFromSelectionPrompt(rawText) {
+    const clean = String(rawText || '')
+      .replace(/^Mover\s*[—:-]\s*/i, '')
+      .replace(/:\s*$/, '')
+      .trim();
+    this.setStep(clean || CAD_CATALOG.tools.move.prompts.select, {
+      options: this._getCurrentOptions()
+    });
+  }
+
+  _getCurrentOptions() {
+    const cancelOpt = CAD_CATALOG.tools.move?.options?.cancel || { key: 'C', label: 'Cancelar' };
+    return [{ ...cancelOpt, active: false }];
+  }
+
+  _announceStep() {
+    const { prompts } = CAD_CATALOG.tools.move;
+    const options = this._getCurrentOptions();
+    if (this.phase === 'SELECT_OBJECTS') {
+      this.setStep(prompts.select, { options });
+      return;
     }
+    if (this.phase === 'PICK_BASE_POINT') {
+      this.setStep(prompts.basePoint, { options });
+      return;
+    }
+    this.setStep(prompts.destPoint, { options });
   }
 
   _setCanvasCursorMode(mode) {
@@ -65,6 +94,7 @@ export class MoveTool extends BaseTool {
     this.selectionPhase.reset();
     this.session.reset();
     this.basePoint = null;
+    this.lastCursorPoint = null;
 
     if (this._hasValidSelection()) {
       this._enterBasePointPhase();
@@ -75,6 +105,28 @@ export class MoveTool extends BaseTool {
     }
   }
 
+  _getSelectionSummary() {
+    const entities = this.service.selectedEntities || [];
+    if (entities.length === 1) {
+      return entities[0]?.name || entities[0]?.data?.name || '1 entidad';
+    }
+    if (entities.length > 1) {
+      return `${entities.length} entidades`;
+    }
+
+    const segments = this.service.selectedSegments || [];
+    if (segments.length > 0) {
+      return segments.length === 1 ? '1 nodo' : `${segments.length} nodos`;
+    }
+
+    const handles = this.service.selectedHandles || [];
+    if (handles.length > 0) {
+      return handles.length === 1 ? '1 tirador' : `${handles.length} tiradores`;
+    }
+
+    return '1 entidad';
+  }
+
   _enterBasePointPhase() {
     this._clearVisualGuides();
     this.selectionPhase.reset();
@@ -82,7 +134,25 @@ export class MoveTool extends BaseTool {
     this.basePoint = null;
     this._setCanvasCursorMode('draw');
     this._refreshView();
-    this.setPrompt('Mover — Especifica el punto base:');
+
+    const cm = this.utils?.consoleManager;
+    if (cm && !cm.hasActiveCommandGroup?.()) {
+      cm.beginCommandGroup();
+    }
+    this.logTagged(this._getSelectionSummary());
+    this._announceStep();
+  }
+
+  _beginMoveFromBasePoint(pt, pointerEvent = null) {
+    this.basePoint = pt.clone();
+    this.session.begin(this.basePoint, pointerEvent);
+
+    if (typeof this.utils.renderPivotMarker === 'function') {
+      this.utils.renderPivotMarker(this.basePoint);
+    }
+
+    this.phase = 'PICK_DEST_POINT';
+    this._announceStep();
   }
 
   _hasValidSelection() {
@@ -101,6 +171,19 @@ export class MoveTool extends BaseTool {
     return snapped;
   }
 
+  _getCursorDirection() {
+    if (!this.basePoint) return null;
+    const cursorPt = this.utils.lastMousePoint || this.lastCursorPoint;
+    if (!cursorPt) return null;
+
+    const isShift = Boolean(this.utils.isShiftPressed);
+    const resolved = this.session.resolveSnappedPoint(this.basePoint, cursorPt, isShift, {
+      updateHud: false
+    });
+    const vec = resolved.subtract(this.basePoint);
+    return vec.length >= 0.001 ? vec : null;
+  }
+
   _previewMoveTo(rawPoint, isShift = false) {
     if (!rawPoint || !this.basePoint) return;
 
@@ -113,28 +196,134 @@ export class MoveTool extends BaseTool {
     }
   }
 
-  _commitMoveAt(rawPoint, isShift = false) {
+  _commitMoveAt(rawPoint, isShift = false, { snap = true } = {}) {
     if (!rawPoint || !this.basePoint) return;
 
-    const destPoint = this.session.resolveSnappedPoint(this.basePoint, rawPoint, isShift, {
-      updateHud: false
-    });
+    const destPoint = snap
+      ? this.session.resolveSnappedPoint(this.basePoint, rawPoint, isShift, { updateHud: false })
+      : rawPoint;
+    const delta = destPoint.subtract(this.basePoint);
 
-    this.session.applyDelta(destPoint.subtract(this.basePoint));
-    this.session.commitMoveCommand();
+    if (delta.length < 0.001) {
+      this.logTagged(CAD_CATALOG.tools.move.logs.samePoint);
+      return;
+    }
+
+    this.session.applyDelta(delta);
+    this.session.commitMoveCommand({ skipTargetLog: true });
     this.session.reset();
     this._clearVisualGuides();
 
     this.basePoint = null;
-    this._baseDownPoint = null;
     this.phase = 'SELECT_OBJECTS';
     this._refreshView();
     this.exitToSelect();
   }
 
+  onUndo() {
+    if (this.phase === 'PICK_DEST_POINT') {
+      this.session.restoreInitialState();
+      this.session.reset();
+      this.logTagged(CAD_CATALOG.tools.move.logs.undoBasePoint);
+      this._enterBasePointPhase();
+      return true;
+    }
+    return false;
+  }
+
+  onConfirmDefault() {
+    const { logs } = CAD_CATALOG.tools.move;
+    if (this.phase === 'SELECT_OBJECTS') {
+      if (this._hasValidSelection()) {
+        this._enterBasePointPhase();
+      } else {
+        this.logTagged(logs.needSelection);
+      }
+      return;
+    }
+    if (this.phase === 'PICK_BASE_POINT') {
+      this.logTagged(logs.needBasePoint);
+      return;
+    }
+    if (this.phase === 'PICK_DEST_POINT') {
+      this.logTagged(logs.samePoint);
+    }
+  }
+
+  onCommandInput(rawInput) {
+    const { logs } = CAD_CATALOG.tools.move;
+    const parsed = CommandInputParser.parse(rawInput, {
+      options: this._getCurrentOptions(),
+      referencePoint: this.basePoint,
+      paper: this._getPaper()
+    });
+
+    switch (parsed.type) {
+      case 'ACCEPT_DEFAULT':
+        this.onConfirmDefault();
+        return true;
+
+      case 'OPTION':
+        if (parsed.key === 'C') {
+          if (this.utils.consoleManager) {
+            this.utils.consoleManager.handleCancel();
+          } else {
+            this.cancel();
+            this.exitToSelect();
+          }
+        }
+        return true;
+
+      case 'POINT':
+        if (this.phase === 'SELECT_OBJECTS') {
+          this.logTagged(logs.needSelection);
+        } else if (this.phase === 'PICK_BASE_POINT') {
+          this._beginMoveFromBasePoint(parsed.point);
+        } else if (this.phase === 'PICK_DEST_POINT') {
+          this._commitMoveAt(parsed.point, false, { snap: false });
+        }
+        return true;
+
+      case 'NUMBER': {
+        if (this.phase === 'SELECT_OBJECTS') {
+          this.logTagged(logs.needSelection);
+          return true;
+        }
+        if (this.phase === 'PICK_BASE_POINT' || !this.basePoint) {
+          this.logTagged(logs.needBasePoint);
+          return true;
+        }
+        if (Number.isNaN(parsed.value) || parsed.value <= 0.001) {
+          this.logTagged(logs.invalidDistance);
+          return true;
+        }
+        const dir = this._getCursorDirection();
+        if (!dir) {
+          this.logTagged(logs.needDirection);
+          return true;
+        }
+        const targetPt = this.basePoint.add(dir.normalize(parsed.value));
+        this._commitMoveAt(targetPt, false, { snap: false });
+        return true;
+      }
+
+      case 'ERROR':
+        this.logTagged(parsed.message);
+        return true;
+
+      default:
+        return false;
+    }
+  }
+
   onMouseDown(event) {
     if (!event || (event.event && (event.event.button === 2 || event.event.which === 3 || event.event.button !== 0))) {
       return;
+    }
+
+    if (event.point) {
+      this.lastCursorPoint = event.point.clone();
+      this.utils.lastMousePoint = event.point.clone();
     }
 
     if (this.phase === 'SELECT_OBJECTS') {
@@ -144,26 +333,26 @@ export class MoveTool extends BaseTool {
 
     if (this.phase === 'PICK_BASE_POINT') {
       const pickedBase = this._resolveOsnapPoint(event.point);
-      this.basePoint = pickedBase.clone();
-      this.session.begin(this.basePoint, event.event || null);
-
-      if (typeof this.utils.renderPivotMarker === 'function') {
-        this.utils.renderPivotMarker(this.basePoint);
-      }
-
-      this.phase = 'PICK_DEST_POINT';
-      this.setPrompt('Mover — Especifica el segundo punto (destino) o arrastra y suelta:');
+      this.utils.consoleManager?.logStepInput?.(this.formatCoords(pickedBase));
+      this._beginMoveFromBasePoint(pickedBase, event.event || null);
       return;
     }
 
     if (this.phase === 'PICK_DEST_POINT' && this.basePoint) {
       const isShift = Boolean(event.event?.shiftKey);
-      this._commitMoveAt(event.point, isShift);
+      const destPt = this.session.resolveSnappedPoint(this.basePoint, event.point, isShift, {
+        updateHud: false
+      });
+      this.utils.consoleManager?.logStepInput?.(this.formatCoords(destPt));
+      this._commitMoveAt(destPt, isShift, { snap: false });
     }
   }
 
   onMouseMove(event) {
     if (!event?.point) return;
+
+    this.lastCursorPoint = event.point.clone();
+    this.utils.lastMousePoint = event.point.clone();
 
     if (this.phase === 'SELECT_OBJECTS') {
       this.selectionPhase.onMouseMove(event);
@@ -183,6 +372,9 @@ export class MoveTool extends BaseTool {
 
   onMouseDrag(event) {
     if (!event?.point) return;
+
+    this.lastCursorPoint = event.point.clone();
+    this.utils.lastMousePoint = event.point.clone();
 
     if (this.phase === 'SELECT_OBJECTS') {
       this.selectionPhase.onMouseDrag(event);
@@ -213,12 +405,16 @@ export class MoveTool extends BaseTool {
       if (this.session.isConfirmed) {
         const targetPoint = event?.point || this.utils?.lastMousePoint;
         const isShift = Boolean(event?.event?.shiftKey);
-        this._commitMoveAt(targetPoint, isShift);
+        const destPt = this.session.resolveSnappedPoint(this.basePoint, targetPoint, isShift, {
+          updateHud: false
+        });
+        this.utils.consoleManager?.logStepInput?.(this.formatCoords(destPt));
+        this._commitMoveAt(destPt, isShift, { snap: false });
         return;
       }
 
       this.session.isConfirmed = true;
-      this.setPrompt('Mover — Especifica el segundo punto (destino):');
+      this._announceStep();
     }
   }
 
@@ -232,12 +428,6 @@ export class MoveTool extends BaseTool {
   }
 
   onKeyDown(event) {
-    const key = event.key || event.code;
-    const isConsoleInput = event.target?.id === 'cmdInput' || event.target?.id === 'cmdInputFloating';
-    if (isConsoleInput && event.target.value.trim().length > 0) {
-      return false;
-    }
-
     if (this.phase === 'SELECT_OBJECTS') {
       const handled = this.selectionPhase.onKeyDown(event, {
         onConfirm: () => this._enterBasePointPhase()
@@ -245,16 +435,13 @@ export class MoveTool extends BaseTool {
       if (handled) return true;
     }
 
-    if (key === 'Escape') {
-      this.cancel();
-      this.exitToSelect();
-      return true;
-    }
-
     return super.onKeyDown(event);
   }
 
   onContextMenu(event) {
+    if (event?.preventDefault) event.preventDefault();
+    if (event?.event?.preventDefault) event.event.preventDefault();
+
     if (this.selectionPhase.isMenuOpen()) {
       this.selectionPhase.closeMenu();
       return true;
@@ -262,6 +449,11 @@ export class MoveTool extends BaseTool {
 
     if (this.phase === 'SELECT_OBJECTS' && this._hasValidSelection()) {
       this._enterBasePointPhase();
+      return true;
+    }
+
+    if (this.utils.consoleManager) {
+      this.utils.consoleManager.handleCancel();
       return true;
     }
 

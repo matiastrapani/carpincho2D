@@ -1,6 +1,6 @@
 /**
  * ui/console/FixedConsoleUI.js - Componente de la Consola Fija Inferior
- * Renderiza el input fijo inferior con prompt dinámico y expone los métodos de log e interacción.
+ * Renderiza el input fijo inferior con prompt dinámico y controla su altura y colapso.
  */
 export class FixedConsoleUI {
   constructor(containerId = 'fixedConsoleSlot') {
@@ -11,6 +11,9 @@ export class FixedConsoleUI {
     this.maxHeight = 260;
     this.previousHeight = this.height;
 
+    this._onResizerMouseDown = this._handleResizerMouseDown.bind(this);
+    this._onWrapperClick = this._handleWrapperClick.bind(this);
+    this._onCollapseClick = () => this.toggleCollapse();
     this._onMouseMove = this._handleMouseMove.bind(this);
     this._onMouseUp = this._handleMouseUp.bind(this);
 
@@ -70,28 +73,27 @@ export class FixedConsoleUI {
   }
 
   initEvents() {
-    this.resizer?.addEventListener('mousedown', (e) => {
-      e.preventDefault();
-
-      this.startY = e.clientY;
-      this.startHeight = this.box.getBoundingClientRect().height;
-      this.resizer.classList.add('is-dragging');
-      document.body.style.cursor = 'row-resize';
-      document.body.style.userSelect = 'none';
-
-      window.addEventListener('mousemove', this._onMouseMove);
-      window.addEventListener('mouseup', this._onMouseUp);
-    });
-
-    this.inputWrapper?.addEventListener('click', (e) => {
-      if (e.target.closest('.cmd-option')) return;
-      this.input?.focus({ preventScroll: true });
-    });
-
-    this.btnCollapse?.addEventListener('click', () => this.toggleCollapse());
+    this.resizer?.addEventListener('mousedown', this._onResizerMouseDown);
+    this.inputWrapper?.addEventListener('click', this._onWrapperClick);
+    this.btnCollapse?.addEventListener('click', this._onCollapseClick);
   }
 
-  // --- MÉTODOS DE HISTORIAL Y OPCIONES ---
+  _handleResizerMouseDown(e) {
+    e.preventDefault();
+    this.startY = e.clientY;
+    this.startHeight = this.box.getBoundingClientRect().height;
+    this.resizer.classList.add('is-dragging');
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+
+    window.addEventListener('mousemove', this._onMouseMove);
+    window.addEventListener('mouseup', this._onMouseUp);
+  }
+
+  _handleWrapperClick(e) {
+    if (e.target.closest('.cmd-option')) return;
+    this.input?.focus({ preventScroll: true });
+  }
 
   setPrompt(text) {
     if (this.promptEl) {
@@ -105,36 +107,10 @@ export class FixedConsoleUI {
     }
   }
 
-  appendUserEntry(text) {
-    if (!this.logArea) return;
-    const entry = document.createElement('div');
-    entry.className = 'cad-console-entry cad-console-entry--user';
-    entry.textContent = text;
-    this.logArea.appendChild(entry);
-    this.scrollToBottom();
-  }
-
-  appendSystemEntry(text) {
-    if (!this.logArea) return;
-    const entry = document.createElement('div');
-    entry.className = 'cad-console-entry cad-console-entry--system';
-    entry.textContent = text;
-    this.logArea.appendChild(entry);
-    this.scrollToBottom();
-  }
-
-  appendInteractiveEntry(htmlContent) {
-    if (!this.logArea) return;
-    const entry = document.createElement('div');
-    entry.className = 'cad-console-entry cad-console-entry--interactive';
-    entry.innerHTML = htmlContent;
-    this.logArea.appendChild(entry);
-    this.scrollToBottom();
-  }
-
   clear() {
-    if (!this.logArea) return;
-    this.logArea.innerHTML = '';
+    if (this.logArea) {
+      this.logArea.innerHTML = '';
+    }
   }
 
   scrollToBottom() {
@@ -194,5 +170,12 @@ export class FixedConsoleUI {
     document.body.style.userSelect = '';
     window.removeEventListener('mousemove', this._onMouseMove);
     window.removeEventListener('mouseup', this._onMouseUp);
+  }
+
+  cleanup() {
+    this._handleMouseUp();
+    this.resizer?.removeEventListener('mousedown', this._onResizerMouseDown);
+    this.inputWrapper?.removeEventListener('click', this._onWrapperClick);
+    this.btnCollapse?.removeEventListener('click', this._onCollapseClick);
   }
 }

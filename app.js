@@ -63,6 +63,8 @@ const onLoadHandler = () => {
 
   window.cadUtils.selectionRenderEngine.renderBezierHandles();
   window.cadUtils.setTool('select');
+  window.consoleManager.showWelcomeMessage();
+
 };
 
 window.addEventListener('load', onLoadHandler);

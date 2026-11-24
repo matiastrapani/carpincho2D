@@ -201,8 +201,13 @@ export class InputDispatcher {
       return;
     }
 
-    // 7. Borrado de elementos seleccionados
+    // 7. Borrado de elementos seleccionados (solo en Selección y sin editar texto en consola)
     if (e.key === 'Delete' || e.key === 'Backspace') {
+      if (isConsoleInput) return;
+      e.preventDefault();
+      if (cadUtils?.currentToolMode && cadUtils.currentToolMode !== 'select') {
+        return;
+      }
       if (cadUtils?.deleteSelectedHandleOrSegment) {
         cadUtils.deleteSelectedHandleOrSegment();
       } else {
@@ -219,12 +224,12 @@ export class InputDispatcher {
         return;
       }
       if (consoleManager) {
-        const currentText = consoleManager.fixedUI?.input?.value || '';
+        const activeInput = consoleManager.getActiveInput?.() || consoleManager.fixedUI?.input;
+        const currentText = activeInput?.value || consoleManager.fixedUI?.input?.value || '';
         if (consoleManager.fixedUI?.input) consoleManager.fixedUI.input.value = '';
         if (consoleManager.floatingUI?.input) consoleManager.floatingUI.input.value = '';
         consoleManager.handleExecute(currentText);
       }
-      return;
     }
 
     // 9. Estilo Rhino 3D: Cualquier tecla imprimible va directo a la consola

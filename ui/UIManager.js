@@ -507,24 +507,33 @@ export class CADUIManager {
     if (!btnImport || !inputFile) return;
 
     btnImport.addEventListener('click', () => {
-      inputFile.value = ''; // Resetear valor
-      inputFile.click();    // Abrir selector de archivos del SO
+      inputFile.value = '';
+      inputFile.click();
     });
 
     inputFile.addEventListener('change', (e) => {
-      const file = e.target.files[0];
+      const file = e.target.files?.[0];
       if (!file) return;
+
+      const ioService = this.cadUtils?.ioService || window.cadIO;
+      if (ioService && typeof ioService.importFile === 'function') {
+        ioService.importFile(file, null, { source: 'ui' });
+        return;
+      }
 
       const reader = new FileReader();
       reader.onload = (event) => {
-        const imageSrc = event.target.result;
         if (typeof this.cadUtils.importImageToCanvas === 'function') {
-          this.cadUtils.importImageToCanvas(imageSrc);
+          this.cadUtils.importImageToCanvas(event.target.result, null, {
+            fileName: file.name,
+            source: 'ui'
+          });
         }
       };
       reader.readAsDataURL(file);
     });
   }
+
   // Al seleccionar un objeto en la escena:
   updatePropertyPanel(selectedItem) {
     const panelContent = document.getElementById('propertyPanelContent');
@@ -684,8 +693,9 @@ export class CADUIManager {
     if (btnExport) {
       btnExport.addEventListener('click', (e) => {
         e.preventDefault();
-        if (window.cadIO && typeof window.cadIO.exportSVG === 'function') {
-          window.cadIO.exportSVG('sketch.svg');
+        const ioService = this.cadUtils?.ioService || window.cadIO;
+        if (ioService && typeof ioService.exportSVG === 'function') {
+          ioService.exportSVG('sketch.svg');
         }
       });
     }

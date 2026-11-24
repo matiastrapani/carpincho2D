@@ -111,13 +111,6 @@ export class FloatingConsoleUI {
     }
   }
 
-  _handleKeyDown(e) {
-    if (e.key === 'F2') {
-      e.preventDefault();
-      this.toggle();
-    }
-  }
-
   _handleWindowResize() {
     if (this.isOpen && this.window) {
       this.clampToViewport();
@@ -257,13 +250,13 @@ export class FloatingConsoleUI {
         const stopResize = (upEvt) => {
           try {
             handle.releasePointerCapture(upEvt.pointerId);
-        } catch (_) {}
+          } catch (_) {}
           handle.removeEventListener('pointermove', onPointerMove);
           handle.removeEventListener('pointerup', stopResize);
           handle.removeEventListener('pointercancel', stopResize);
         };
 
-        handle.addEventListener('pointermove', onPointerMove);          
+        handle.addEventListener('pointermove', onPointerMove);
         handle.addEventListener('pointerup', stopResize);
         handle.addEventListener('pointercancel', stopResize);
       });
@@ -314,33 +307,6 @@ export class FloatingConsoleUI {
     this.isOpen = false;
   }
 
-  appendUserEntry(text) {
-    if (!this.log) return;
-    const entry = document.createElement('div');
-    entry.className = 'cad-console-entry cad-console-entry--user';
-    entry.textContent = text;
-    this.log.appendChild(entry);
-    this.scrollToBottom();
-  }
-
-  appendSystemEntry(text) {
-    if (!this.log) return;
-    const entry = document.createElement('div');
-    entry.className = 'cad-console-entry cad-console-entry--system';
-    entry.textContent = text;
-    this.log.appendChild(entry);
-    this.scrollToBottom();
-  }
-
-  appendInteractiveEntry(htmlContent) {
-    if (!this.log) return;
-    const entry = document.createElement('div');
-    entry.className = 'cad-console-entry cad-console-entry--interactive';
-    entry.innerHTML = htmlContent;
-    this.log.appendChild(entry);
-    this.scrollToBottom();
-  }
-
   clear() {
     if (this.log) {
       this.log.innerHTML = '';
@@ -353,11 +319,8 @@ export class FloatingConsoleUI {
     }
   }
 
-  _escape(str) {
-    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  }
-
   destroy() {
+    this.unbindInputSync();
     window.removeEventListener('resize', this._onWindowResize);
     document.removeEventListener('click', this._onDocumentClick);
     this.modal?.remove();

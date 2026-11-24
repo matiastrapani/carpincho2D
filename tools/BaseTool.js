@@ -36,7 +36,7 @@ export class BaseTool {
   }
 
   formatCoords(pt) {
-    if (!pt) return '0.00,0.00';
+    if (!pt) return '0.00, 0.00';
     const x = pt.x.toFixed(2);
     const y = (pt.y === 0 ? 0 : -pt.y).toFixed(2);
     return `${x},${y}`;
