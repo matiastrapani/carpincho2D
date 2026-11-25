@@ -208,6 +208,15 @@ export class PropertyManager {
       paperInstance.view.update();
     }
   }
+  
+  resetDefaultSettings() {
+    this.defaultSettings = {
+      color: 'BYLAYER',
+      strokeWidth: 'BYLAYER',
+      opacity: 'BYLAYER'
+    };
+    this._notify();
+  }
 
   syncActivePath() {
     if (this.utils?.activePath) {

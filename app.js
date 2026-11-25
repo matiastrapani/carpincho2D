@@ -9,6 +9,7 @@ import { PropertyPanelUI } from './ui/PropertyPanelUI.js';
 import { CAD_THEME, applyThemeToDocument } from './config/cadTheme.js';
 import { populateentities } from './services/demoScene.js';
 import { TooltipManager } from './ui/components/TooltipManager.js';
+import { HeaderToolbarComponent } from './ui/components/HeaderToolbarComponent.js';
 
 const onLoadHandler = () => {
   window.removeEventListener('load', onLoadHandler);
@@ -17,6 +18,9 @@ const onLoadHandler = () => {
   // 1. Inyectar la UI visual (Toolbar base + Consolas)
   const toolbar = new CADToolbarComponent('fixedConsoleContainer');
   toolbar.render();
+  const headerToolbar = new HeaderToolbarComponent('headerToolbarContainer');
+  headerToolbar.render();
+  window.headerToolbar = headerToolbar;
   window.consoleManager = new ConsoleManager('fixedConsoleSlot');
   window.fixedConsoleUI = window.consoleManager.fixedUI;
   window.floatingConsoleUI = window.consoleManager.floatingUI;
@@ -24,6 +28,7 @@ const onLoadHandler = () => {
   // 2. Inicializar Servicios CAD y vincular consola
   window.cadService = new CADService();
   window.cadUtils = new CADUtils('cadCanvas', window.cadService);
+  window.cadUtils.headerToolbar = headerToolbar;
   window.cadUtils.tooltipManager = new TooltipManager(document.body);
   window.consoleManager.setUtils(window.cadUtils);
   window.cadIO = window.cadUtils.ioService;
@@ -49,7 +54,6 @@ const onLoadHandler = () => {
   window.canvasViewportManager.initPaper();
   populateentities(window.cadService);
 
-
   if (document.fonts && document.fonts.ready) {
     document.fonts.ready.then(() => {
       window.canvasViewportManager.handleCanvasResize();
@@ -64,7 +68,6 @@ const onLoadHandler = () => {
   window.cadUtils.selectionRenderEngine.renderBezierHandles();
   window.cadUtils.setTool('select');
   window.consoleManager.showWelcomeMessage();
-
 };
 
 window.addEventListener('load', onLoadHandler);

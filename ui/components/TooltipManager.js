@@ -174,7 +174,7 @@ export class TooltipManager {
     this.tooltipEl.replaceChildren();
 
     const lines = String(rawText).split(/\r?\n|\\n/);
-    const tokenRegex = /<span\b([^>]*)><\/span>|<span\b([^>]*)\/>|\{icon:([a-zA-Z0-9:_-]+)\}|\{shortcut:([a-zA-Z0-9_-]+)\}/gi;
+    const tokenRegex = /<span\b([^>]*)>([\s\S]*?)<\/span>|<span\b([^>]*)\/>|\{icon:([a-zA-Z0-9:_-]+)\}|\{shortcut:([a-zA-Z0-9_-]+)\}/gi;
 
     for (const line of lines) {
       const lineEl = document.createElement('div');
@@ -195,18 +195,24 @@ export class TooltipManager {
           lineEl.appendChild(document.createTextNode(line.slice(lastIndex, match.index)));
         }
 
-        const rawSpanAttrs = match[1] !== undefined ? match[1] : match[2];
-        const shorthandIcon = match[3];
-        const shortcutKey = match[4];
+        const rawSpanAttrs = match[1] !== undefined ? match[1] : match[3];
+        const innerSpanText = match[2] || '';
+        const shorthandIcon = match[4];
+        const shortcutKey = match[5];
 
         if (rawSpanAttrs !== undefined) {
           const iconAttrMatch = rawSpanAttrs.match(/\bdata-icon\s*=\s*["']([^"']+)["']/i);
+          const classAttrMatch = rawSpanAttrs.match(/\bclass\s*=\s*["']([^"']+)["']/i);
           if (iconAttrMatch) {
-            const classAttrMatch = rawSpanAttrs.match(/\bclass\s*=\s*["']([^"']+)["']/i);
             const iconSpan = document.createElement('span');
             iconSpan.className = classAttrMatch ? classAttrMatch[1] : 'iconify';
             iconSpan.setAttribute('data-icon', iconAttrMatch[1]);
             lineEl.appendChild(iconSpan);
+          } else if (classAttrMatch) {
+            const styledSpan = document.createElement('span');
+            styledSpan.className = classAttrMatch[1];
+            this._appendInlineTokens(styledSpan, innerSpanText);
+            lineEl.appendChild(styledSpan);
           } else {
             lineEl.appendChild(document.createTextNode(match[0]));
           }
@@ -230,6 +236,27 @@ export class TooltipManager {
       }
 
       this.tooltipEl.appendChild(lineEl);
+    }
+  }
+
+  _appendInlineTokens(container, text) {
+    const innerRegex = /\{icon:([a-zA-Z0-9:_-]+)\}/gi;
+    let lastIdx = 0;
+    let m;
+
+    while ((m = innerRegex.exec(text)) !== null) {
+      if (m.index > lastIdx) {
+        container.appendChild(document.createTextNode(text.slice(lastIdx, m.index)));
+      }
+      const iconSpan = document.createElement('span');
+      iconSpan.className = 'iconify';
+      iconSpan.setAttribute('data-icon', m[1]);
+      container.appendChild(iconSpan);
+      lastIdx = innerRegex.lastIndex;
+    }
+
+    if (lastIdx < text.length) {
+      container.appendChild(document.createTextNode(text.slice(lastIdx)));
     }
   }
 

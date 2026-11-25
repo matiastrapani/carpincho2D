@@ -438,12 +438,6 @@ export class ConsoleManager {
     this.focusInput();
   }
 
-  showWelcomeMessage() {
-    this.beginCompactBlock();
-    this.logUser('Carpincho', 'Bienvenido a ', { grouped: true });
-    this.logSystem('A dibujar crack!', { grouped: true });
-    this.endCompactBlock();
-  }
   showWelcomeMessage(htmlContent = null) {
     this.renderer.showWelcomeMessage(htmlContent);
   }

@@ -38,6 +38,21 @@ export class LayerManager {
     });
   }
 
+  resetLayers() {
+    this.layers.forEach((layer) => {
+      if (layer?.paperGroup && typeof layer.paperGroup.remove === 'function') {
+        layer.paperGroup.remove();
+      }
+      if (layer) {
+        layer.paperGroup = null;
+      }
+    });
+
+    this.layers.clear();
+    this.activeLayerId = '0';
+    this.initDefaultLayers();
+  }
+
   createLayer({ id, name, color, strokeWidth = 0, visible = true, locked = false } = {}) {
     const layerId = String(id || `layer_${Date.now()}`);
     const resolvedColor = color || CAD_THEME.properties.customFallbackColor;
@@ -179,7 +194,7 @@ export class LayerManager {
       if (this.service && Array.isArray(this.service.entities)) {
         this.service.entities.forEach((ent) => {
           if (ent.data && String(ent.data.layerId) === key) {
-            ent.visible = true;
+            ent.visible = !ent.data.isHidden;
           }
         });
       }
@@ -212,7 +227,7 @@ export class LayerManager {
       if (Array.isArray(this.service?.entities)) {
         this.service.entities.forEach((ent) => {
           if (ent?.data && String(ent.data.layerId || '0') === layerId) {
-            ent.visible = isVisible;
+            ent.visible = isVisible && !ent.data.isHidden;
           }
         });
       }
@@ -237,20 +252,30 @@ export class LayerManager {
   }
 
   isEntityVisible(entity) {
-    if (!entity) return false;
+    if (!entity || entity.data?.isHidden) return false;
     const layerId = String(entity.data?.layerId || '0');
     const layer = this.layers.get(layerId);
     return layer ? layer.visible !== false : true;
   }
 
   isEntityInteractive(entity) {
-    if (!entity) return false;
+    if (!this.isEntityVisible(entity) || entity.data?.isLocked) return false;
     const layerId = String(entity.data?.layerId || '0');
     const layer = this.layers.get(layerId);
     if (!layer) return true;
-    return layer.visible !== false && !layer.locked;
+    return !layer.locked;
   }
   
+  hasHiddenEntities() {
+    return Array.isArray(this.service?.entities)
+      && this.service.entities.some((ent) => Boolean(ent?.data?.isHidden));
+  }
+
+  hasLockedEntities() {
+    return Array.isArray(this.service?.entities)
+      && this.service.entities.some((ent) => Boolean(ent?.data?.isLocked));
+  }
+
   assignEntityToLayer(entity, layerId) {
     if (!entity) return;
 
@@ -261,7 +286,6 @@ export class LayerManager {
     entity.data = entity.data || {};
     entity.data.layerId = layer.id;
 
-    // Asignar color heredado BYLAYER si no tiene color propio forzado
     if (entity.data.useColorByLayer !== false && entity.data.colorByLayer !== false) {
       entity.data.origStrokeColor = layer.color;
     }
@@ -275,7 +299,7 @@ export class LayerManager {
       layer.paperGroup.addChild(entity);
     }
 
-    entity.visible = layer.visible !== false;
+    entity.visible = layer.visible !== false && !entity.data.isHidden;
   }
 
   ensureLayerGroups() {

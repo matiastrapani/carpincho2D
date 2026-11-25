@@ -94,9 +94,10 @@ export class SelectionRenderEngine {
   _filterUnlockedEntities(entities, layerManager) {
     return (entities || []).filter((ent) => {
       if (!ent || !ent.parent) return false;
-      const lId = String(ent.data?.layerId || '0');
-      const layer = layerManager?.layers?.get(lId);
-      return !layer || !layer.locked;
+      if (layerManager) {
+        return layerManager.isEntityInteractive(ent);
+      }
+      return !ent.data?.isHidden && !ent.data?.isLocked;
     });
   }
 
@@ -121,6 +122,8 @@ export class SelectionRenderEngine {
 
     const editingSet = new Set(this.service?.editingEntities || []);
     const selectedSet = new Set(this.service?.selectedEntities || []);
+    const lockedColor = CAD_THEME?.locked?.strokeColor || '#71717a';
+    const lockedRasterOpacity = CAD_THEME?.locked?.rasterOpacity ?? 0.45;
 
     entitiesToUpdate.forEach((ent) => {
       if (!ent) return;
@@ -128,11 +131,16 @@ export class SelectionRenderEngine {
 
       const layerId = ent.data?.layerId || '0';
       const layer = layerManager?.layers?.get(String(layerId));
-      const isLayerVisible = layer ? (layer.visible !== false) : true;
-      const isLayerLocked = layer ? (layer.locked === true) : false;
+      const isVisible = layerManager
+        ? layerManager.isEntityVisible(ent)
+        : ((layer ? layer.visible !== false : true) && !ent.data.isHidden);
+      const isInteractive = layerManager
+        ? layerManager.isEntityInteractive(ent)
+        : (isVisible && !(layer?.locked === true) && !ent.data.isLocked);
+      const isLocked = isVisible && !isInteractive;
 
-      ent.visible = isLayerVisible;
-      if (!isLayerVisible) return;
+      ent.visible = isVisible;
+      if (!isVisible) return;
 
       const layerOpacity = (layer && layer.opacity !== undefined) ? layer.opacity : 1.0;
       const resolvedOpacity = ent.data.opacityByLayer !== false
@@ -140,8 +148,8 @@ export class SelectionRenderEngine {
         : (ent.data.origOpacity !== undefined ? ent.data.origOpacity : (ent.opacity ?? 1.0));
 
       const isEditing = editingSet.has(ent);
-      const isSelected = !isLayerLocked && selectedSet.has(ent);
-      const isHovered = !isLayerLocked && !isEditing && (this.service?.hoveredEntity === ent);
+      const isSelected = isInteractive && selectedSet.has(ent);
+      const isHovered = isInteractive && !isEditing && (this.service?.hoveredEntity === ent);
 
       // NODOS / PUNTOS
       if (ent.data.isPointEntity) {
@@ -157,9 +165,9 @@ export class SelectionRenderEngine {
           ? propertyManager.getResolvedColor(ent)
           : (ent.data.origStrokeColor || nodeTheme.defaultStrokeColor || '#18fcf1');
 
-        const strokeHex = isSelected
-          ? (nodeSelectionTheme.strokeColor || '#ffff00')
-          : resolvedPointColor;
+        const strokeHex = isLocked
+          ? lockedColor
+          : (isSelected ? (nodeSelectionTheme.strokeColor || '#ffff00') : resolvedPointColor);
 
         const strokeColorObj = new paperInst.Color(strokeHex);
         strokeColorObj.alpha = isSelected ? 1.0 : resolvedOpacity;
@@ -174,8 +182,8 @@ export class SelectionRenderEngine {
           ? layer.opacity
           : (ent.data?.baseOpacity ?? ent.data?.origOpacity ?? ent.opacity ?? 1.0);
 
-        ent.opacity = rasterOpacity;
         ent.data.baseOpacity = rasterOpacity;
+        ent.opacity = isLocked ? Math.min(rasterOpacity, lockedRasterOpacity) : rasterOpacity;
         return;
       }
 
@@ -192,9 +200,11 @@ export class SelectionRenderEngine {
 
         const styleConfig = this._getSelectionStyleConfig(ent);
 
-        const effectiveColor = propertyManager
-          ? propertyManager.getResolvedColor(ent)
-          : (ent.data.origStrokeColor || '#00e5ff');
+        const effectiveColor = isLocked
+          ? lockedColor
+          : (propertyManager
+            ? propertyManager.getResolvedColor(ent)
+            : (ent.data.origStrokeColor || '#00e5ff'));
 
         if (isSelected) {
           ent.opacity = 1.0;

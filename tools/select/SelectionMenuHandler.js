@@ -69,12 +69,11 @@ export class SelectionMenuHandler {
       tolerance,
       match: (res) => {
         const root = this.getRootEntity(res.item);
-        if (!root) return false;
+        if (!root || root.visible === false) return false;
 
-        const layerId = String(root.data?.layerId || '0');
-        const layer = this.utils.layerManager?.layers?.get(layerId);
-        if (layer && (layer.locked || layer.visible === false)) return false;
-        if (root.visible === false) return false;
+        const layerManager = this.utils.layerManager;
+        if (layerManager && !layerManager.isEntityInteractive(root)) return false;
+        if (!layerManager && (root.data?.isHidden || root.data?.isLocked)) return false;
 
         if (root instanceof paperInst.Raster || res.item instanceof paperInst.Raster) return true;
         if (root.data?.isPointEntity || res.item.data?.isPointEntity) return true;

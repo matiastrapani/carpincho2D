@@ -77,3 +77,6 @@ implementar clases para las entidades
 
   [x] cancelacion de arrastre en tiradores no restaura
   [x] zoom y rubberband
+
+  cambiar la ventana de aviso al iniciar nuevo documento
+  ver barras de desplazamiento en capas

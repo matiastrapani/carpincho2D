@@ -92,6 +92,10 @@ export const CAD_THEME = {
       '#3bcf1d', '#e148ae', '#93a115', '#7877d5'
     ]
   },
+  locked: {
+    strokeColor: '#48484e',
+    rasterOpacity: 0.45
+  },
 
   // Atajos globales de teclado estilo Rhino 3D y navegación
   shortcuts: {

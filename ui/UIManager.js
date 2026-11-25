@@ -1,7 +1,7 @@
 /**
  * modules/UIManager.js - Delegación de eventos e interfaz CAD
  */
-import { ChangeOpacityCommand } from '../services/commands/cadCommands.js';
+import { ChangeOpacityCommand, EntityVisibilityLockCommand } from '../services/commands/cadCommands.js';
 
 export class CADUIManager {
   constructor(cadUtils, cadService) {
@@ -648,6 +648,26 @@ export class CADUIManager {
   }
 
   bindHeaderControls() {
+    // 0. Botón Nuevo Dibujo (New)
+    const btnNew = document.getElementById('btnHeaderNew');
+    if (btnNew) {
+      btnNew.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (!this.cadService) return;
+
+        const hasWork = Boolean(
+          this.cadService.entities?.length > 0 ||
+          this.cadService.history?.canUndo?.()
+        );
+
+        if (hasWork && !window.confirm('¿Iniciar un dibujo nuevo? Se perderán los cambios actuales.')) {
+          return;
+        }
+
+        this.cadService.resetDocument();
+      });
+    }
+
     // 1. Botón Deshacer (Undo)
     const btnUndo = document.getElementById('btnHeaderUndo');
     if (btnUndo) {
@@ -699,6 +719,82 @@ export class CADUIManager {
         }
       });
     }
+
+    const bindRightClickIconFlash = (btnEl, btnId, activeIcon, hasTargetsFn) => {
+      if (!btnEl) return;
+      btnEl.addEventListener('mousedown', (e) => {
+        if (e.button !== 2 || !hasTargetsFn()) return;
+        const headerToolbar = this.cadUtils?.headerToolbar || window.headerToolbar;
+        if (typeof headerToolbar?.flashButtonIcon !== 'function') return;
+
+        const release = headerToolbar.flashButtonIcon(btnId, activeIcon, 220);
+        const onRelease = () => {
+          window.removeEventListener('mouseup', onRelease);
+          window.removeEventListener('blur', onRelease);
+          release();
+        };
+        window.addEventListener('mouseup', onRelease);
+        window.addEventListener('blur', onRelease);
+      });
+    };
+
+    // 4. Botón Ocultar selección (clic izq) / Desocultar todo (clic der)
+    const btnVisibility = document.getElementById('btnHeaderVisibility');
+    if (btnVisibility) {
+      bindRightClickIconFlash(
+        btnVisibility,
+        'btnHeaderVisibility',
+        'lucide:eye',
+        () => Boolean(this.cadUtils?.layerManager?.hasHiddenEntities?.())
+      );
+
+      btnVisibility.addEventListener('click', (e) => {
+        e.preventDefault();
+        const targets = (this.cadService?.selectedEntities || []).filter((ent) => !ent?.data?.isHidden);
+        if (!targets.length) return;
+        const cmd = new EntityVisibilityLockCommand(this.cadService, targets, 'hide', this.cadUtils);
+        this.cadService.executeCommand(cmd);
+      });
+
+      btnVisibility.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        const targets = (this.cadService?.entities || []).filter((ent) => Boolean(ent?.data?.isHidden));
+        if (!targets.length) return;
+        const cmd = new EntityVisibilityLockCommand(this.cadService, targets, 'unhideAll', this.cadUtils);
+        this.cadService.executeCommand(cmd);
+      });
+    }
+
+    // 5. Botón Bloquear selección (clic izq) / Desbloquear todo (clic der)
+    const btnLock = document.getElementById('btnHeaderLock');
+    if (btnLock) {
+      bindRightClickIconFlash(
+        btnLock,
+        'btnHeaderLock',
+        'lucide:lock-open',
+        () => Boolean(this.cadUtils?.layerManager?.hasLockedEntities?.())
+      );
+
+      btnLock.addEventListener('click', (e) => {
+        e.preventDefault();
+        const targets = (this.cadService?.selectedEntities || []).filter((ent) => !ent?.data?.isLocked);
+        if (!targets.length) return;
+        const cmd = new EntityVisibilityLockCommand(this.cadService, targets, 'lock', this.cadUtils);
+        this.cadService.executeCommand(cmd);
+      });
+
+      btnLock.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        const targets = (this.cadService?.entities || []).filter((ent) => Boolean(ent?.data?.isLocked));
+        if (!targets.length) return;
+        const cmd = new EntityVisibilityLockCommand(this.cadService, targets, 'unlockAll', this.cadUtils);
+        this.cadService.executeCommand(cmd);
+      });
+    }
   }
 
   updateUndoRedoUI() {
@@ -721,6 +817,15 @@ export class CADUIManager {
 
     if (btnUndo) btnUndo.disabled = !canUndo;
     if (btnRedo) btnRedo.disabled = !canRedo;
+
+    const headerToolbar = this.cadUtils?.headerToolbar || window.headerToolbar;
+    const layerManager = this.cadUtils?.layerManager;
+    if (headerToolbar && layerManager) {
+      headerToolbar.updateTooltips({
+        hasHidden: layerManager.hasHiddenEntities(),
+        hasLocked: layerManager.hasLockedEntities()
+      });
+    }
   }
 
   _handleDocumentMouseDown(e) {

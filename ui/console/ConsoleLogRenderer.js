@@ -261,7 +261,7 @@ export class ConsoleLogRenderer {
 
   showWelcomeMessage(htmlContent = null) {
     const html = htmlContent ||
-      `<div class="pb-1 text-zinc-400 font-normal">Bienvenido a <span class="text-white font-bold">Carpincho</span> — ¡Todo listo, a divertirse dibujando!</div>`;
+      `<div class="pb-1 text-zinc-400 font-normal">¡Todo listo para divertirse dibujando!</div>`;
     this._appendEntry('interactive', html, { isHtml: true, grouped: false });
   }
 

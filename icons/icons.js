@@ -340,6 +340,27 @@ export const LUCIDE_PATHS = {
   <circle cx="17" cy="4" r="2" />
   `,
 
+  'lightbulb': `
+  <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/>
+  <path d="M9 18h6"/>
+  <path d="M10 22h4"/>
+  `,
+
+  'file': `
+  <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/>
+  <path d="M14 2v5a1 1 0 0 0 1 1h5"/>
+  `,
+
+  'folder-open': `
+  <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/>
+  `,
+
+  'save': `
+  <path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/>
+  <path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/>
+  <path d="M7 3v4a1 1 0 0 0 1 1h7"/>
+  `,
+  
 };
 
 const ICON_REGISTRY = { ...CUSTOM_ICONS };
@@ -348,6 +369,6 @@ for (const [name, paths] of Object.entries(LUCIDE_PATHS)) {
   ICON_REGISTRY[`lucide:${name}`] = {
     width: 24,
     height: 24,
-    body: `<g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</g>`
+    body: `<g fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">${paths}</g>`
   };
 }

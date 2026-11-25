@@ -105,9 +105,8 @@ export class BoxSelectHandler {
       const entity = entities[i];
       if (!entity || !entity.bounds || entity.visible === false) continue;
 
-      const layerId = String(entity.data?.layerId || '0');
-      const layer = layerManager?.layers?.get(layerId);
-      if (layer && (layer.locked || layer.visible === false)) continue;
+      if (layerManager && !layerManager.isEntityInteractive(entity)) continue;
+      if (!layerManager && (entity.data?.isHidden || entity.data?.isLocked)) continue;
 
       if (typeof filterFn === 'function' && !filterFn(entity)) continue;
 

@@ -47,9 +47,14 @@ export class SelectionManager {
 
   _isLayerEditable(entity) {
     if (!entity) return false;
-    const layerId = String(entity.data?.layerId || '0');
-    const layer = this._getLayerManager()?.layers?.get(layerId);
-    return !layer || (!layer.locked && layer.visible !== false);
+    const layerManager = this._getLayerManager();
+    if (layerManager) {
+      return layerManager.isEntityInteractive(entity);
+    }
+    if (entity.data?.isHidden || entity.data?.isLocked || entity.visible === false) {
+      return false;
+    }
+    return true;
   }
 
   _refreshRender({ stroke = true, handles = true, updateView = false } = {}) {
@@ -314,6 +319,29 @@ export class SelectionManager {
     this.editingEntities = this.editingEntities.filter(isOtherLayer);
     this.selectedSegments = this.selectedSegments.filter((seg) => seg?.path && isOtherLayer(seg.path));
     this.selectedHandles = this.selectedHandles.filter((h) => h?.segment?.path && isOtherLayer(h.segment.path));
+
+    const nextTotal = this._selectedEntities.length + this.editingEntities.length +
+      this.selectedSegments.length + this.selectedHandles.length;
+
+    if (prevTotal !== nextTotal) {
+      this._refreshRender();
+      this._notify();
+    }
+  }
+
+  purgeEntitiesSelection(entities) {
+    const list = Array.isArray(entities) ? entities : [];
+    if (list.length === 0) return;
+
+    const blockedSet = new Set(list);
+    const keepEntity = (ent) => Boolean(ent && !blockedSet.has(ent));
+    const prevTotal = this._selectedEntities.length + this.editingEntities.length +
+      this.selectedSegments.length + this.selectedHandles.length;
+
+    this._selectedEntities = this._selectedEntities.filter(keepEntity);
+    this.editingEntities = this.editingEntities.filter(keepEntity);
+    this.selectedSegments = this.selectedSegments.filter((seg) => seg?.path && keepEntity(seg.path));
+    this.selectedHandles = this.selectedHandles.filter((h) => h?.segment?.path && keepEntity(h.segment.path));
 
     const nextTotal = this._selectedEntities.length + this.editingEntities.length +
       this.selectedSegments.length + this.selectedHandles.length;

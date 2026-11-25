@@ -148,3 +148,101 @@ export class UpdateDefaultSettingsCommand {
     }
   }
 }
+
+export class EntityVisibilityLockCommand {
+  constructor(cadService, entities, action, cadUtils = null) {
+    this.service = cadService;
+    this.utils = cadUtils || cadService?.utils || null;
+    this.action = action; // 'hide' | 'unhideAll' | 'lock' | 'unlockAll'
+
+    const list = Array.isArray(entities) ? entities : (entities ? [entities] : []);
+    this.entries = list.map((entity) => {
+      const prevHidden = Boolean(entity.data?.isHidden);
+      const prevLocked = Boolean(entity.data?.isLocked);
+      let nextHidden = prevHidden;
+      let nextLocked = prevLocked;
+
+      if (action === 'hide') nextHidden = true;
+      else if (action === 'unhideAll') nextHidden = false;
+      else if (action === 'lock') nextLocked = true;
+      else if (action === 'unlockAll') nextLocked = false;
+
+      return { entity, prevHidden, prevLocked, nextHidden, nextLocked };
+    });
+  }
+
+  execute() {
+    this._applySnapshots(true);
+  }
+
+  undo() {
+    this._applySnapshots(false);
+  }
+
+  _applySnapshots(useNext) {
+    if (!this.entries.length) return;
+
+    const layerManager = this.utils?.layerManager || null;
+    const selectionManager = this.service?.selectionManager || null;
+    const entitiesToPurge = [];
+    const entitiesToSelect = [];
+
+    this.entries.forEach(({ entity, prevHidden, prevLocked, nextHidden, nextLocked }) => {
+      if (!entity) return;
+      if (!entity.data) entity.data = {};
+
+      const isHidden = useNext ? nextHidden : prevHidden;
+      const isLocked = useNext ? nextLocked : prevLocked;
+
+      if (isHidden) {
+        entity.data.isHidden = true;
+      } else {
+        delete entity.data.isHidden;
+      }
+
+      if (isLocked) {
+        entity.data.isLocked = true;
+      } else {
+        delete entity.data.isLocked;
+      }
+
+      const layerId = String(entity.data.layerId || '0');
+      const layer = layerManager?.layers?.get(layerId);
+      const isLayerVisible = layer ? layer.visible !== false : true;
+      entity.visible = isLayerVisible && !isHidden;
+
+      if (isHidden || isLocked) {
+        entitiesToPurge.push(entity);
+      } else if (useNext && (this.action === 'unhideAll' || this.action === 'unlockAll')) {
+        const isInteractive = layerManager ? layerManager.isEntityInteractive(entity) : true;
+        if (isInteractive) {
+          entitiesToSelect.push(entity);
+        }
+      }
+    });
+
+    if (entitiesToPurge.length > 0 && selectionManager?.purgeEntitiesSelection) {
+      selectionManager.purgeEntitiesSelection(entitiesToPurge);
+    }
+
+    if (entitiesToSelect.length > 0) {
+      if (this.utils?.currentToolMode && this.utils.currentToolMode !== 'select' && typeof this.utils.setTool === 'function') {
+        this.utils.setTool('select');
+      }
+      if (selectionManager?.selectEntities) {
+        selectionManager.selectEntities(entitiesToSelect, false);
+        queueMicrotask(() => {
+          if (selectionManager.selectedEntities.length === 0) {
+            selectionManager.selectEntities(entitiesToSelect, false);
+          }
+          this.utils?.selectionRenderEngine?.updateEntitiesStroke?.();
+          this.utils?.selectionRenderEngine?.renderBezierHandles?.();
+          const p = this.utils?.paper || (typeof paper !== 'undefined' ? paper : null);
+          p?.view?.update?.();
+        });
+      }
+    }
+
+    this.utils?.uiManager?.updateUndoRedoUI?.();
+  }
+}

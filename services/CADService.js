@@ -226,6 +226,20 @@ export class CADService {
       return { tag: 'PROPIEDADES', label: 'Valores por defecto actualizados' };
     }
 
+    if (typeName === 'EntityVisibilityLockCommand') {
+      const count = command.entries?.length || 0;
+      const target = count === 1
+        ? (command.entries[0]?.entity?.name || '1 entidad')
+        : `${count} entidades`;
+      const actionMap = {
+        hide: { tag: 'OCULTAR', label: `${target} oculta${count === 1 ? '' : 's'}` },
+        unhideAll: { tag: 'MOSTRAR', label: `${target} visible${count === 1 ? '' : 's'}` },
+        lock: { tag: 'BLOQUEAR', label: `${target} bloqueada${count === 1 ? '' : 's'}` },
+        unlockAll: { tag: 'DESBLOQUEAR', label: `${target} desbloqueada${count === 1 ? '' : 's'}` }
+      };
+      return actionMap[command.action] || { tag: 'ESTADO', label: target };
+    }
+
     if (typeName === 'ImportSVGCommand') {
       const count = (command.entities || command.importedEntities)?.length || 0;
       const label = count === 1 ? 'SVG (1 trazado)' : `SVG (${count} trazados)`;
@@ -346,6 +360,71 @@ export class CADService {
     if (renderBezierFn) renderBezierFn();
   }
 
+  resetDocument() {
+    const utils = this.utils;
+    const activeTool = utils?.toolManager?.activeTool;
+    if (activeTool && typeof activeTool.cancel === 'function') {
+      activeTool.cancel();
+    }
+
+    this.selectionManager.deselectAllEditingEntities();
+    this.hoveredEntity = null;
+    this.trimCuttingBoundaries = [];
+    this.isTrimCuttingPhase = false;
+    this._suppressedExitSnapPoint = null;
+
+    this.entities.forEach((ent) => {
+      if (ent && typeof ent.remove === 'function') {
+        ent.remove();
+      }
+    });
+    this.entities = [];
+
+    if (utils?.activePath) {
+      utils.activePath.remove();
+      utils.activePath = null;
+    }
+
+    this.history.clear();
+
+    const layerManager = this.layerManager || utils?.layerManager;
+    if (layerManager && typeof layerManager.resetLayers === 'function') {
+      layerManager.resetLayers();
+    }
+
+    const propertyManager = this.propertyManager || utils?.propertyManager;
+    if (propertyManager && typeof propertyManager.resetDefaultSettings === 'function') {
+      propertyManager.resetDefaultSettings();
+    }
+
+    if (utils) {
+      utils.selectedHandle = null;
+      utils.hoveredHandle = null;
+      utils.hoveredCurve = null;
+      utils.hud?.clear?.();
+      if (typeof utils.setTool === 'function') {
+        utils.setTool('select');
+      }
+      utils.viewportManager?.zoomReset?.(false);
+    }
+
+    const renderEngine = this.selectionRenderEngine || utils?.selectionRenderEngine;
+    renderEngine?.updateEntitiesStroke?.();
+    renderEngine?.renderBezierHandles?.();
+
+    const paperInst = this._getPaper();
+    if (paperInst?.view) {
+      paperInst.view.update();
+    }
+
+    if (utils?.consoleManager) {
+      utils.consoleManager.clear();
+      utils.consoleManager.showWelcomeMessage();
+    }
+
+    this._notifyHistoryChange();
+  }
+  
   createPointEntity(pt, options = {}) {
     if (!pt) return null;
 
