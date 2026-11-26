@@ -47,6 +47,12 @@ export class TrimTool extends BaseTool {
     this.setStep(prompts.cut, { options });
   }
 
+  _logBoundariesSummary(count) {
+    const summaryMsg = CAD_CATALOG.tools.trim.prompts?.selectedSummary?.(count)
+      || (count === 1 ? '1 entidad límite seleccionada.' : `${count} entidades límite seleccionadas.`);
+    this.logTagged(summaryMsg);
+  }
+
   onActivate() {
     this.selector.reset();
     this.sessionCutCount = 0;
@@ -54,6 +60,7 @@ export class TrimTool extends BaseTool {
 
     if (preSelected.length > 0) {
       this.service.isTrimCuttingPhase = true;
+      this._logBoundariesSummary(preSelected.length);
     } else {
       this.service.trimCuttingBoundaries = [];
       this.service.isTrimCuttingPhase = false;
@@ -70,6 +77,7 @@ export class TrimTool extends BaseTool {
     }
 
     this.service.isTrimCuttingPhase = true;
+    this._logBoundariesSummary(boundaries.length);
     this._announceStep();
     return true;
   }

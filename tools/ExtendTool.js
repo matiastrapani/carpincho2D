@@ -1,12 +1,17 @@
 /**
  * tools/ExtendTool.js - Extensión paramétrica para líneas y curvas Bézier.
- * Soporta modos 'smooth' (S) y 'line' (L), entrada numérica de distancia por consola
- * y registro en historial mediante ExtendCommand.
+ * Soporta modos 'smooth' (M) y 'line' (M), entrada numérica de distancia por consola
+ * con memoria de valor por defecto y registro en historial mediante ExtendCommand.
  */
 
 import { BaseTool } from './BaseTool.js';
 import { ExtendCommand } from '../services/commands/cadCommands.js';
 import { CAD_CATALOG } from '../config/cadCatalog.js';
+import {
+  extrapolateCubicBezier,
+  solveBezierFactorForArcLength,
+  computeExtendInfo
+} from '../services/engines/ExtendMath.js';
 
 export class ExtendTool extends BaseTool {
   constructor(cadService, cadUtils) {
@@ -17,7 +22,8 @@ export class ExtendTool extends BaseTool {
     this.promptText = `${meta?.prompts?.pick || 'Seleccione el extremo a extender'}:`;
     this.extendData = null;
     this.lastCursorPoint = null;
-    this.mode = 'smooth'; // 'smooth' | 'line'
+    this.lastExtendDistance = null;
+    this.mode = 'smooth';
     this.cursorMode = 'extend';
   }
 
@@ -25,6 +31,11 @@ export class ExtendTool extends BaseTool {
     this.extendData = null;
     this.lastCursorPoint = null;
     this._announceStep();
+  }
+
+  _formatDefaultDistance() {
+    if (!(this.lastExtendDistance > 0)) return null;
+    return String(Number(this.lastExtendDistance.toFixed(4)));
   }
 
   _getCurrentOptions() {
@@ -36,7 +47,11 @@ export class ExtendTool extends BaseTool {
   _announceStep() {
     const prompts = CAD_CATALOG.tools.extend.prompts;
     const basePrompt = this.extendData ? prompts.extend : prompts.pick;
-    this.setStep(basePrompt, { options: this._getCurrentOptions() });
+    const stepOpts = { options: this._getCurrentOptions() };
+    if (this.extendData) {
+      stepOpts.defaultValue = this._formatDefaultDistance();
+    }
+    this.setStep(basePrompt, stepOpts);
   }
 
   toggleMode() {
@@ -89,7 +104,7 @@ export class ExtendTool extends BaseTool {
     });
 
     if (hitEntity?.item) {
-      const extendInfo = this.getExtendInfo(hitEntity.item, event.point);
+      const extendInfo = computeExtendInfo(p, hitEntity.item, event.point);
       if (extendInfo) {
         this.extendData = extendInfo;
         this.service.selectEntity(hitEntity.item, false);
@@ -110,7 +125,7 @@ export class ExtendTool extends BaseTool {
     return tangentVector;
   }
 
-  _applyExtensionDistance(projDist) {
+  _applyExtensionDistance(projDist, { exactArcLength = false } = {}) {
     if (!this.extendData) return;
     const dist = Math.max(0, projDist);
     const {
@@ -120,7 +135,6 @@ export class ExtendTool extends BaseTool {
 
     this.restorePathToBackup(path, initialControls.segmentsBackup);
 
-    // Si la distancia es 0, restauramos al estado original sin insertar nodos duplicados
     if (dist <= 1e-6) {
       this.utils.selectionRenderEngine?.renderBezierHandles?.();
       this.utils.selectionRenderEngine?.updateEntitiesStroke?.();
@@ -138,17 +152,16 @@ export class ExtendTool extends BaseTool {
       const newPt = (isStart ? startPt : endPt).add(vectorToUse.multiply(dist));
 
       if (isStart) {
-        // El nuevo tramo inicial es recto: su handleOut y el handleIn del nodo previo deben ser nulos
         path.firstSegment.handleIn = new this.paper.Point(0, 0);
         path.insertSegment(0, new this.paper.Segment(newPt));
       } else {
-        // El nuevo tramo final es recto: anulamos handleOut del nodo previo para que sea una línea pura
         path.lastSegment.handleOut = new this.paper.Point(0, 0);
         path.addSegment(new this.paper.Segment(newPt));
       }
     } else {
-      const deltaT = dist / (tangentSpeed || 1);
-      const k = 1 + deltaT;
+      const k = exactArcLength
+        ? solveBezierFactorForArcLength(this.paper, initialControls, isStart, dist)
+        : 1 + (dist / (tangentSpeed || 1));
       this.applyBezierExtension(path, isStart, k, initialControls);
     }
 
@@ -189,11 +202,30 @@ export class ExtendTool extends BaseTool {
     this._previewExtendTo(event.point);
   }
 
+  _applyDefaultOrConfirm() {
+    if (!this.extendData) return;
+
+    const { isStart, startPt, endPt, path } = this.extendData;
+    const anchorBefore = isStart ? startPt : endPt;
+    const anchorAfter = isStart ? path.firstSegment.point : path.lastSegment.point;
+
+    if (anchorBefore.getDistance(anchorAfter) <= 1e-6 && this.lastExtendDistance > 0) {
+      this.utils.consoleManager?.logStepInput?.(this._formatDefaultDistance());
+      this._applyExtensionDistance(this.lastExtendDistance, { exactArcLength: true });
+    }
+    this.confirm();
+  }
+
   onCommandInput(rawInput) {
     const logs = CAD_CATALOG.tools?.extend?.logs;
     const anchorPt = this.extendData
       ? (this.extendData.isStart ? this.extendData.startPt : this.extendData.endPt)
       : null;
+
+    if (this.extendData && !String(rawInput ?? '').trim()) {
+      this._applyDefaultOrConfirm();
+      return true;
+    }
 
     const { handled, parsed } = this._parsePointInput(rawInput, {
       options: this._getCurrentOptions(),
@@ -228,7 +260,8 @@ export class ExtendTool extends BaseTool {
         this.logTagged(logs?.invalidDistance || 'La distancia de extensión debe ser mayor a cero.');
         return true;
       }
-      this._applyExtensionDistance(parsed.value);
+      this.lastExtendDistance = parsed.value;
+      this._applyExtensionDistance(parsed.value, { exactArcLength: true });
       this.confirm();
       return true;
     }
@@ -238,7 +271,7 @@ export class ExtendTool extends BaseTool {
 
   onConfirmDefault() {
     if (this.extendData) {
-      this.confirm();
+      this._applyDefaultOrConfirm();
     }
   }
 
@@ -265,7 +298,7 @@ export class ExtendTool extends BaseTool {
     }
     if (key === 'enter' && this.extendData) {
       if (typeof event.preventDefault === 'function') event.preventDefault();
-      this.confirm();
+      this._applyDefaultOrConfirm();
       return true;
     }
     if (key === 'escape') {
@@ -284,7 +317,7 @@ export class ExtendTool extends BaseTool {
     if (event?.event?.preventDefault) event.event.preventDefault();
 
     if (this.extendData) {
-      this.confirm();
+      this._applyDefaultOrConfirm();
       return true;
     }
 
@@ -318,7 +351,7 @@ export class ExtendTool extends BaseTool {
     const totalSegs = path.segments.length;
 
     if (!isStart) {
-      const res = ExtendTool.extenderBezierCubica(
+      const res = extrapolateCubicBezier(
         controls.P0, controls.P1, controls.P2, controls.P3, k
       );
 
@@ -331,7 +364,7 @@ export class ExtendTool extends BaseTool {
       segMoving.point = new p.Point(res.p3.x, res.p3.y);
       segMoving.handleIn = new p.Point(res.p2.x - res.p3.x, res.p2.y - res.p3.y);
     } else {
-      const res = ExtendTool.extenderBezierCubica(
+      const res = extrapolateCubicBezier(
         controls.P3, controls.P2, controls.P1, controls.P0, k
       );
 
@@ -346,135 +379,6 @@ export class ExtendTool extends BaseTool {
     }
   }
 
-  static extenderBezierCubica(p0, p1, p2, p3, k) {
-    const p0_prime = { x: p0.x, y: p0.y };
-    const p1_prime = {
-      x: p0.x + k * (p1.x - p0.x),
-      y: p0.y + k * (p1.y - p0.y)
-    };
-
-    const k2 = k * k;
-    const k2_mult = 2 * k;
-
-    const p2_prime = {
-      x: p0.x + k2_mult * (p1.x - p0.x) + k2 * (p2.x - 2 * p1.x + p0.x),
-      y: p0.y + k2_mult * (p1.y - p0.y) + k2 * (p2.y - 2 * p1.y + p0.y)
-    };
-
-    const u = 1 - k;
-    const u3 = u * u * u;
-    const u2 = u * u;
-    const k3 = k2 * k;
-
-    const p3_prime = {
-      x: (u3 * p0.x) + (3 * u2 * k * p1.x) + (3 * u * k2 * p2.x) + (k3 * p3.x),
-      y: (u3 * p0.y) + (3 * u2 * k * p1.y) + (3 * u * k2 * p2.y) + (k3 * p3.y)
-    };
-
-    return { p0: p0_prime, p1: p1_prime, p2: p2_prime, p3: p3_prime };
-  }
-
-  getExtendInfo(path, clickPt) {
-    if (!path || path.closed || !path.segments || path.segments.length < 2) return null;
-
-    // Depurar nodos finales duplicados de longitud 0 si existieran
-    while (path.segments.length > 2 && path.segments[0].point.getDistance(path.segments[1].point) <= 1e-6) {
-      path.segments[1].handleIn = path.segments[0].handleIn.clone();
-      path.removeSegment(0);
-    }
-    while (
-      path.segments.length > 2 &&
-      path.segments[path.segments.length - 1].point.getDistance(path.segments[path.segments.length - 2].point) <= 1e-6
-    ) {
-      const lastIdx = path.segments.length - 1;
-      path.segments[lastIdx - 1].handleOut = path.segments[lastIdx].handleOut.clone();
-      path.removeSegment(lastIdx);
-    }
-
-    const totalSegs = path.segments.length;
-    const startPt = path.segments[0].point.clone();
-    const endPt = path.segments[totalSegs - 1].point.clone();
-
-    const nearestLoc = path.getNearestLocation(clickPt);
-    const isStart = (nearestLoc && path.length > 0)
-      ? nearestLoc.offset < (path.length / 2)
-      : startPt.getDistance(clickPt) < endPt.getDistance(clickPt);
-
-    const segFixed = isStart ? path.segments[1] : path.segments[totalSegs - 2];
-    const segMoving = isStart ? path.segments[0] : path.segments[totalSegs - 1];
-    const hasHandles = !segFixed.handleOut.isZero() || !segMoving.handleIn.isZero();
-
-    const chordVec = segMoving.point.subtract(segFixed.point);
-    const dirVector = chordVec.length > 1e-6 ? chordVec.normalize() : new this.paper.Point(1, 0);
-
-    let p0, p1, p2, p3;
-    let isBezier = hasHandles;
-    let isSingular = false;
-    let straightDir = null;
-    let tangentVector = null;
-    let tangentSpeed = 1;
-
-    if (!isStart) {
-      p0 = segFixed.point.clone();
-      p1 = p0.add(segFixed.handleOut);
-      p3 = segMoving.point.clone();
-      p2 = p3.add(segMoving.handleIn);
-
-      // Si ambos tiradores del último tramo son nulos, es un segmento recto puro
-      if (segFixed.handleOut.isZero() && segMoving.handleIn.isZero()) {
-        isBezier = false;
-      } else if (p2.getDistance(p3) < 0.001) {
-        isSingular = true;
-        const refPt = p1.getDistance(p0) > 0.001 ? p1 : p0;
-        const rawDir = p3.subtract(refPt);
-        straightDir = rawDir.length > 1e-6 ? rawDir.normalize() : dirVector;
-      } else {
-        const rawTan = p3.subtract(p2);
-        tangentSpeed = 3 * rawTan.length;
-        tangentVector = rawTan.normalize();
-      }
-    } else {
-      p0 = segMoving.point.clone();
-      p1 = p0.add(segMoving.handleOut);
-      p3 = segFixed.point.clone();
-      p2 = p3.add(segFixed.handleIn);
-
-      if (segMoving.handleOut.isZero() && segFixed.handleIn.isZero()) {
-        isBezier = false;
-      } else if (p1.getDistance(p0) < 0.001) {
-        isSingular = true;
-        const refPt = p2.getDistance(p3) > 0.001 ? p2 : p3;
-        const rawDir = p0.subtract(refPt);
-        straightDir = rawDir.length > 1e-6 ? rawDir.normalize() : dirVector;
-      } else {
-        const rawTan = p0.subtract(p1);
-        tangentSpeed = 3 * rawTan.length;
-        tangentVector = rawTan.normalize();
-      }
-    }
-
-    return {
-      path,
-      isStart,
-      isBezier,
-      isSingular,
-      startPt,
-      endPt,
-      straightDir,
-      tangentVector,
-      dirVector,
-      tangentSpeed,
-      initialControls: {
-        P0: p0, P1: p1, P2: p2, P3: p3,
-        segmentsBackup: path.segments.map(s => ({
-          point: s.point.clone(),
-          handleIn: s.handleIn.clone(),
-          handleOut: s.handleOut.clone()
-        }))
-      }
-    };
-  }
-
   confirm() {
     if (!this.extendData) return;
 
@@ -487,7 +391,7 @@ export class ExtendTool extends BaseTool {
       return;
     }
 
-    const finalSegments = path.segments.map(s => ({
+    const finalSegments = path.segments.map((s) => ({
       point: s.point.clone(),
       handleIn: s.handleIn.clone(),
       handleOut: s.handleOut.clone()
@@ -507,7 +411,7 @@ export class ExtendTool extends BaseTool {
 
     this.logTagged(
       CAD_CATALOG.tools?.extend?.logs?.created?.({ name: path.name || 'Entidad' }) ||
-      `Alargamiento aplicado en ${path.name || 'entidad'}.`
+      `Extensión aplicada en ${path.name || 'entidad'}.`
     );
     this._announceStep();
   }

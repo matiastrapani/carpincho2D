@@ -323,46 +323,47 @@ export class DivisionSelectionHandler {
     }
   }
 
-  resolveStartPointSnap(mousePoint, renderMarkerFn = null) {
+  resolveStartPointSnap(mousePoint, renderMarker = false) {
     const targets = this.getTargets();
     if (targets.length === 0) {
-      renderMarkerFn?.(null, null);
+      if (renderMarker) this.utils.hud?.renderSnapMarker(null, null);
       return { point: mousePoint, type: null, entity: null };
     }
 
-    return this.service.calculateOsnap(mousePoint, renderMarkerFn, null, {
-      restrictToEntities: targets,
-      filterOverrides: { nearest: true },
+    const snap = this.service.calculateOsnap(mousePoint, null, {
+      filterOverrides: { nearest: true, center: false },
       forceMasterEnabled: true
     });
+
+    if (renderMarker) {
+      this.utils.hud?.renderSnapMarker(snap.type ? snap.point : null, snap.type || null);
+    }
+
+    return snap;
   }
 
   _findSnappedTarget(snapResult, mousePoint, targets) {
     if (!snapResult?.type) return null;
 
+    const EPS = 0.05;
+    const isPointOnTarget = (ent) => {
+      const curvePt = ent.getNearestPoint?.(snapResult.point) || ent.children?.[0]?.getNearestPoint?.(snapResult.point);
+      return curvePt ? curvePt.getDistance(snapResult.point) <= EPS : false;
+    };
+
     if (snapResult.entity) {
       const direct = targets.find((t) => t === snapResult.entity || t.children?.includes(snapResult.entity));
-      if (direct) return direct;
+      if (direct && isPointOnTarget(direct)) return direct;
     }
 
-    const EPS = 0.05;
     let bestTarget = null;
-    let bestSnapDist = Infinity;
     let bestCursorDist = Infinity;
 
     targets.forEach((ent) => {
-      const curvePt = ent.getNearestPoint?.(snapResult.point) || ent.children?.[0]?.getNearestPoint?.(snapResult.point);
-      const snapDist = curvePt
-        ? curvePt.getDistance(snapResult.point)
-        : (ent.position ? ent.position.getDistance(snapResult.point) : Infinity);
-
-      if (snapDist > EPS) return;
-
-      const cursorPt = ent.getNearestPoint?.(mousePoint) || curvePt;
+      if (!isPointOnTarget(ent)) return;
+      const cursorPt = ent.getNearestPoint?.(mousePoint) || ent.children?.[0]?.getNearestPoint?.(mousePoint);
       const cursorDist = cursorPt ? cursorPt.getDistance(mousePoint) : Infinity;
-
-      if (snapDist < bestSnapDist - 1e-4 || (Math.abs(snapDist - bestSnapDist) <= 1e-4 && cursorDist < bestCursorDist)) {
-        bestSnapDist = snapDist;
+      if (cursorDist < bestCursorDist) {
         bestCursorDist = cursorDist;
         bestTarget = ent;
       }
@@ -373,7 +374,7 @@ export class DivisionSelectionHandler {
 
   selectStartPointAt(mousePoint) {
     const targets = this.getTargets();
-    const snap = this.resolveStartPointSnap(mousePoint);
+    const snap = this.resolveStartPointSnap(mousePoint, false);
     const targetItem = this._findSnappedTarget(snap, mousePoint, targets);
     if (!targetItem) return false;
 

@@ -68,7 +68,7 @@ export class PointTool extends BaseTool {
       const validSelected = this.divisionSelector.syncTargetsCache();
 
       if (validSelected.length > 0) {
-        this.divisionSelector.askForDivisionValue(mode, (msg) => this._setStepFromLegacyPrompt(msg));
+        this.divisionSelector.askForDivisionValue(mode, (msg, opts) => this._setStepFromLegacyPrompt(msg, opts));
       } else {
         this.divisionSelector.reset();
         this.setStep(CAD_CATALOG.tools[mode].prompts.select);
@@ -131,10 +131,7 @@ export class PointTool extends BaseTool {
     }
 
     if (mode === 'divide_dist' && this.divisionSelector.step === 'start_point') {
-      const osnap = this.divisionSelector.resolveStartPointSnap(
-        event.point,
-        (pt, type) => this.utils.hud.renderSnapMarker(pt, type)
-      );
+      const osnap = this.divisionSelector.resolveStartPointSnap(event.point, true);
       this.utils.hud.updateHUD(osnap.point);
       return;
     }
@@ -332,7 +329,7 @@ export class PointTool extends BaseTool {
       this.divisionSelector.handleCommandInput(
         input,
         mode,
-        (msg) => this._setStepFromLegacyPrompt(msg),
+        (msg, opts) => this._setStepFromLegacyPrompt(msg, opts),
         () => this.exitToSelect()
       );
       return true;

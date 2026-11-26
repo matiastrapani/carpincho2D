@@ -142,7 +142,7 @@ export const CUSTOM_ICONS = {
     `
   },
 
-  'custom:trim': {
+  'custom:connect': {
     width: 96,
     height: 96,
     body: `
@@ -158,6 +158,15 @@ export const CUSTOM_ICONS = {
     <path stroke-width="8" stroke-miterlimit="79.8403" stroke="currentColor" d="
     M68.4688 45.2585H76.8421M80.9766 45.2585H89.3499"
     />
+    `
+  },
+
+  'custom:trim': {
+    width: 96,
+    height: 96,
+    body: `
+    <path stroke-width="5" stroke-miterlimit="79.8403" stroke-linecap="round" stroke-linejoin="round" stroke="currentColor" fill="none" d="
+    M9.49414 45.7018V64.4525H50.1191V45.7018H9.49414ZM64.1201 51.9298L50.8535 65.1884L74.4268 88.7591L87.6937 75.5005L64.1201 51.9298ZM50.1191 11.3286V64.4539L75.1191 11.3286H50.1191Z" />
     `
   },
 

@@ -44,7 +44,7 @@ export class CADUtils {
     this.propertyManager = new PropertyManager(this.service, this);
     this.service.propertyManager = this.propertyManager;
 
-    this.selectionRenderEngine = new SelectionRenderEngine(this.service, this);
+    this.selectionRenderEngine = new SelectionRenderEngine(this.service, this, this.paper);
     this.inputDispatcher = new InputDispatcher(this.service);
     this.ioService = new CADIOService(this.service, this);
 
@@ -419,20 +419,23 @@ export class CADUtils {
 
     const osnap = this.service.calculateOsnap(
       rawPoint,
-      (snapPt, type) => {
-        if (type === 'grid' && effectiveOrtho && hasOrigin) {
-          const isHorizontal = Math.abs(rawPoint.x - fromPoint.x) > Math.abs(rawPoint.y - fromPoint.y);
-          const orthoGridPt = isHorizontal
-            ? new paper.Point(snapPt.x, fromPoint.y)
-            : new paper.Point(fromPoint.x, snapPt.y);
-          this.hud.renderSnapMarker(orthoGridPt, type);
-        } else {
-          this.hud.renderSnapMarker(snapPt, type);
-        }
-      },
       excludeEntity,
       Object.keys(osnapOptions).length > 0 ? osnapOptions : null
     );
+
+    if (osnap && osnap.type) {
+      if (osnap.type === 'grid' && effectiveOrtho && hasOrigin) {
+        const isHorizontal = Math.abs(rawPoint.x - fromPoint.x) > Math.abs(rawPoint.y - fromPoint.y);
+        const orthoGridPt = isHorizontal
+          ? new paper.Point(osnap.point.x, fromPoint.y)
+          : new paper.Point(fromPoint.x, osnap.point.y);
+        this.hud.renderSnapMarker(orthoGridPt, osnap.type);
+      } else {
+        this.hud.renderSnapMarker(osnap.point, osnap.type);
+      }
+    } else {
+      this.hud.renderSnapMarker(null, null);
+    }
 
     // 1. Máxima prioridad: OSNAP de entidad (Fin, Medio, Centro, Int, Perp, Tan, Cuad, Punto, Cerca)
     if (osnap && osnap.type && osnap.type !== 'grid') {

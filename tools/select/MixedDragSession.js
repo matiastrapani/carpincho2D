@@ -132,10 +132,6 @@ export class MixedDragSession {
 
     const osnap = this.service.calculateOsnap(
       constrainedTarget,
-      (snapPt, type) => {
-        const markerPt = type === 'grid' ? projectOrthoGrid(snapPt) : snapPt;
-        this.utils.hud.renderSnapMarker(markerPt, type);
-      },
       null,
       {
         fromPoint: osnapFromPoint,
@@ -148,6 +144,9 @@ export class MixedDragSession {
     let finalPoint = constrainedTarget;
     if (osnap && osnap.type) {
       finalPoint = osnap.type === 'grid' ? projectOrthoGrid(osnap.point) : osnap.point;
+      this.utils.hud.renderSnapMarker(finalPoint, osnap.type);
+    } else {
+      this.utils.hud.renderSnapMarker(null, null);
     }
 
     if (updateHud) {

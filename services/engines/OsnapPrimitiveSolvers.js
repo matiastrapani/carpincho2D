@@ -60,7 +60,7 @@ export function collectPrimitiveOsnapCandidates({
       ].forEach((qPt) => {
         const dist = qPt.getDistance(mousePoint);
         if (!isSelfPoint(qPt) && dist <= snapRadius) {
-          candidates.push({ point: qPt, type: 'quadrant', dist, priority: 0 });
+          candidates.push({ point: qPt, type: 'quadrant', entity: circle, dist, priority: 0 });
         }
       });
     }
@@ -69,9 +69,9 @@ export function collectPrimitiveOsnapCandidates({
       const distToCenter = center.getDistance(mousePoint);
       const distToEdge = Math.abs(distToCenter - radius);
       if (distToCenter <= snapRadius) {
-        candidates.push({ point: center.clone(), type: 'center', dist: distToCenter, priority: 0 });
+        candidates.push({ point: center.clone(), type: 'center', entity: circle, dist: distToCenter, priority: 0 });
       } else if (distToEdge <= snapRadius) {
-        candidates.push({ point: center.clone(), type: 'center', dist: distToEdge + (5 / zoom), priority: 1 });
+        candidates.push({ point: center.clone(), type: 'center', entity: circle, dist: distToEdge + (5 / zoom), priority: 1 });
       }
     }
   });
@@ -84,7 +84,7 @@ export function collectPrimitiveOsnapCandidates({
       contour.segments.forEach((seg) => {
         const dist = seg.point.getDistance(mousePoint);
         if (!isSelfPoint(seg.point) && dist <= snapRadius) {
-          candidates.push({ point: seg.point.clone(), type: 'endpoint', dist, priority: 1 });
+          candidates.push({ point: seg.point.clone(), type: 'endpoint', entity: raster, dist, priority: 1 });
         }
       });
     }
@@ -95,7 +95,7 @@ export function collectPrimitiveOsnapCandidates({
         if (mid && !isSelfPoint(mid)) {
           const dist = mid.getDistance(mousePoint);
           if (dist <= snapRadius) {
-            candidates.push({ point: mid, type: 'midpoint', dist, priority: 2 });
+            candidates.push({ point: mid, type: 'midpoint', entity: raster, dist, priority: 2 });
           }
         }
       });
@@ -110,6 +110,7 @@ export function collectPrimitiveOsnapCandidates({
           candidates.push({
             point: centerPt.clone(),
             type: 'center',
+            entity: raster,
             dist: distToEdge,
             priority: 3
           });
@@ -123,7 +124,7 @@ export function collectPrimitiveOsnapCandidates({
       const pt = ent.position;
       const dist = pt.getDistance(mousePoint);
       if (!isSelfPoint(pt) && dist <= snapRadius) {
-        candidates.push({ point: new paper.Point(pt.x, pt.y), type: 'node', dist, priority: 0 });
+        candidates.push({ point: new paper.Point(pt.x, pt.y), type: 'node', entity: ent, dist, priority: 0 });
       }
     });
   }

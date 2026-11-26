@@ -38,6 +38,7 @@ export function getNearestCandidate(target, mousePoint, snapRadius, isSelfPoint,
     return {
       point: pt,
       type: 'nearest',
+      entity: target,
       dist,
       priority: 4
     };
@@ -59,7 +60,7 @@ export function getNearestCandidate(target, mousePoint, snapRadius, isSelfPoint,
       }
     });
 
-    return bestLoc ? { point: bestLoc.clone(), type: 'nearest', dist: minDist, priority: 4 } : null;
+    return bestLoc ? { point: bestLoc.clone(), type: 'nearest', entity: target, dist: minDist, priority: 4 } : null;
   }
 
   if (typeof target.getNearestLocation !== 'function') return null;
@@ -73,6 +74,7 @@ export function getNearestCandidate(target, mousePoint, snapRadius, isSelfPoint,
   return {
     point: loc.point.clone(),
     type: 'nearest',
+    entity: target,
     dist,
     priority: 4
   };
@@ -93,7 +95,7 @@ export function getPerpendicularCandidates(target, fromPoint, mousePoint, snapRa
         if (isSelfPoint(pt)) return;
         const dist = pt.getDistance(mousePoint);
         if (dist <= snapRadius) {
-          results.push({ point: pt, type: 'perpendicular', dist, priority: 1 });
+          results.push({ point: pt, type: 'perpendicular', entity: target, dist, priority: 1 });
         }
       });
     }
@@ -121,7 +123,7 @@ export function getPerpendicularCandidates(target, fromPoint, mousePoint, snapRa
 
       const dist = foot.getDistance(mousePoint);
       if (dist <= snapRadius) {
-        results.push({ point: foot, type: 'perpendicular', dist, priority: 1 });
+        results.push({ point: foot, type: 'perpendicular', entity: target, dist, priority: 1 });
       }
       return;
     }
@@ -138,7 +140,7 @@ export function getPerpendicularCandidates(target, fromPoint, mousePoint, snapRa
 
     const dist = loc.point.getDistance(mousePoint);
     if (dist <= snapRadius) {
-      results.push({ point: loc.point.clone(), type: 'perpendicular', dist, priority: 1 });
+      results.push({ point: loc.point.clone(), type: 'perpendicular', entity: target, dist, priority: 1 });
     }
   });
 
@@ -169,7 +171,7 @@ export function getTangentCandidates(target, fromPoint, mousePoint, snapRadius, 
 
       const dist = tanPt.getDistance(mousePoint);
       if (dist <= snapRadius) {
-        results.push({ point: tanPt, type: 'tangent', dist, priority: 1 });
+        results.push({ point: tanPt, type: 'tangent', entity: target, dist, priority: 1 });
       }
     });
 
@@ -216,7 +218,7 @@ export function getTangentCandidates(target, fromPoint, mousePoint, snapRadius, 
         if (tanPt && tanPt.getDistance(fromPoint) > 1e-4 && !isSelfPoint(tanPt)) {
           const dist = tanPt.getDistance(mousePoint);
           if (dist <= snapRadius) {
-            results.push({ point: tanPt.clone(), type: 'tangent', dist, priority: 1 });
+            results.push({ point: tanPt.clone(), type: 'tangent', entity: target, dist, priority: 1 });
           }
         }
       }
@@ -254,17 +256,18 @@ export function collectExtendedOsnapCandidates({
   const candidates = [];
   const isOriginPoint = (pt) => Boolean(fromPoint && pt && pt.getDistance(fromPoint) < ORIGIN_SNAP_EPSILON);
 
-  const evaluateTarget = (target, curveFilter = null) => {
+  const evaluateTarget = (target, curveFilter = null, ownerEntity = target) => {
     if (usePerp) {
       getPerpendicularCandidates(target, fromPoint, mousePoint, snapRadius, isSelfPoint, curveFilter).forEach((c) => {
-        if (!isOriginPoint(c.point)) candidates.push(c);
+        if (!isOriginPoint(c.point)) candidates.push({ ...c, entity: ownerEntity });
       });
     }
     if (useTan) {
       const tanCandidates = isCircleRadiusMode
         ? getPerpendicularCandidates(target, fromPoint, mousePoint, snapRadius, isSelfPoint, curveFilter)
-            .map((c) => ({ ...c, type: 'tangent' }))
-        : getTangentCandidates(target, fromPoint, mousePoint, snapRadius, isSelfPoint, curveFilter);
+            .map((c) => ({ ...c, type: 'tangent', entity: ownerEntity }))
+        : getTangentCandidates(target, fromPoint, mousePoint, snapRadius, isSelfPoint, curveFilter)
+            .map((c) => ({ ...c, entity: ownerEntity }));
 
       tanCandidates.forEach((c) => {
         if (!isOriginPoint(c.point)) candidates.push(c);
@@ -272,7 +275,7 @@ export function collectExtendedOsnapCandidates({
     }
     if (useNear) {
       const nearCand = getNearestCandidate(target, mousePoint, snapRadius, isSelfPoint, curveFilter);
-      if (nearCand) candidates.push(nearCand);
+      if (nearCand) candidates.push({ ...nearCand, entity: ownerEntity });
     }
   };
 
@@ -288,7 +291,7 @@ export function collectExtendedOsnapCandidates({
     const contour = cachedContour || (typeof getRasterContourPath === 'function' ? getRasterContourPath(raster) : buildRasterContourPath(raster));
     if (!contour) return;
 
-    evaluateTarget(contour);
+    evaluateTarget(contour, null, raster);
     if (!cachedContour) {
       contour.remove();
     }

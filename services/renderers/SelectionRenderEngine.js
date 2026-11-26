@@ -7,9 +7,10 @@ import { ParametricGripRenderer } from './ParametricGripRenderer.js';
 import { PointLayerRenderer } from './PointLayerRenderer.js';
 
 export class SelectionRenderEngine {
-  constructor(cadService, cadUtils = null) {
+  constructor(cadService, cadUtils = null, paperInst = null) {
     this._cadService = cadService;
     this._cadUtils = cadUtils;
+    this._paper = paperInst || cadUtils?.paper || (typeof paper !== 'undefined' ? paper : null);
     this.controlHandlesGroup = null;
     this.bezierHandlesRenderer = new BezierHandlesRenderer();
     this.parametricGripRenderer = new ParametricGripRenderer();
@@ -21,50 +22,12 @@ export class SelectionRenderEngine {
     return this._cadService;
   }
 
-  _getOrCreatePointsLayer() {
-    if (!paper || !paper.project) return null;
-
-    const cadUtils = this.service?.utils || window.cadUtils;
-    const viewportManager = cadUtils?.viewportManager;
-
-    let pointsLayer = viewportManager?.pointsLayer
-      || paper.project.layers.find((l) => l.name === 'pointsLayer');
-
-    if (!pointsLayer) {
-      const prevActive = paper.project.activeLayer;
-      pointsLayer = new paper.Layer();
-      pointsLayer.name = 'pointsLayer';
-      if (prevActive && prevActive !== pointsLayer) {
-        prevActive.activate();
-      }
-    }
-
-    if (viewportManager && !viewportManager.pointsLayer) {
-      viewportManager.pointsLayer = pointsLayer;
-    }
-
-    const drawLayer = viewportManager?.drawLayer || paper.project.layers.find((l) => l.name === 'drawLayer');
-    const nodesLayer = viewportManager?.nodesLayer || paper.project.layers.find((l) => l.name === 'nodesLayer');
-    const hudLayer = viewportManager?.hudLayer || paper.project.layers.find((l) => l.name === 'hudLayer');
-
-    if (drawLayer) drawLayer.sendToBack();
-    if (nodesLayer && drawLayer) nodesLayer.insertAbove(drawLayer);
-    if (nodesLayer) {
-      pointsLayer.insertAbove(nodesLayer);
-    } else if (drawLayer) {
-      pointsLayer.insertAbove(drawLayer);
-    }
-    if (hudLayer) hudLayer.bringToFront();
-
-    return pointsLayer;
-  }
-
   get utils() {
     return this._cadUtils || this.service?.utils || null;
   }
 
   _getPaper() {
-    return this.utils?.paper || (typeof paper !== 'undefined' ? paper : null);
+    return this._paper || this.utils?.paper || null;
   }
 
   updatePointEntitiesScale() {
@@ -83,7 +46,7 @@ export class SelectionRenderEngine {
   }
 
   _getResolvedStrokeWidth(entity, mult = 1, zoom = 1) {
-    const propertyManager = this.service?.utils?.propertyManager || window.cadUtils?.propertyManager;
+    const propertyManager = this.service?.propertyManager || this.utils?.propertyManager;
     const effectiveBaseWidth = propertyManager
       ? propertyManager.getResolvedStrokeWidth(entity)
       : (entity?.data?.baseStrokeWidth !== undefined ? entity.data.baseStrokeWidth : 0);

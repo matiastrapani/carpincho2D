@@ -156,11 +156,12 @@ export class MoveTool extends BaseTool {
 
   _resolveOsnapPoint(rawPoint) {
     let snapped = rawPoint;
-    const osnap = this.service.calculateOsnap(rawPoint, (snapPt, type) => {
-      this.utils.hud.renderSnapMarker(snapPt, type);
-    });
-    if (osnap && osnap.point) {
+    const osnap = this.service.calculateOsnap(rawPoint);
+    if (osnap && osnap.type) {
+      this.utils.hud.renderSnapMarker(osnap.point, osnap.type);
       snapped = osnap.point;
+    } else {
+      this.utils.hud.renderSnapMarker(null, null);
     }
     this.utils.hud.updateHUD(snapped);
     return snapped;

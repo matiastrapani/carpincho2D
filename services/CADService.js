@@ -168,7 +168,7 @@ export class CADService {
 
     if (typeName === 'ExtendCommand') {
       const target = command.path?.name || 'Entidad';
-      return { tag: 'EXTENDER', label: `Alargamiento ${target}` };
+      return { tag: 'EXTENDER', label: `Extender ${target}`, skipExecuteLog: true };
     }
 
     if (typeName === 'MoveCommand') {
@@ -264,7 +264,7 @@ export class CADService {
     this._suppressedExitSnapPoint = pt ? pt.clone() : null;
   }
 
-  calculateOsnap(mousePoint, renderMarkerFn, activePath = null, ignoreContext = null) {
+  calculateOsnap(mousePoint, activePath = null, ignoreContext = null) {
     let effectiveContext = ignoreContext;
 
     if (this._suppressedExitSnapPoint && mousePoint) {
@@ -283,7 +283,7 @@ export class CADService {
       }
     }
 
-    return this.osnapEngine.calculateOsnap(mousePoint, renderMarkerFn, activePath, effectiveContext);
+    return this.osnapEngine.calculateOsnap(mousePoint, activePath, effectiveContext);
   }
 
   // --- SELECCIÓN ---

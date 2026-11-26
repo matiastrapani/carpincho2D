@@ -20,9 +20,8 @@ export class OsnapEngine {
     this.service = cadService;
   }
 
-  calculateOsnap(mousePoint, renderMarkerFn, activePath = null, ignoreContext = null) {
+  calculateOsnap(mousePoint, activePath = null, ignoreContext = null) {
     if (this.service.isSnapSuspendedByAlt === true) {
-      if (renderMarkerFn) renderMarkerFn(null, null);
       return { point: mousePoint, type: null, entity: null };
     }
 
@@ -134,21 +133,23 @@ export class OsnapEngine {
       if (candidatePoints.length > 0) {
         candidatePoints.sort((a, b) => a.priority - b.priority || a.dist - b.dist);
         const best = candidatePoints[0];
-        if (renderMarkerFn) renderMarkerFn(best.point, best.type);
-        return { point: best.point, type: best.type, entity: best.entity || null };
+        return {
+          point: best.point,
+          type: best.type,
+          entity: best.entity || best.target || best.path || null
+        };
       }
     }
 
     if (!restrictToEntities) {
-      const gridSnap = this._resolveGridOsnap(mousePoint, zoom, snapRadius, renderMarkerFn);
+      const gridSnap = this._resolveGridOsnap(mousePoint, zoom, snapRadius);
       if (gridSnap) return { ...gridSnap, entity: null };
     }
 
-    if (renderMarkerFn) renderMarkerFn(null, null);
     return { point: mousePoint, type: null, entity: null };
   }
 
-  _resolveGridOsnap(mousePoint, zoom, snapRadius, renderMarkerFn) {
+  _resolveGridOsnap(mousePoint, zoom, snapRadius) {
     if (this.service.snapFilters.grid !== true) return null;
 
     const subStep = zoom > 3 ? 4 : (zoom < 0.3 ? 100 : 20);
@@ -158,7 +159,6 @@ export class OsnapEngine {
     );
 
     if (gridPoint.getDistance(mousePoint) <= snapRadius * 0.8) {
-      if (renderMarkerFn) renderMarkerFn(gridPoint, 'grid');
       return { point: gridPoint, type: 'grid' };
     }
     return null;

@@ -33,7 +33,7 @@ export function collectPathGeometryCandidates({
 
         const dist = seg.point.getDistance(mousePoint);
         if (dist <= snapRadius) {
-          candidates.push({ point: seg.point.clone(), type: 'endpoint', dist, priority: 1 });
+          candidates.push({ point: seg.point.clone(), type: 'endpoint', entity: path, dist, priority: 1 });
         }
       });
     });
@@ -48,7 +48,7 @@ export function collectPathGeometryCandidates({
         if (mid && !isSelfPoint(mid)) {
           const dist = mid.getDistance(mousePoint);
           if (dist <= snapRadius) {
-            candidates.push({ point: mid, type: 'midpoint', dist, priority: 2 });
+            candidates.push({ point: mid, type: 'midpoint', entity: path, dist, priority: 2 });
           }
         }
       });
@@ -59,7 +59,9 @@ export function collectPathGeometryCandidates({
     snapTargets.forEach((path) => {
       const quadCandidates = getCurveQuadrantCandidates(path, mousePoint, snapRadius, isSelfPoint, isDynamicCurve);
       if (quadCandidates.length > 0) {
-        candidates.push(...quadCandidates);
+        quadCandidates.forEach((c) => {
+          candidates.push(c.entity ? c : { ...c, entity: path });
+        });
       }
     });
   }
@@ -82,14 +84,14 @@ export function collectIntersectionCandidates({
   if (!snapFilters.intersection) return [];
 
   const candidates = [];
-  const pushUniqueCandidate = (pt) => {
+  const pushUniqueCandidate = (pt, ownerEntity = null) => {
     if (!pt || isSelfPoint(pt)) return;
     const dist = pt.getDistance(mousePoint);
     if (dist > snapRadius) return;
 
     const alreadyExists = candidates.some((c) => c.point.getDistance(pt) < 1e-4);
     if (!alreadyExists) {
-      candidates.push({ point: pt.clone(), type: 'intersection', dist, priority: 0 });
+      candidates.push({ point: pt.clone(), type: 'intersection', entity: ownerEntity, dist, priority: 0 });
     }
   };
 
@@ -114,7 +116,7 @@ export function collectIntersectionCandidates({
         return;
       }
 
-      pushUniqueCandidate(cross.point);
+      pushUniqueCandidate(cross.point, path);
     });
   });
 
@@ -133,16 +135,16 @@ export function collectIntersectionCandidates({
       const isCircleB = Boolean(entB.data?.isCircleEntity);
 
       if (isCircleA && isCircleB) {
-        intersectCircleCircle(entA, entB).forEach(pushUniqueCandidate);
+        intersectCircleCircle(entA, entB).forEach((pt) => pushUniqueCandidate(pt, entA));
       } else if (isCircleA) {
-        intersectCircleWithPath(entA, entB, isDynamicCurve).forEach(pushUniqueCandidate);
+        intersectCircleWithPath(entA, entB, isDynamicCurve).forEach((pt) => pushUniqueCandidate(pt, entA));
       } else if (isCircleB) {
-        intersectCircleWithPath(entB, entA, isDynamicCurve).forEach(pushUniqueCandidate);
+        intersectCircleWithPath(entB, entA, isDynamicCurve).forEach((pt) => pushUniqueCandidate(pt, entB));
       } else {
         entA.getIntersections(entB).forEach((cross) => {
           if (!cross?.point) return;
           if (isDynamicCurve(cross.curve) || isDynamicCurve(cross.intersection?.curve)) return;
-          pushUniqueCandidate(cross.point);
+          pushUniqueCandidate(cross.point, entA);
         });
       }
     }
@@ -188,7 +190,7 @@ export function collectEditingHandleCandidates({
 
         const dist = handlePt.getDistance(mousePoint);
         if (dist <= snapRadius) {
-          candidates.push({ point: handlePt, type: 'node', dist, priority: 0 });
+          candidates.push({ point: handlePt, type: 'node', entity: ent, dist, priority: 0 });
         }
       });
     });

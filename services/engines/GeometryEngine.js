@@ -768,10 +768,11 @@ export class GeometryEngine {
   divideEntityByDistance(entity, distance, renderBezierFn, options = {}, customStartPt = null) {
     if (!entity || distance <= 0 || !entity.length) return [];
     const totalLen = entity.length;
-    if (distance > totalLen) return [];
+    if (distance > totalLen + 1e-4) return [];
 
     const pointsCreated = [];
     const isClosed = entity.closed || false;
+    const DUP_EPSILON = 1e-3;
 
     let startOffset = 0;
     if (customStartPt) {
@@ -786,11 +787,14 @@ export class GeometryEngine {
     }
 
     if (isClosed) {
-      const count = Math.floor(totalLen / distance);
-      for (let i = 1; i < count; i++) {
-        const offset = (startOffset + i * distance) % totalLen;
+      const count = Math.floor((totalLen + 1e-4) / distance);
+      for (let i = 1; i <= count; i++) {
+        const traveled = i * distance;
+        if (totalLen - traveled <= DUP_EPSILON) break;
+
+        const offset = (startOffset + traveled) % totalLen;
         const pt = entity.getPointAt(offset);
-        if (pt) {
+        if (pt && (!startPt || pt.getDistance(startPt) > DUP_EPSILON)) {
           const pointEntity = this.service.createPointEntity(pt, options);
           if (pointEntity) pointsCreated.push(pointEntity);
         }

@@ -275,6 +275,9 @@ export const CAD_CATALOG = {
       prompts: {
         select: 'Seleccione entidades límite de corte y presione Enter o clic derecho',
         selectedCount: (count) => `Límites seleccionados: ${count}. Presione Enter o clic derecho para recortar`,
+        selectedSummary: (count) => count === 1
+          ? '1 entidad límite seleccionada.'
+          : `${count} entidades límite seleccionadas.`,
         cut: 'Seleccione o encuadre los tramos a recortar'
       },
       options: {
@@ -289,11 +292,11 @@ export const CAD_CATALOG = {
     },
     extend: {
       id: 'extend',
-      displayName: 'Alargar',
-      aliases: ['ALARGAR', 'EXTENDER', 'EXTEND', 'AL', 'EXT'],
+      displayName: 'Extender',
+      aliases: ['EXTENDER', 'EXTEND', 'AL', 'EXT'],
       ui: { buttonId: 'btnExtend', iconId: 'currentModifyIcon', iconName: 'custom:extend' },
       prompts: {
-        pick: 'Seleccione el extremo a alargar',
+        pick: 'Seleccione el extremo a extender',
         extend: 'Especifique longitud o punto destino'
       },
       options: {
@@ -302,10 +305,10 @@ export const CAD_CATALOG = {
       },
       logs: {
         modeChanged: ({ modeLabel }) => `Modo de extensión: ${modeLabel}`,
-        created: ({ name }) => `Alargamiento aplicado en ${name}.`,
+        created: ({ name }) => `Extensión aplicada en ${name}.`,
         needTarget: 'Seleccione primero el extremo de una entidad abierta.',
         invalidDistance: 'La distancia debe ser mayor a cero.',
-        cancelled: 'Alargamiento descartado.'
+        cancelled: 'Extensión descartada.'
       }
     }
   },
