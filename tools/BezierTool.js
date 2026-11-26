@@ -27,11 +27,12 @@ export class BezierTool extends BaseTool {
   _getCurrentOptions() {
     const segCount = this.utils.activePath?.segments?.length || 0;
     if (segCount === 0) return [];
-    const { handle, asymmetric, undo, close, finish } = CAD_CATALOG.tools.bezier.options;
+    const { handle, symmetric, asymmetric, undo, close, finish } = CAD_CATALOG.tools.bezier.options;
 
     if (this.handleCtrl.isSettingHandle) {
+      const modeOpt = this.handleCtrl.isAsymmetric ? asymmetric : symmetric;
       return [
-        { ...asymmetric, active: this.handleCtrl.isAsymmetric },
+        { ...modeOpt, active: true },
         { ...undo, active: false }
       ];
     }
@@ -329,75 +330,41 @@ export class BezierTool extends BaseTool {
   }
 
   onCommandInput(rawInput) {
-    const { logs } = CAD_CATALOG.tools.bezier;
     const lastSeg = this.utils.activePath?.lastSegment || null;
-    const fromPoint = lastSeg ? lastSeg.point : null;
-    const parsed = CommandInputParser.parse(rawInput, {
+    const { handled, parsed } = this._parsePointInput(rawInput, {
       options: this._getCurrentOptions(),
-      referencePoint: fromPoint,
-      paper: this.paper
+      referencePoint: lastSeg ? lastSeg.point : null,
+      direction: () => this._getCursorDirection(),
+      logs: CAD_CATALOG.tools.bezier.logs
     });
+    if (handled) return true;
 
-    switch (parsed.type) {
-      case 'ACCEPT_DEFAULT':
-        this.onConfirmDefault();
-        return true;
-
-      case 'OPTION':
-        if (parsed.key === 'M' && this.handleCtrl.enter(lastSeg)) {
-          this._announceStep();
-          this._refreshPreviewFromMouse();
-        } else if (parsed.key === 'A') {
-          this.handleCtrl.toggleAsymmetric();
-          this._announceStep();
-          this._refreshPreviewFromMouse();
-        } else if (parsed.key === 'D') this.onUndo();
-        else if (parsed.key === 'C') this._finishActivePath({ closed: true });
-        else if (parsed.key === 'T') this._finishActivePath();
-        return true;
-
-      case 'POINT':
-        if (this.handleCtrl.isSettingHandle) {
-          this.handleCtrl.commitTarget(lastSeg, parsed.point);
-          this._announceStep();
-          this._refreshPreviewFromMouse();
-        } else {
-          this._addVertex(parsed.point);
-        }
-        return true;
-
-      case 'NUMBER': {
-        if (!fromPoint) {
-          this.logTagged(logs.needStart);
-          return true;
-        }
-        if (Number.isNaN(parsed.value) || parsed.value <= 0.001) {
-          this.logTagged(logs.invalidDistance);
-          return true;
-        }
-        const dir = this._getCursorDirection();
-        if (!dir) {
-          this.logTagged(logs.needDirection);
-          return true;
-        }
-        const targetPt = fromPoint.add(dir.normalize(parsed.value));
-        if (this.handleCtrl.isSettingHandle) {
-          this.handleCtrl.commitTarget(lastSeg, targetPt);
-          this._announceStep();
-          this._refreshPreviewFromMouse();
-        } else {
-          this._addVertex(targetPt);
-        }
-        return true;
-      }
-
-      case 'ERROR':
-        this.logTagged(parsed.message);
-        return true;
-
-      default:
-        return false;
+    if (parsed.type === 'OPTION') {
+      if (parsed.key === 'M' && this.handleCtrl.enter(lastSeg)) {
+        this._announceStep();
+        this._refreshPreviewFromMouse();
+      } else if (parsed.key === 'A') {
+        this.handleCtrl.toggleAsymmetric();
+        this._announceStep();
+        this._refreshPreviewFromMouse();
+      } else if (parsed.key === 'D') this.onUndo();
+      else if (parsed.key === 'C') this._finishActivePath({ closed: true });
+      else if (parsed.key === 'T') this._finishActivePath();
+      return true;
     }
+
+    if (parsed.type === 'POINT') {
+      if (this.handleCtrl.isSettingHandle) {
+        this.handleCtrl.commitTarget(lastSeg, parsed.point);
+        this._announceStep();
+        this._refreshPreviewFromMouse();
+      } else {
+        this._addVertex(parsed.point);
+      }
+      return true;
+    }
+
+    return false;
   }
 
   resetTool(announce = false) {

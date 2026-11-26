@@ -6,7 +6,6 @@
 import { BaseTool } from './BaseTool.js';
 import { AddPointCommand } from '../services/commands/cadCommands.js';
 import { DivisionSelectionHandler } from './point/DivisionSelectionHandler.js';
-import { CommandInputParser } from '../services/input/CommandInputParser.js';
 import { CAD_CATALOG } from '../config/cadCatalog.js';
 
 export class PointTool extends BaseTool {
@@ -310,25 +309,19 @@ export class PointTool extends BaseTool {
 
     if (mode === 'point') {
       const logs = CAD_CATALOG.tools.point.logs;
-      const parsed = CommandInputParser.parse(input, {
+      const { handled, parsed } = this._parsePointInput(input, {
         referencePoint: this.lastInsertedPoint,
-        paper: this.paper
+        numberAsDistance: false
       });
+      if (handled) return true;
 
-      switch (parsed.type) {
-        case 'ACCEPT_DEFAULT':
-          this._finishPointMode();
-          return true;
-        case 'POINT':
-          this.createPointAt(parsed.point);
-          return true;
-        case 'ERROR':
-          this.logTagged(parsed.message);
-          return true;
-        default:
-          this.logTagged(logs.invalidCoords);
-          return true;
+      if (parsed.type === 'POINT') {
+        this.createPointAt(parsed.point);
+        return true;
       }
+
+      this.logTagged(logs.invalidCoords);
+      return true;
     }
 
     if (mode === 'divide_count' || mode === 'divide_dist') {

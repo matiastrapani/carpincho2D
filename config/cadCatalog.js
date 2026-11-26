@@ -197,7 +197,8 @@ export const CAD_CATALOG = {
       },
       options: {
         handle: { key: 'M', label: 'Manija' },
-        asymmetric: { key: 'A', label: 'Asimétrica' },
+        symmetric: { key: 'A', label: 'Modo=Simétrica' },
+        asymmetric: { key: 'A', label: 'Modo=Asimétrica' },
         undo: { key: 'D', label: 'Deshacer' },
         close: { key: 'C', label: 'Cerrar' },
         finish: { key: 'T', label: 'Terminar' }
@@ -269,17 +270,47 @@ export const CAD_CATALOG = {
     trim: {
       id: 'trim',
       displayName: 'Recortar',
-      aliases: ['RECORTAR', 'RR', 'R'],
-      ui: { buttonId: 'btnTrim', iconId: 'currentModifyIcon', iconName: 'custom:trim' }
+      aliases: ['RECORTAR', 'TRIM', 'RR', 'R'],
+      ui: { buttonId: 'btnTrim', iconId: 'currentModifyIcon', iconName: 'custom:trim' },
+      prompts: {
+        select: 'Seleccione entidades límite de corte y presione Enter o clic derecho',
+        selectedCount: (count) => `Límites seleccionados: ${count}. Presione Enter o clic derecho para recortar`,
+        cut: 'Seleccione o encuadre los tramos a recortar'
+      },
+      options: {
+        undo: { key: 'D', label: 'Deshacer' },
+        finish: { key: 'T', label: 'Terminar' }
+      },
+      logs: {
+        needBoundaries: 'Seleccione al menos una entidad límite antes de continuar.',
+        undone: 'Deshacer: Último recorte revertido.',
+        finished: 'Recorte finalizado.'
+      }
     },
     extend: {
       id: 'extend',
       displayName: 'Alargar',
-      aliases: ['ALARGAR', 'AL'],
-      ui: { buttonId: 'btnExtend', iconId: 'currentModifyIcon', iconName: 'custom:extend' }
+      aliases: ['ALARGAR', 'EXTENDER', 'EXTEND', 'AL', 'EXT'],
+      ui: { buttonId: 'btnExtend', iconId: 'currentModifyIcon', iconName: 'custom:extend' },
+      prompts: {
+        pick: 'Seleccione el extremo a alargar',
+        extend: 'Especifique longitud o punto destino'
+      },
+      options: {
+        modeSmooth: { key: 'M', label: 'Modo=Suave' },
+        modeLine: { key: 'M', label: 'Modo=Lineal' }
+      },
+      logs: {
+        modeChanged: ({ modeLabel }) => `Modo de extensión: ${modeLabel}`,
+        created: ({ name }) => `Alargamiento aplicado en ${name}.`,
+        needTarget: 'Seleccione primero el extremo de una entidad abierta.',
+        invalidDistance: 'La distancia debe ser mayor a cero.',
+        cancelled: 'Alargamiento descartado.'
+      }
     }
   },
-  import: {
+  commands: {
+    import: {
       id: 'import',
       displayName: 'Importar',
       aliases: ['IMPORTAR', 'IMP']
@@ -299,7 +330,6 @@ export const CAD_CATALOG = {
       displayName: 'Exportar SVG',
       aliases: ['EXPORTAR', 'EXPORTARSVG', 'EXP']
     },
-  commands: {
     undo: {
       id: 'undo',
       displayName: 'Deshacer',

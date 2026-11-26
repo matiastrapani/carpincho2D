@@ -257,52 +257,26 @@ export class LineTool extends BaseTool {
   }
 
   onCommandInput(rawInput) {
-    const logs = CAD_CATALOG.tools.line.logs;
-    const parsed = CommandInputParser.parse(rawInput, {
+    const { handled, parsed } = this._parsePointInput(rawInput, {
       options: this._getCurrentOptions(),
       referencePoint: this.startPoint,
-      paper: this.paper
+      direction: () => this._getCursorDirection(),
+      logs: CAD_CATALOG.tools.line.logs
     });
+    if (handled) return true;
 
-    switch (parsed.type) {
-      case 'ACCEPT_DEFAULT':
-        this.onConfirmDefault();
-        return true;
-
-      case 'OPTION':
-        if (parsed.key === 'D') this.onUndo();
-        else if (parsed.key === 'T') this._finishTool();
-        return true;
-
-      case 'POINT':
-        this._advanceToPoint(parsed.point);
-        return true;
-
-      case 'NUMBER': {
-        if (!this.startPoint) {
-          this.logTagged(logs.needStart);
-          return true;
-        }
-        if (Number.isNaN(parsed.value) || parsed.value <= 0.001) {
-          this.logTagged(logs.invalidDistance);
-          return true;
-        }
-        const dir = this._getCursorDirection();
-        if (!dir) {
-          this.logTagged(logs.needDirection);
-          return true;
-        }
-        this._advanceToPoint(this.startPoint.add(dir.normalize(parsed.value)));
-        return true;
-      }
-
-      case 'ERROR':
-        this.logTagged(parsed.message);
-        return true;
-
-      default:
-        return false;
+    if (parsed.type === 'OPTION') {
+      if (parsed.key === 'D') this.onUndo();
+      else if (parsed.key === 'T') this._finishTool();
+      return true;
     }
+
+    if (parsed.type === 'POINT') {
+      this._advanceToPoint(parsed.point);
+      return true;
+    }
+
+    return false;
   }
 
   clearPreviews() {

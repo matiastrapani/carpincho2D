@@ -2,42 +2,6 @@
  * services/commands/StyleCommands.js - Comandos de modificación de estilos y propiedades
  */
 
-export class ChangeOpacityCommand {
-  constructor(cadService, entity, oldOpacity, newOpacity) {
-    this.cadService = cadService;
-    this.entity = entity;
-    this.oldOpacity = oldOpacity;
-    this.newOpacity = newOpacity;
-  }
-
-  execute() {
-    this.applyOpacity(this.newOpacity);
-  }
-
-  undo() {
-    this.applyOpacity(this.oldOpacity);
-  }
-
-  applyOpacity(val) {
-    if (!this.entity) return;
-    if (!this.entity.data) this.entity.data = {};
-
-    this.entity.data.baseOpacity = val;
-    this.entity.opacity = val;
-
-    if (window.cadUI) {
-      const opacityInput = document.getElementById('imageOpacityInput');
-      const opacityVal = document.getElementById('opacityVal');
-      if (opacityInput && opacityVal) {
-        const pct = Math.round(val * 100);
-        opacityInput.value = pct;
-        opacityVal.innerText = `${pct}%`;
-      }
-    }
-    paper.view.update();
-  }
-}
-
 export class UpdateEntityPropertyCommand {
   constructor(cadService, entities, oldState, newState, cadUtils) {
     this.service = cadService;

@@ -210,6 +210,29 @@ export class BoxSelectHandler {
     this.clean();
   }
 
+  consumeBoxRect(endPoint, minDragPx = 3) {
+    if (!this.selectionBoxRect || !this.selectionStartPoint || !endPoint) {
+      this.clean();
+      return null;
+    }
+
+    const paperInst = this._getPaper();
+    const zoom = paperInst?.view?.zoom || 1;
+    const dragDistance = this.selectionStartPoint.getDistance(endPoint);
+
+    let result = null;
+    if (dragDistance >= minDragPx / zoom) {
+      result = {
+        boxBounds: this.selectionBoxRect.bounds.clone(),
+        isWindowSelection: endPoint.x >= this.selectionStartPoint.x
+      };
+    }
+
+    this.clean();
+    paperInst?.view?.update?.();
+    return result;
+  }
+
   clean() {
     if (this.selectionBoxRect) {
       this.selectionBoxRect.remove();

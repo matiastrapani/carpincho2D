@@ -213,10 +213,6 @@ export class CADService {
       return { tag: 'TRANSFORMAR', label: target };
     }
 
-    if (typeName === 'ChangeOpacityCommand') {
-      return { tag: 'PROPIEDADES', label: `Opacidad a ${Math.round((command.newOpacity ?? 1) * 100)}%` };
-    }
-
     if (typeName === 'UpdateEntityPropertyCommand') {
       const count = Array.isArray(command.entities) ? command.entities.length : 1;
       return { tag: 'PROPIEDADES', label: `${count} ${count === 1 ? 'entidad actualizada' : 'entidades actualizadas'}` };

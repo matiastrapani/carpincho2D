@@ -310,63 +310,43 @@ export class TangentLineTool extends BaseTool {
   onCommandInput(rawInput) {
     const logs = CAD_CATALOG.tools.line_tangent.logs;
     const refPoint = this.tangentTracker?.lastPoint || null;
-    const parsed = CommandInputParser.parse(rawInput, {
+    const isTracking = this.step === 'track' && Boolean(refPoint);
+
+    const { handled, parsed } = this._parsePointInput(rawInput, {
       options: this._getCurrentOptions(),
-      referencePoint: refPoint,
-      paper: this.paper
+      referencePoint: isTracking ? refPoint : null,
+      direction: () => (this.previewLine ? this._getCursorDirection() : null),
+      acceptDefault: false,
+      logs: {
+        needStart: logs.needTarget,
+        invalidDistance: logs.invalidDistance,
+        needDirection: this.previewLine ? logs.needDirection : logs.noTangent
+      }
     });
+    if (handled) return true;
 
-    switch (parsed.type) {
-      case 'OPTION':
-        if (parsed.key === 'E' && this.step === 'track') {
-          this.resetTool(true);
-        }
-        return true;
-
-      case 'POINT': {
-        if (this.step !== 'track' || !this.tangentTracker) {
-          this.logTagged(logs.needTarget);
-          return true;
-        }
-        const startPt = TangentSolver.solveStep(this.tangentTracker, parsed.point);
-        if (!startPt) {
-          this.logTagged(logs.noTangent);
-          return true;
-        }
-        this._consolidateLine(startPt, parsed.point);
-        return true;
+    if (parsed.type === 'OPTION') {
+      if (parsed.key === 'E' && this.step === 'track') {
+        this.resetTool(true);
       }
-
-      case 'NUMBER': {
-        if (this.step !== 'track' || !refPoint) {
-          this.logTagged(logs.needTarget);
-          return true;
-        }
-        if (Number.isNaN(parsed.value) || parsed.value <= 0.001) {
-          this.logTagged(logs.invalidDistance);
-          return true;
-        }
-        if (!this.previewLine) {
-          this.logTagged(logs.noTangent);
-          return true;
-        }
-        const dir = this._getCursorDirection();
-        if (!dir) {
-          this.logTagged(logs.needDirection);
-          return true;
-        }
-        const endPt = refPoint.add(dir.normalize(parsed.value));
-        this._consolidateLine(refPoint, endPt);
-        return true;
-      }
-
-      case 'ERROR':
-        this.logTagged(parsed.message);
-        return true;
-
-      default:
-        return false;
+      return true;
     }
+
+    if (parsed.type === 'POINT') {
+      if (!isTracking || !this.tangentTracker) {
+        this.logTagged(logs.needTarget);
+        return true;
+      }
+      const startPt = TangentSolver.solveStep(this.tangentTracker, parsed.point);
+      if (!startPt) {
+        this.logTagged(logs.noTangent);
+        return true;
+      }
+      this._consolidateLine(startPt, parsed.point);
+      return true;
+    }
+
+    return false;
   }
 
   clearPreviews() {

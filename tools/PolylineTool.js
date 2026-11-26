@@ -276,53 +276,31 @@ export class PolylineTool extends BaseTool {
 
   onCommandInput(rawInput) {
     const logs = CAD_CATALOG.tools.polyline?.logs;
-    const fromPoint = this.utils.activePath?.lastSegment?.point || null;
-    const parsed = CommandInputParser.parse(rawInput, {
+    const { handled, parsed } = this._parsePointInput(rawInput, {
       options: this._getCurrentOptions(),
-      referencePoint: fromPoint,
-      paper: this.paper
-    });
-
-    switch (parsed.type) {
-      case 'ACCEPT_DEFAULT':
-        this.onConfirmDefault();
-        return true;
-
-      case 'OPTION':
-        if (parsed.key === 'D') this.onUndo();
-        else if (parsed.key === 'C') this._finishActivePath({ closed: true });
-        else if (parsed.key === 'T') this._finishActivePath();
-        return true;
-
-      case 'POINT':
-        this._addVertex(parsed.point);
-        return true;
-
-      case 'NUMBER': {
-        if (!fromPoint) {
-          this.logTagged(logs?.needStart || 'Marque primero el punto de inicio o ingrese coordenadas X,Y.');
-          return true;
-        }
-        if (Number.isNaN(parsed.value) || parsed.value <= 0.001) {
-          this.logTagged(logs?.invalidDistance || 'La distancia debe ser mayor a cero.');
-          return true;
-        }
-        const dir = this._getCursorDirection();
-        if (!dir) {
-          this.logTagged(logs?.needDirection || 'Mueva el cursor sobre el lienzo para indicar la dirección.');
-          return true;
-        }
-        this._addVertex(fromPoint.add(dir.normalize(parsed.value)));
-        return true;
+      referencePoint: this.utils.activePath?.lastSegment?.point || null,
+      direction: () => this._getCursorDirection(),
+      logs: {
+        needStart: logs?.needStart || 'Marque primero el punto de inicio o ingrese coordenadas X,Y.',
+        invalidDistance: logs?.invalidDistance || 'La distancia debe ser mayor a cero.',
+        needDirection: logs?.needDirection || 'Mueva el cursor sobre el lienzo para indicar la dirección.'
       }
+    });
+    if (handled) return true;
 
-      case 'ERROR':
-        this.logTagged(parsed.message);
-        return true;
-
-      default:
-        return false;
+    if (parsed.type === 'OPTION') {
+      if (parsed.key === 'D') this.onUndo();
+      else if (parsed.key === 'C') this._finishActivePath({ closed: true });
+      else if (parsed.key === 'T') this._finishActivePath();
+      return true;
     }
+
+    if (parsed.type === 'POINT') {
+      this._addVertex(parsed.point);
+      return true;
+    }
+
+    return false;
   }
 
   clearPreviews() {

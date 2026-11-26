@@ -3,7 +3,6 @@
  */
 
 import { BaseTool } from './BaseTool.js';
-import { CommandInputParser } from '../services/input/CommandInputParser.js';
 import { CAD_CATALOG } from '../config/cadCatalog.js';
 
 export class SplineTool extends BaseTool {
@@ -268,54 +267,27 @@ export class SplineTool extends BaseTool {
   }
 
   onCommandInput(rawInput) {
-    const { logs } = CAD_CATALOG.tools.spline;
-    const fromPoint = this.utils.activePath?.lastSegment?.point || null;
-    const parsed = CommandInputParser.parse(rawInput, {
+    const { handled, parsed } = this._parsePointInput(rawInput, {
       options: this._getCurrentOptions(),
-      referencePoint: fromPoint,
-      paper: this.paper
+      referencePoint: this.utils.activePath?.lastSegment?.point || null,
+      direction: () => this._getCursorDirection(),
+      logs: CAD_CATALOG.tools.spline.logs
     });
+    if (handled) return true;
 
-    switch (parsed.type) {
-      case 'ACCEPT_DEFAULT':
-        this.onConfirmDefault();
-        return true;
-
-      case 'OPTION':
-        if (parsed.key === 'D') this.onUndo();
-        else if (parsed.key === 'C') this._finishActivePath({ closed: true });
-        else if (parsed.key === 'T') this._finishActivePath();
-        return true;
-
-      case 'POINT':
-        this._addVertex(parsed.point);
-        return true;
-
-      case 'NUMBER': {
-        if (!fromPoint) {
-          this.logTagged(logs.needStart);
-          return true;
-        }
-        if (Number.isNaN(parsed.value) || parsed.value <= 0.001) {
-          this.logTagged(logs.invalidDistance);
-          return true;
-        }
-        const dir = this._getCursorDirection();
-        if (!dir) {
-          this.logTagged(logs.needDirection);
-          return true;
-        }
-        this._addVertex(fromPoint.add(dir.normalize(parsed.value)));
-        return true;
-      }
-
-      case 'ERROR':
-        this.logTagged(parsed.message);
-        return true;
-
-      default:
-        return false;
+    if (parsed.type === 'OPTION') {
+      if (parsed.key === 'D') this.onUndo();
+      else if (parsed.key === 'C') this._finishActivePath({ closed: true });
+      else if (parsed.key === 'T') this._finishActivePath();
+      return true;
     }
+
+    if (parsed.type === 'POINT') {
+      this._addVertex(parsed.point);
+      return true;
+    }
+
+    return false;
   }
 
   onKeyDown(event) {

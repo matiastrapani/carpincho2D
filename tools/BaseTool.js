@@ -1,6 +1,7 @@
 /**
  * tools/BaseTool.js - Clase base para todas las herramientas del entorno CAD
  */
+import { CommandInputParser } from '../services/input/CommandInputParser.js';
 import { AddEntityCommand } from '../services/commands/cadCommands.js';
 import { CAD_THEME } from '../config/cadTheme.js';
 import { normalizeCommandKey } from '../config/cadCatalog.js';
@@ -204,6 +205,73 @@ export class BaseTool {
 
   onCommandInput(rawInput) {
     return false;
+  }
+
+  /**
+   * Resuelve entradas de consola estándar (Enter por defecto, opciones, coordenadas
+   * absolutas/relativas/polares y distancia escalar dirigida por el cursor).
+   *
+   * Devuelve:
+   * - { handled: true } si la entrada ya fue procesada (Enter vacío, error o número inválido)
+   * - { handled: false, parsed } con parsed.type en:
+   *   'OPTION' | 'POINT' | 'NUMBER' | 'UNKNOWN'
+   */
+  _parsePointInput(
+    rawInput,
+    {
+      options = [],
+      referencePoint = null,
+      direction = null,
+      numberAsDistance = true,
+      acceptDefault = true,
+      minDistance = 0.001,
+      logs = {}
+    } = {}
+  ) {
+    const parsed = CommandInputParser.parse(rawInput, {
+      options,
+      referencePoint,
+      paper: this.paper
+    });
+
+    if (parsed.type === 'ACCEPT_DEFAULT') {
+      if (acceptDefault) {
+        this.onConfirmDefault();
+        return { handled: true };
+      }
+      return { handled: false, parsed };
+    }
+
+    if (parsed.type === 'ERROR') {
+      this.logTagged(parsed.message);
+      return { handled: true };
+    }
+
+    if (parsed.type === 'NUMBER' && numberAsDistance) {
+      if (!referencePoint) {
+        this.logTagged(logs.needStart || 'Especifique primero un punto de inicio.');
+        return { handled: true };
+      }
+      if (Number.isNaN(parsed.value) || parsed.value <= minDistance) {
+        this.logTagged(logs.invalidDistance || 'La distancia debe ser un número positivo.');
+        return { handled: true };
+      }
+      const dir = typeof direction === 'function' ? direction() : direction;
+      if (!dir || dir.length < minDistance) {
+        this.logTagged(logs.needDirection || 'Mueva el cursor para indicar una dirección.');
+        return { handled: true };
+      }
+      return {
+        handled: false,
+        parsed: {
+          type: 'POINT',
+          mode: 'distance',
+          point: referencePoint.add(dir.normalize(parsed.value))
+        }
+      };
+    }
+
+    return { handled: false, parsed };
   }
 
   onConfirmDefault() {}

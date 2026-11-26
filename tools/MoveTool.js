@@ -5,7 +5,6 @@
 import { BaseTool } from './BaseTool.js';
 import { MixedDragSession } from './select/MixedDragSession.js';
 import { CommandSelectionHandler } from './select/CommandSelectionHandler.js';
-import { CommandInputParser } from '../services/input/CommandInputParser.js';
 import { CAD_CATALOG } from '../config/cadCatalog.js';
 
 export class MoveTool extends BaseTool {
@@ -38,10 +37,6 @@ export class MoveTool extends BaseTool {
 
   getCursorMode() {
     return this.phase === 'SELECT_OBJECTS' ? 'select' : 'draw';
-  }
-
-  _getPaper() {
-    return this.utils?.paper || (typeof paper !== 'undefined' ? paper : null);
   }
 
   _setStepFromSelectionPrompt(rawText) {
@@ -83,7 +78,7 @@ export class MoveTool extends BaseTool {
   _refreshView() {
     this.utils.selectionRenderEngine.updateEntitiesStroke();
     this.utils.selectionRenderEngine.renderBezierHandles();
-    const paperInst = this._getPaper();
+    const paperInst = this.paper();
     if (paperInst?.view) {
       paperInst.view.update();
     }
@@ -252,68 +247,45 @@ export class MoveTool extends BaseTool {
 
   onCommandInput(rawInput) {
     const { logs } = CAD_CATALOG.tools.move;
-    const parsed = CommandInputParser.parse(rawInput, {
+    const isDestPhase = this.phase === 'PICK_DEST_POINT' && Boolean(this.basePoint);
+    const needStartMsg = this.phase === 'SELECT_OBJECTS' ? logs.needSelection : logs.needBasePoint;
+
+    const { handled, parsed } = this._parsePointInput(rawInput, {
       options: this._getCurrentOptions(),
-      referencePoint: this.basePoint,
-      paper: this._getPaper()
-    });
-
-    switch (parsed.type) {
-      case 'ACCEPT_DEFAULT':
-        this.onConfirmDefault();
-        return true;
-
-      case 'OPTION':
-        if (parsed.key === 'C') {
-          if (this.utils.consoleManager) {
-            this.utils.consoleManager.handleCancel();
-          } else {
-            this.cancel();
-            this.exitToSelect();
-          }
-        }
-        return true;
-
-      case 'POINT':
-        if (this.phase === 'SELECT_OBJECTS') {
-          this.logTagged(logs.needSelection);
-        } else if (this.phase === 'PICK_BASE_POINT') {
-          this._beginMoveFromBasePoint(parsed.point);
-        } else if (this.phase === 'PICK_DEST_POINT') {
-          this._commitMoveAt(parsed.point, false, { snap: false });
-        }
-        return true;
-
-      case 'NUMBER': {
-        if (this.phase === 'SELECT_OBJECTS') {
-          this.logTagged(logs.needSelection);
-          return true;
-        }
-        if (this.phase === 'PICK_BASE_POINT' || !this.basePoint) {
-          this.logTagged(logs.needBasePoint);
-          return true;
-        }
-        if (Number.isNaN(parsed.value) || parsed.value <= 0.001) {
-          this.logTagged(logs.invalidDistance);
-          return true;
-        }
-        const dir = this._getCursorDirection();
-        if (!dir) {
-          this.logTagged(logs.needDirection);
-          return true;
-        }
-        const targetPt = this.basePoint.add(dir.normalize(parsed.value));
-        this._commitMoveAt(targetPt, false, { snap: false });
-        return true;
+      referencePoint: isDestPhase ? this.basePoint : null,
+      direction: () => this._getCursorDirection(),
+      logs: {
+        needStart: needStartMsg,
+        invalidDistance: logs.invalidDistance,
+        needDirection: logs.needDirection
       }
+    });
+    if (handled) return true;
 
-      case 'ERROR':
-        this.logTagged(parsed.message);
-        return true;
-
-      default:
-        return false;
+    if (parsed.type === 'OPTION') {
+      if (parsed.key === 'C') {
+        if (this.utils.consoleManager) {
+          this.utils.consoleManager.handleCancel();
+        } else {
+          this.cancel();
+          this.exitToSelect();
+        }
+      }
+      return true;
     }
+
+    if (parsed.type === 'POINT') {
+      if (this.phase === 'SELECT_OBJECTS') {
+        this.logTagged(logs.needSelection);
+      } else if (this.phase === 'PICK_BASE_POINT') {
+        this._beginMoveFromBasePoint(parsed.point);
+      } else if (this.phase === 'PICK_DEST_POINT') {
+        this._commitMoveAt(parsed.point, false, { snap: false });
+      }
+      return true;
+    }
+
+    return false;
   }
 
   onMouseDown(event) {

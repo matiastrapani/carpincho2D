@@ -1,7 +1,7 @@
 /**
  * modules/UIManager.js - Delegación de eventos e interfaz CAD
  */
-import { ChangeOpacityCommand, EntityVisibilityLockCommand } from '../services/commands/cadCommands.js';
+import { EntityVisibilityLockCommand } from '../services/commands/cadCommands.js';
 
 export class CADUIManager {
   constructor(cadUtils, cadService) {
@@ -532,119 +532,6 @@ export class CADUIManager {
       };
       reader.readAsDataURL(file);
     });
-  }
-
-  // Al seleccionar un objeto en la escena:
-  updatePropertyPanel(selectedItem) {
-    const panelContent = document.getElementById('propertyPanelContent');
-    if (!panelContent) return;
-
-    const isRaster = selectedItem && (selectedItem instanceof paper.Raster || selectedItem.className === 'Raster');
-
-    if (isRaster) {
-      if (!selectedItem.data) selectedItem.data = {};
-      let initialOpacity = selectedItem.data.baseOpacity ?? selectedItem.opacity ?? 1;
-      let initialPct = Math.round(initialOpacity * 100);
-
-      panelContent.innerHTML = `
-        <div class="p-3.5 flex flex-col gap-3">
-          <div class="flex items-center justify-between">
-            <span class="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Propiedades</span>
-            <span class="text-[10px] text-white bg-[#008800] px-2 py-0.5 rounded font-medium">Imagen</span>
-          </div>
-
-          <div class="flex flex-col gap-1.5">
-            <div class="flex justify-between items-center text-xs">
-              <span class="text-[10px] text-zinc-500 font-medium uppercase tracking-wider">OPACIDAD</span>
-              
-              <!-- Contenedor estático con dígitos tabulares -->
-              <div class="flex items-center justify-end w-10 text-right select-none">
-                <input 
-                  type="number" 
-                  id="imageOpacityNumber" 
-                  min="0" 
-                  max="100" 
-                  value="${initialPct}" 
-                  class="w-7 bg-transparent text-right outline-none text-zinc-300 font-sans text-xs tabular-nums focus:text-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                />
-                <span class="text-zinc-400 font-sans text-xs tabular-nums">%</span>
-              </div>
-            </div>
-
-            <input 
-              type="range" 
-              id="imageOpacityInput" 
-              min="0" 
-              max="100" 
-              value="${initialPct}" 
-              class="cad-slider w-full"
-            />
-          </div>
-        </div>
-      `;
-
-      const sliderInput = document.getElementById('imageOpacityInput');
-      const numberInput = document.getElementById('imageOpacityNumber');
-
-      const applyOpacityChange = (valPct) => {
-        const clampedPct = Math.max(0, Math.min(100, valPct));
-        const opacityVal = clampedPct / 100;
-
-        selectedItem.data.baseOpacity = opacityVal;
-        selectedItem.opacity = opacityVal;
-
-        sliderInput.value = clampedPct;
-        numberInput.value = clampedPct;
-
-        paper.view.requestUpdate();
-        return opacityVal;
-      };
-
-      sliderInput.addEventListener('input', (e) => {
-        applyOpacityChange(parseFloat(e.target.value));
-      });
-
-      sliderInput.addEventListener('change', (e) => {
-        const finalOpacity = applyOpacityChange(parseFloat(e.target.value));
-        if (Math.abs(initialOpacity - finalOpacity) > 0.001) {
-          if (ChangeOpacityCommand && this.cadService) {
-            const cmd = new ChangeOpacityCommand(this.cadService, selectedItem, initialOpacity, finalOpacity);
-            this.cadService.executeCommand(cmd);
-          }
-          initialOpacity = finalOpacity;
-        }
-      });
-
-      numberInput.addEventListener('input', (e) => {
-        const val = parseFloat(e.target.value) || 0;
-        applyOpacityChange(val);
-      });
-
-      numberInput.addEventListener('change', (e) => {
-        const val = parseFloat(e.target.value) || 0;
-        const finalOpacity = applyOpacityChange(val);
-        if (Math.abs(initialOpacity - finalOpacity) > 0.001) {
-          if (ChangeOpacityCommand && this.cadService) {
-            const cmd = new ChangeOpacityCommand(this.cadService, selectedItem, initialOpacity, finalOpacity);
-            this.cadService.executeCommand(cmd);
-          }
-          initialOpacity = finalOpacity;
-        }
-      });
-
-      numberInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          numberInput.blur();
-        }
-      });
-
-    } else {
-      panelContent.innerHTML = `
-        <div class="p-3.5 text-xs text-zinc-500 italic">
-          Sin selección o seleccione una imagen para ajustar sus propiedades.
-        </div>
-      `;
-    }
   }
 
   bindHeaderControls() {

@@ -3,7 +3,6 @@
  */
 
 import { BaseTool } from './BaseTool.js';
-import { CommandInputParser } from '../services/input/CommandInputParser.js';
 import { CAD_CATALOG } from '../config/cadCatalog.js';
 
 export class CircleTool extends BaseTool {
@@ -229,54 +228,47 @@ export class CircleTool extends BaseTool {
 
   onCommandInput(rawInput) {
     const logs = CAD_CATALOG.tools.circle.logs;
-    const parsed = CommandInputParser.parse(rawInput, {
+    const { handled, parsed } = this._parsePointInput(rawInput, {
       options: this._getCurrentOptions(),
       referencePoint: this.centerPoint,
-      paper: this.paper
+      numberAsDistance: false,
+      logs
     });
+    if (handled) return true;
 
-    switch (parsed.type) {
-      case 'ACCEPT_DEFAULT':
-        if (this.centerPoint) this.commitDefaultRadius();
-        else if (this.hasCreatedInSession) this.exitToSelect();
-        return true;
-
-      case 'OPTION':
-        if (parsed.key === 'D') {
-          this.isDiameterMode = true;
-          this._announceStep();
-          this._refreshPreviewFromMouse();
-        } else if (parsed.key === 'R') {
-          this.isDiameterMode = false;
-          this._announceStep();
-          this._refreshPreviewFromMouse();
-        }
-        return true;
-
-      case 'POINT':
-        if (!this.centerPoint) {
-          this._setCenter(parsed.point);
-        } else {
-          const dist = this.centerPoint.getDistance(parsed.point);
-          this.commitCircle(this.isDiameterMode ? dist / 2 : dist);
-        }
-        return true;
-
-      case 'NUMBER':
-        if (!this.centerPoint) {
-          this.logTagged(logs.needCenter);
-          return true;
-        }
-        this.commitCircle(this.isDiameterMode ? parsed.value / 2 : parsed.value);
-        return true;
-
-      case 'ERROR':
-        this.logTagged(parsed.message);
-        return true;
-
-      default:
-        return false;
+    if (parsed.type === 'OPTION') {
+      if (parsed.key === 'D') {
+        this.isDiameterMode = true;
+        this._announceStep();
+        this._refreshPreviewFromMouse();
+      } else if (parsed.key === 'R') {
+        this.isDiameterMode = false;
+        this._announceStep();
+        this._refreshPreviewFromMouse();
+      }
+      return true;
     }
+
+    if (parsed.type === 'POINT') {
+      if (!this.centerPoint) {
+        this._setCenter(parsed.point);
+      } else {
+        const dist = this.centerPoint.getDistance(parsed.point);
+        this.commitCircle(this.isDiameterMode ? dist / 2 : dist);
+      }
+      return true;
+    }
+
+    if (parsed.type === 'NUMBER') {
+      if (!this.centerPoint) {
+        this.logTagged(logs.needCenter);
+        return true;
+      }
+      this.commitCircle(this.isDiameterMode ? parsed.value / 2 : parsed.value);
+      return true;
+    }
+
+    return false;
   }
 
   onKeyDown(event) {
@@ -333,6 +325,12 @@ export class CircleTool extends BaseTool {
     if (announce) this._announceStep();
     this.paper.view.update();
     this.refreshUndoRedoUI();
+  }
+
+  onUndo() {
+    if (!this.centerPoint) return false;
+    this.resetTool(true);
+    return true;
   }
 
   cancel() {
