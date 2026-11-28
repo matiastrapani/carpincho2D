@@ -20,7 +20,8 @@ export class CommandInputParser {
    * @param {paper.Point|null} [context.referencePoint]
    * @param {Object} [context.paper]
    */
-  static parse(rawInput, { options = [], referencePoint = null, paper = window.paper } = {}) {
+  static parse(rawInput, { options = [], referencePoint = null, paper: paperInstance = null } = {}) {
+    const paperLib = paperInstance || (typeof paper !== 'undefined' ? paper : null);
     const trimmed = rawInput !== null && rawInput !== undefined ? String(rawInput).trim() : '';
 
     // 1. Cadena vacía (Enter / Espacio) -> Aceptar valor por defecto
@@ -62,7 +63,7 @@ export class CommandInputParser {
       return {
         type: 'POINT',
         mode: 'polar',
-        point: referencePoint.add(new paper.Point(dx, dy))
+        point: referencePoint.add(new paperLib.Point(dx, dy))
       };
     }
 
@@ -100,14 +101,14 @@ export class CommandInputParser {
         return {
           type: 'POINT',
           mode: 'relative',
-          point: referencePoint.add(new paper.Point(x, paperY))
+          point: referencePoint.add(new paperLib.Point(x, paperY))
         };
       }
 
       return {
         type: 'POINT',
         mode: 'absolute',
-        point: new paper.Point(x, paperY)
+        point: new paperLib.Point(x, paperY)
       };
     }
 

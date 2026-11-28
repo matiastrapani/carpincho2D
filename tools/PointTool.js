@@ -17,9 +17,7 @@ export class PointTool extends BaseTool {
 
   _resolvePointMode() {
     const mode = this.utils?.currentToolMode;
-    return (mode === 'point' || mode === 'divide_count' || mode === 'divide_dist')
-      ? mode
-      : 'point';
+    return (mode === 'point' || mode === 'divide') ? mode : 'point';
   }
 
   get commandName() {
@@ -43,11 +41,11 @@ export class PointTool extends BaseTool {
   }
 
   getSelectionPreserveMode(toolName) {
-    return (toolName === 'divide_count' || toolName === 'divide_dist') ? 'curves' : false;
+    return toolName === 'divide' ? 'curves' : false;
   }
 
   shouldClearHudOnActivate(toolName) {
-    return toolName === 'divide_count' || toolName === 'divide_dist';
+    return toolName === 'divide';
   }
 
   _setStepFromLegacyPrompt(msg, options = {}) {
@@ -57,22 +55,21 @@ export class PointTool extends BaseTool {
 
   onActivate() {
     this.lastInsertedPoint = null;
-    const mode = this.utils.currentToolMode;
+    const mode = this._resolvePointMode();
 
     if (mode === 'point') {
       this.setStep(CAD_CATALOG.tools.point.prompts.start);
       return;
     }
 
-    if (mode === 'divide_count' || mode === 'divide_dist') {
-      const validSelected = this.divisionSelector.syncTargetsCache();
-
-      if (validSelected.length > 0) {
-        this.divisionSelector.askForDivisionValue(mode, (msg, opts) => this._setStepFromLegacyPrompt(msg, opts));
-      } else {
-        this.divisionSelector.reset();
-        this.setStep(CAD_CATALOG.tools[mode].prompts.select);
-      }
+    const validSelected = this.divisionSelector.syncTargetsCache();
+    if (validSelected.length > 0) {
+      this.divisionSelector.askForDivisionValue((msg, opts) => this._setStepFromLegacyPrompt(msg, opts));
+    } else {
+      this.divisionSelector.reset();
+      this.setStep(CAD_CATALOG.tools.divide.prompts.select, {
+        options: this.divisionSelector.getStepOptions()
+      });
     }
   }
 
@@ -80,7 +77,7 @@ export class PointTool extends BaseTool {
     if (event.event && event.event.button !== 0) return;
 
     const p = this.paper;
-    const mode = this.utils.currentToolMode;
+    const mode = this._resolvePointMode();
 
     if (mode === 'point') {
       const pt = this.utils.resolveConstrainedPoint(event.point);
@@ -88,14 +85,16 @@ export class PointTool extends BaseTool {
       return;
     }
 
-    if (mode === 'divide_dist' && this.divisionSelector.step === 'start_point') {
+    if (this.divisionSelector.divisionMode === 'distance' && this.divisionSelector.step === 'start_point') {
       if (this.divisionSelector.selectStartPointAt(event.point)) {
-        this.setStep(CAD_CATALOG.tools.divide_dist.prompts.startPointUpdated);
+        this.setStep(CAD_CATALOG.tools.divide.prompts.startPointUpdated, {
+          options: this.divisionSelector.getStepOptions()
+        });
       }
       return;
     }
 
-    if ((mode === 'divide_count' || mode === 'divide_dist') && this.divisionSelector.step === 'select') {
+    if (this.divisionSelector.step === 'select') {
       const hitEntity = p.project.hitTest(event.point, {
         stroke: true,
         fill: true,
@@ -109,7 +108,9 @@ export class PointTool extends BaseTool {
       const clickedItem = hitEntity ? this._resolveRootEntity(hitEntity.item) : null;
       if (clickedItem && this.divisionSelector.toggleEntitySelection(clickedItem)) {
         const count = this.divisionSelector.getTargets().length;
-        this.setStep(CAD_CATALOG.tools[mode].prompts.selectedCount(count));
+        this.setStep(CAD_CATALOG.tools.divide.prompts.selectedCount(count), {
+          options: this.divisionSelector.getStepOptions()
+        });
         return;
       }
 
@@ -122,7 +123,7 @@ export class PointTool extends BaseTool {
   }
 
   onMouseMove(event) {
-    const mode = this.utils.currentToolMode;
+    const mode = this._resolvePointMode();
 
     if (mode === 'point') {
       const pt = this.utils.resolveConstrainedPoint(event.point);
@@ -130,7 +131,7 @@ export class PointTool extends BaseTool {
       return;
     }
 
-    if (mode === 'divide_dist' && this.divisionSelector.step === 'start_point') {
+    if (this.divisionSelector.divisionMode === 'distance' && this.divisionSelector.step === 'start_point') {
       const osnap = this.divisionSelector.resolveStartPointSnap(event.point, true);
       this.utils.hud.updateHUD(osnap.point);
       return;
@@ -143,11 +144,10 @@ export class PointTool extends BaseTool {
   onMouseUp(event) {
     if (this.divisionSelector.isSelectingBox) {
       this.divisionSelector.finishBox(event.point);
-      const mode = this.utils.currentToolMode;
       const count = this.divisionSelector.getTargets().length;
-      if (CAD_CATALOG.tools[mode]?.prompts?.selectedCount) {
-        this.setStep(CAD_CATALOG.tools[mode].prompts.selectedCount(count));
-      }
+      this.setStep(CAD_CATALOG.tools.divide.prompts.selectedCount(count), {
+        options: this.divisionSelector.getStepOptions()
+      });
     }
   }
 
@@ -201,20 +201,22 @@ export class PointTool extends BaseTool {
   }
 
   onConfirmDefault() {
-    const mode = this.utils.currentToolMode;
+    const mode = this._resolvePointMode();
     if (mode === 'point') {
       this._finishPointMode();
-    } else if (mode === 'divide_dist' && this.divisionSelector.step === 'start_point') {
-      this.divisionSelector.executeDivision(mode, () => this.exitToSelect());
-    } else if ((mode === 'divide_count' || mode === 'divide_dist') && this.divisionSelector.step === 'input') {
+      return;
+    }
+
+    if (this.divisionSelector.divisionMode === 'distance' && this.divisionSelector.step === 'start_point') {
+      this.divisionSelector.executeDivision(() => this.exitToSelect());
+    } else if (this.divisionSelector.step === 'input') {
       this.divisionSelector.acceptDefaultValue(
-        mode,
         (msg, opts) => this._setStepFromLegacyPrompt(msg, opts),
         () => this.exitToSelect()
       );
-    } else if ((mode === 'divide_count' || mode === 'divide_dist') && this.divisionSelector.step === 'select') {
+    } else if (this.divisionSelector.step === 'select') {
       if (this.divisionSelector.getTargets().length > 0) {
-        this.divisionSelector.askForDivisionValue(mode, (msg, opts) => this._setStepFromLegacyPrompt(msg, opts));
+        this.divisionSelector.askForDivisionValue((msg, opts) => this._setStepFromLegacyPrompt(msg, opts));
       }
     }
   }
@@ -223,21 +225,20 @@ export class PointTool extends BaseTool {
     if (event?.preventDefault) event.preventDefault();
     if (event?.event?.preventDefault) event.event.preventDefault();
 
-    const mode = this.utils.currentToolMode;
+    const mode = this._resolvePointMode();
 
     if (mode === 'point') {
       this._finishPointMode();
       return true;
     }
 
-    if (mode === 'divide_dist' && this.divisionSelector.step === 'start_point') {
-      this.divisionSelector.executeDivision(mode, () => this.exitToSelect());
+    if (this.divisionSelector.divisionMode === 'distance' && this.divisionSelector.step === 'start_point') {
+      this.divisionSelector.executeDivision(() => this.exitToSelect());
       return true;
     }
 
-    if ((mode === 'divide_count' || mode === 'divide_dist') && this.divisionSelector.step === 'input') {
+    if (this.divisionSelector.step === 'input') {
       if (this.divisionSelector.acceptDefaultValue(
-        mode,
         (msg, opts) => this._setStepFromLegacyPrompt(msg, opts),
         () => this.exitToSelect()
       )) {
@@ -245,9 +246,9 @@ export class PointTool extends BaseTool {
       }
     }
 
-    if ((mode === 'divide_count' || mode === 'divide_dist') && this.divisionSelector.step === 'select') {
+    if (this.divisionSelector.step === 'select') {
       if (this.divisionSelector.getTargets().length > 0) {
-        this.divisionSelector.askForDivisionValue(mode, (msg, opts) => this._setStepFromLegacyPrompt(msg, opts));
+        this.divisionSelector.askForDivisionValue((msg, opts) => this._setStepFromLegacyPrompt(msg, opts));
         return true;
       }
     }
@@ -263,7 +264,7 @@ export class PointTool extends BaseTool {
 
   onKeyDown(event) {
     const key = event.key || event.code;
-    const mode = this.utils.currentToolMode;
+    const mode = this._resolvePointMode();
 
     if (key === 'Enter' || key === 'NumpadEnter') {
       if (mode === 'point') {
@@ -272,15 +273,14 @@ export class PointTool extends BaseTool {
         return true;
       }
 
-      if (mode === 'divide_dist' && this.divisionSelector.step === 'start_point') {
+      if (this.divisionSelector.divisionMode === 'distance' && this.divisionSelector.step === 'start_point') {
         if (typeof event.preventDefault === 'function') event.preventDefault();
-        this.divisionSelector.executeDivision(mode, () => this.exitToSelect());
+        this.divisionSelector.executeDivision(() => this.exitToSelect());
         return true;
       }
 
-      if ((mode === 'divide_count' || mode === 'divide_dist') && this.divisionSelector.step === 'input') {
+      if (this.divisionSelector.step === 'input') {
         if (this.divisionSelector.acceptDefaultValue(
-          mode,
           (msg, opts) => this._setStepFromLegacyPrompt(msg, opts),
           () => this.exitToSelect()
         )) {
@@ -289,10 +289,10 @@ export class PointTool extends BaseTool {
         }
       }
 
-      if ((mode === 'divide_count' || mode === 'divide_dist') && this.divisionSelector.step === 'select') {
+      if (this.divisionSelector.step === 'select') {
         if (this.divisionSelector.getTargets().length > 0) {
           if (typeof event.preventDefault === 'function') event.preventDefault();
-          this.divisionSelector.askForDivisionValue(mode, (msg, opts) => this._setStepFromLegacyPrompt(msg, opts));
+          this.divisionSelector.askForDivisionValue((msg, opts) => this._setStepFromLegacyPrompt(msg, opts));
           return true;
         }
       }
@@ -302,7 +302,7 @@ export class PointTool extends BaseTool {
   }
 
   onCommandInput(input) {
-    const mode = this.utils.currentToolMode;
+    const mode = this._resolvePointMode();
 
     if (mode === 'point') {
       const logs = CAD_CATALOG.tools.point.logs;
@@ -321,21 +321,11 @@ export class PointTool extends BaseTool {
       return true;
     }
 
-    if (mode === 'divide_count' || mode === 'divide_dist') {
-      if (!String(input || '').trim()) {
-        this.onConfirmDefault();
-        return true;
-      }
-      this.divisionSelector.handleCommandInput(
-        input,
-        mode,
-        (msg, opts) => this._setStepFromLegacyPrompt(msg, opts),
-        () => this.exitToSelect()
-      );
-      return true;
-    }
-
-    return false;
+    return this.divisionSelector.handleCommandInput(
+      input,
+      (msg, opts) => this._setStepFromLegacyPrompt(msg, opts),
+      () => this.exitToSelect()
+    );
   }
 
   _resolveRootEntity(item) {

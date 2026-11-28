@@ -1,6 +1,6 @@
 TODO
 propiedades por herramienta
-consola y opciones por herramientas
+  [x] consola y opciones por herramientas
 exportacion/importacion de archivos (dxf? pdf?)
 agregar exportacion/importacion dxf
 guardado y apertura de documento propio de app
@@ -32,10 +32,10 @@ espesores y zoom, escalar bordes?
 - [x] [Área Viewport / Render] **Zoom y límites en Bézier:** Corregir la selección y curvas Bézier al hacer zoom y contemplar los máximos y mínimos reales de las curvas (no solo sus nodos) en `Zoom Extents`.
 
 - [x] [Área Dibujo] **Auditar herramientas de dibujo:** Iniciar la auditoría del Área #5 revisando `BaseTool.js` y las herramientas de dibujo primitivas para desacoplar la creación de geometrías de `CADService.js`.
-- [ ] [Área Dibujo / HUD] **Separar marcador visual OSNAP:** Desacoplar el callback visual `renderMarkerFn` de `OsnapEngine.calculateOsnap()` para que el motor devuelva solo `{ point, type }` y el marcador del HUD (`HUDManager.js`) se actualice en un único punto centralizado.
-- [ ] [Área OSNAP / Puntos] **Garantizar entidad en candidatos OSNAP:** Asegurar que todos los candidatos devueltos por `OsnapEngine` incluyan la propiedad `entity` para simplificar `DivisionSelectionHandler._findSnappedTarget()` y eliminar el cálculo de cercanía de respaldo.
+- [x] [Área Dibujo / HUD] **Separar marcador visual OSNAP:** Desacoplar el callback visual `renderMarkerFn` de `OsnapEngine.calculateOsnap()` para que el motor devuelva solo `{ point, type }` y el marcador del HUD (`HUDManager.js`) se actualice en un único punto centralizado.
+- [x] [Área OSNAP / Puntos] **Garantizar entidad en candidatos OSNAP:** Asegurar que todos los candidatos devueltos por `OsnapEngine` incluyan la propiedad `entity` para simplificar `DivisionSelectionHandler._findSnappedTarget()` y eliminar el cálculo de cercanía de respaldo.
 
-- [ ] [Área Edición] **Unificar lógica de arrastre:** Crear `MixedDragHelper` para extraer la captura de estado inicial, aplicación de desplazamiento, registro en `MoveCommand` (`type: 'mixed'`) y cancelación de arrastre compartida entre `SelectTool`, `HandleSelectionHandler` y `SegmentEditHandler`.
+- [x] [Área Edición] **Unificar lógica de arrastre:** Crear `MixedDragHelper` para extraer la captura de estado inicial, aplicación de desplazamiento, registro en `MoveCommand` (`type: 'mixed'`) y cancelación de arrastre compartida entre `SelectTool`, `HandleSelectionHandler` y `SegmentEditHandler`.
 - [ ] [Área Edición] **Mover helpers a tools/shared:** Reubicar `MixedDragSession`, `BoxSelectHandler` y `SelectionMenuHandler` en una carpeta `tools/shared/` cuando también los consuman `CopyTool`, `RotateTool` o `PointTool`.
 - [ ] [Área Edición] **Mover selección de tramos:** Extraer `_selectEditModeEdge` desde `CommandSelectionHandler` hacia `SegmentEditHandler.selectEdgeAt` para unificar la selección de tramos en modo edición.
 - [x] [Área Edición] **Consola numérica en MoveTool:** Soportar entrada por consola (`onCommandInput`) en `MoveTool` para ingresar coordenadas o distancia numérica sobre el vector activo durante la fase `PICK_DEST_POINT`.
@@ -48,35 +48,44 @@ espesores y zoom, escalar bordes?
 - [ ] [Área Propiedades / UI] **Dividir secciones de propiedades:** Extraer los bloques base (Color, Opacidad, Grosor) de `ui/components/PropertySingleView.js` (hoy en 297 líneas) para dejarlo debajo de 250 líneas y habilitar secciones componibles (`*Section.js`) antes de sumar propiedades nuevas (radio, texto, dimensiones).
 - [ ] [Área Propiedades / UI] **Muestras de color personalizadas:** (Opcional) Si a futuro se decide guardar paletas personalizadas del usuario, crear `ui/components/ColorSwatchManager.js` independiente y acoplado a `ColorPickerPopover` sin superar las 350 líneas.
 
-- [ ] [Área Núcleo] **Inyectar utils al arrancar:** Confirmar en `app.js` y `CADUtils.js` que `cadService.utils` quede inyectado desde el arranque de la aplicación (sin depender de `window.CADUtils`) y limpiar métodos puente residuales en `CADUtils.js`.
+- [x] [Área Núcleo] **Inyectar utils al arrancar:** Confirmar en `app.js` y `CADUtils.js` que `cadService.utils` quede inyectado desde el arranque de la aplicación (sin depender de `window.CADUtils`) y limpiar métodos puente residuales en `CADUtils.js`.
 - [ ] [Área Núcleo] **Inyectar paper y capas:** Centralizar `paper` y las referencias de capas (`hudLayer`, `pointsLayer`) en `CADUtils` para eliminar los helpers repetidos `_getPaper()` / `_getHudLayer()`, y en `cadService.createPointEntity()` insertar directamente en `pointsLayer` en lugar de mutar la capa activa (`targetLayer.activate()` / `drawLayer.activate()`).
 - [ ] [Área Núcleo] **Encapsular baja de capas:** Eliminar la manipulación directa de `cadService.entities.splice` y `.push` en `DeleteLayerCommand` (`services/commands/LayerCommands.js`), reemplazándola por métodos oficiales de baja y restauración en `CADService`.
+- [ ] [Área Motores / Tamaño] **Adelgazar GeometryEngine.js (827 líneas):** Extraer la lógica de recorte (`performTrim`, `performBoxTrim` y sus 4 helpers privados de 81–133 líneas) hacia `services/engines/TrimEngine.js` para que `GeometryEngine.js` quede por debajo de 300 líneas.
 
-- [ ] [Área Consola / Núcleo] **Delegar consola a herramientas activas:** Refactorizar `CADUtils.executeCommandLine()` para delegar la entrada en `activeTool.onCommandInput(input)` y eliminar estado/métodos legados de dibujo (`finishCurrentDrawing`, `rubberBandLine`).
-- [ ] [Área Servicios / Comandos] **Desacoplar globales en motores y comandos:** Eliminar referencias directas a `window.CADUtils` y `paper` global en `GeometryEngine.js` (`performTrim`, `performBoxTrim`) y `EntityCommands.js` (`AddEntityCommand`, `ImportSVGCommand`).
-- [ ] [Área Consola / Herramientas] **Parser compartido de coordenadas en BaseTool:** Implementar `_parsePointInput(rawInput, basePoint)` en `BaseTool` para resolver coordenadas absolutas (`x,y`), relativas (`@x,y`), polares (`@d<a`) y distancia escalar, y migrar `onCommandInput` / `onConfirmDefault` en las herramientas de creación.
+- [x] [Área Consola / Núcleo] **Delegar consola a herramientas activas:** Refactorizar `CADUtils.executeCommandLine()` para delegar la entrada en `activeTool.onCommandInput(input)` y eliminar estado/métodos legados de dibujo (`finishCurrentDrawing`, `rubberBandLine`).
+- [x] [Área Servicios / Comandos] **Desacoplar globales en motores y comandos:** Eliminar referencias directas a `window.CADUtils` y `paper` global en `GeometryEngine.js` (`performTrim`, `performBoxTrim`) y `EntityCommands.js` (`AddEntityCommand`, `ImportSVGCommand`).
+- [x] [Área Consola / Herramientas] **Parser compartido de coordenadas en BaseTool:** Implementar `_parsePointInput(rawInput, basePoint)` en `BaseTool` para resolver coordenadas absolutas (`x,y`), relativas (`@x,y`), polares (`@d<a`) y distancia escalar, y migrar `onCommandInput` / `onConfirmDefault` en las herramientas de creación.
+
+
 - [ ] [Área Núcleo] **Clases de entidades (Etapa 1 — Base, Punto y Círculo):** Crear `entities/BaseEntity.js`, `PointEntity.js` y `CircleEntity.js` por composición sobre `paper.Item` (`paperItem.data.entity = this`), encapsulando centro, radio e invariantes sin alterar aún `CADService.entities`.
 - [ ] [Área Núcleo] **Clases de entidades (Etapa 2 — Lineales y Curvas):** Crear `LineEntity.js`, `PolylineEntity.js`, `SplineEntity.js` y `BezierEntity.js` encapsulando manipulación de vértices, cierre, suavizado y manijas Bézier.
 - [ ] [Área Núcleo] **Clases de entidades (Etapa 3 — Corte en motores y servicio):** Migrar `OsnapEngine`, `GeometryEngine` y `SelectionRenderEngine` para consumir los métodos de las clases de entidad y almacenar directamente instancias de clase en `CADService.entities`.
+- [ ] [Área Consola / UI] **Predictivo de comandos en consola:** Crear `ui/console/CommandAutocomplete.js` (≤ 200 líneas) leyendo dinámicamente `CAD_CATALOG` (`displayName` y `aliases`) únicamente cuando `ConsoleManager.state === 'IDLE'`, con navegación por `ArrowUp`/`ArrowDown`, autocompletado sin ejecutar con `Tab` o `ArrowRight` (al final del texto), ejecución con `Enter`, cierre aislado con `Escape` y soporte dual para consola fija y flotante.
 
-bloqueo y visibilidad global por entidades selecciondas
 
-no permitir la seleccion de imagen como elemento en trim/extend
+  [x] bloqueo y visibilidad global por entidades selecciondas
+
   [x] agregar en linetool los colores de la etiqueta de rubberband
   [x] resolver el punto de incio con estilo punto en division por distancia
 
-
-mejorar el nombre de las entidades agregando para separar el tag #
-
   [x] resolver la barra de desplazamiento horizontal en el panel de propiedades al reducir el tamaño sin overflow
-resolver que hacer con la opacidad en capa
-autocompletado en consola
+  [x] autocompletado en consola
   [x] La tangente en circulos no es con la linea del radio sino que es con la curva
   [x] El movimiento de arrastre y osnap perpendicular
-implementar clases para las entidades
 
   [x] cancelacion de arrastre en tiradores no restaura
   [x] zoom y rubberband
 
-  cambiar la ventana de aviso al iniciar nuevo documento
-  ver barras de desplazamiento en capas
+  [x] ver barras de desplazamiento en capas
+
+no permitir la seleccion de imagen como elemento en trim/extend
+menu de superposicion de entidades en seleccion de herramientas
+resolver que hacer con la opacidad en capa
+cambiar la ventana de aviso al iniciar nuevo documento
+implementar clases para las entidades
+mejorar el nombre de las entidades agregando para separar el tag #
+
+
+color salida de distancia y punto coordenadas, agregar decimales
+no cambia la herramienta en toolbar

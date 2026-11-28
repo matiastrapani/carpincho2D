@@ -4,6 +4,7 @@
 import { FixedConsoleUI } from './FixedConsoleUI.js';
 import { FloatingConsoleUI } from './FloatingConsoleUI.js';
 import { ConsoleLogRenderer } from './ConsoleLogRenderer.js';
+import { CommandAutocomplete } from './CommandAutocomplete.js';
 import {
   CAD_CATALOG,
   formatCommandDisplay,
@@ -24,6 +25,19 @@ export class ConsoleManager {
       getCommandTag: () => this._getActiveCommandTag(),
       onStateChange: (nextState) => { this.state = nextState; },
       onFocusRequest: () => this.focusInput()
+    });
+
+    this.autocomplete = new CommandAutocomplete({
+      fixedUI: this.fixedUI,
+      floatingUI: this.floatingUI,
+      canShow: () =>
+        this.state === 'IDLE' ||
+        this.utils?.currentToolMode === 'select' ||
+        this.utils?.currentToolMode === 'pan',
+      onExecute: (commandText) => {
+        this._clearInputs();
+        this.handleExecute(commandText);
+      }
     });
 
     this._onInputKeyDown = this._handleInputKeyDown.bind(this);
@@ -232,7 +246,7 @@ export class ConsoleManager {
             ? 'image/*'
             : '.svg,image/*';
 
-      const ioService = this.utils.ioService || window.cadIOService;
+      const ioService = this.utils.ioService;
       ioService?.promptFileImport?.({ accept, source: 'console' });
       return;
     }
@@ -242,7 +256,7 @@ export class ConsoleManager {
       this.beginCompactBlock();
       this.logUser(exportLabel, 'Comando: ', { grouped: true });
       this.lastCommand = exportLabel;
-      const ioService = this.utils.ioService || window.cadIOService;
+      const ioService = this.utils.ioService;
       ioService?.exportSVG?.();
       this.focusInput();
       return;
@@ -270,11 +284,16 @@ export class ConsoleManager {
   _clearInputs() {
     if (this.fixedUI?.input) this.fixedUI.input.value = '';
     if (this.floatingUI?.input) this.floatingUI.input.value = '';
+    this.autocomplete?.close();
   }
 
   _handleInputKeyDown(e) {
     const sourceInput = e.currentTarget || this.fixedUI.input;
     if (!sourceInput) return;
+
+    if (this.autocomplete?.handleKeyDown(e)) {
+      return;
+    }
 
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -318,15 +337,26 @@ export class ConsoleManager {
       this.state === 'COMMAND_ACTIVE' ||
       (this.utils?.currentToolMode && this.utils.currentToolMode !== 'select');
 
-    if (!hasActiveTool) return;
+    if (hasActiveTool) {
+      e.preventDefault();
+      e.stopPropagation();
+      this.handleCancel();
+      return;
+    }
 
-    e.preventDefault();
-    e.stopPropagation();
-    this.handleCancel();
+    const activeInput = this.getActiveInput() || this.fixedUI?.input;
+    const pendingText = (activeInput?.value || this.fixedUI?.input?.value || '').trim();
+    if (pendingText) {
+      e.preventDefault();
+      e.stopPropagation();
+      this._clearInputs();
+      this.handleExecute(pendingText);
+    }
   }
 
   handleCancel() {
     if (!this.utils) return;
+    this.autocomplete?.close();
     this._clearInputs();
 
     const activeTool = this.utils.toolManager?.activeTool;
@@ -400,6 +430,7 @@ export class ConsoleManager {
   }
 
   cleanup() {
+    this.autocomplete?.destroy();
     this.fixedUI?.input?.removeEventListener('keydown', this._onInputKeyDown);
     this.floatingUI?.input?.removeEventListener('keydown', this._onInputKeyDown);
 

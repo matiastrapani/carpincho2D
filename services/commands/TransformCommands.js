@@ -280,7 +280,7 @@ export class TransformEntityCommand {
       }
     }
 
-    const utils = this.cadService?.utils || (typeof window !== 'undefined' ? window.cadUtils : null);
+    const utils = this.cadService?.utils || null;
     const renderEngine = this.cadService?.selectionRenderEngine || utils?.selectionRenderEngine;
     if (renderEngine) {
       renderEngine.updateEntitiesStroke();

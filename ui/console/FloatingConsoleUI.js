@@ -50,7 +50,7 @@ export class FloatingConsoleUI {
           
           <!-- Renglón 2: Contenedor Unificado (Prompt + Input Flotante) -->
           <div id="floatingConsoleInputRow" class="p-2 border-t border-[#2a2a32] bg-[#1e1e24] shrink-0 flex items-center gap-1.5">
-            <div id="floatingCommandInputWrapper" class="flex items-center flex-1 min-w-[120px] h-7 px-2.5 rounded cursor-text overflow-hidden" style="background-color: var(--cad-bg-input);">
+            <div id="floatingCommandInputWrapper" class="flex items-center flex-1 min-w-[120px] h-7 px-2 rounded cursor-text overflow-hidden" style="background-color: var(--cad-bg-input);">
               <span id="floatingCommandPrompt" class="text-xs font-normal text-zinc-400 whitespace-nowrap shrink-0 pr-1.5 select-none">Comando:</span>
               <input id="cmdInputFloating" type="text" autocomplete="off" class="command-input flex-1 min-w-[40px] py-1 text-xs h-full outline-none focus:outline-none" />
             </div>

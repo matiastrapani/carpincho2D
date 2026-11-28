@@ -41,7 +41,7 @@ export class FixedConsoleUI {
         
         <!-- RENGLÓN INFERIOR FIJO: Contenedor Unificado (Prompt + Input) + Acciones -->
         <div id="fixedConsoleInputRow" class="flex items-center gap-1.5 w-full shrink-0 h-[28px] min-h-[28px] max-h-[28px] relative z-20">
-          <div id="fixedCommandInputWrapper" class="flex items-center flex-1 min-w-[120px] h-7 min-h-[28px] px-2.5 rounded cursor-text overflow-hidden" style="background-color: var(--cad-bg-input);">
+          <div id="fixedCommandInputWrapper" class="flex items-center flex-1 min-w-[120px] h-7 min-h-[28px] px-2 rounded cursor-text overflow-hidden" style="background-color: var(--cad-bg-input);">
             <span id="fixedCommandPrompt" class="text-xs font-normal text-zinc-400 whitespace-nowrap shrink-0 pr-1.5 select-none">Comando:</span>
             <input id="cmdInput" type="text" autocomplete="off" class="command-input flex-1 min-w-[40px] py-1 text-xs h-full outline-none focus:outline-none" />
           </div>

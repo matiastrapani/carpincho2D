@@ -3,9 +3,31 @@
    ========================================================================== */
 .tool-grid {
   display: grid;
-  grid-template-columns: repeat(var(--tool-cols, 1), 32px);
+  grid-template-columns: repeat(var(--tool-cols, 3), 32px);
   gap: 2px;
   align-content: start;
+  max-height: calc(100vh - 110px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+}
+
+.tool-grid::-webkit-scrollbar {
+  display: none;
+}
+
+
+.flyout-item.disabled div{
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.flyout-item.disabled .iconify,
+.flyout-item.disabled svg,
+.flyout-item.disabled i {
+  opacity: 0.65;
+  color: var(--cad-text-disabled);
 }
 
 .tool-divider {
@@ -58,9 +80,10 @@
   display: none;
   position: absolute;
   top: 0;
-  left: calc(100% + 6px);
+  left: calc(100% + 4px);
   background: var(--cad-bg-panel);
-  border: none !important;
+  border: 2px solid var(--cad-bg-canvas);
+  box-sizing: border-box;
   border-radius: 6px;
   z-index: 80;
   min-width: 200px;
@@ -70,7 +93,7 @@
 .dock-right .flyout-menu,
 .dock-panel-left .flyout-menu {
   left: auto;
-  right: calc(100% + 6px);
+  right: calc(100% + 4px);
 }
 
 .flyout-menu.show {

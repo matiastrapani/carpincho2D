@@ -40,7 +40,7 @@ export class BaseTool {
     if (!pt) return '0.00, 0.00';
     const x = pt.x.toFixed(2);
     const y = (pt.y === 0 ? 0 : -pt.y).toFixed(2);
-    return `${x},${y}`;
+    return `${x}, ${y}`;
   }
 
   getCommandTag() {
@@ -54,6 +54,24 @@ export class BaseTool {
     this.utils.consoleManager?.logSystem(fullMsg);
   }
 
+  logTaggedResult(message) {
+    const cm = this.utils.consoleManager;
+    if (!cm) return;
+
+    const tag = this.getCommandTag();
+    if (!cm.logInteractive || !cm.renderer?.escapeHtml) {
+      this.logTagged(message);
+      return;
+    }
+
+    const esc = (txt) => cm.renderer.escapeHtml(txt);
+    const tagHtml = tag
+      ? `<span class="cad-console-entry--system font-normal">${esc(tag)} </span>`
+      : '';
+    const valueHtml = `<span class="text-zinc-100 font-bold">${esc(message)}</span>`;
+    cm.logInteractive(`${tagHtml}${valueHtml}`);
+  }
+
   setStep(instruction, options = {}) {
     this.promptText = `${instruction}:`;
     const cm = this.utils.consoleManager;
@@ -65,7 +83,7 @@ export class BaseTool {
   }
 
   refreshUndoRedoUI() {
-    (this.utils.cadUI || window.cadUI)?.updateUndoRedoUI?.();
+    this.utils.cadUI?.updateUndoRedoUI?.();
   }
   
   get paper() {

@@ -26,7 +26,7 @@ export class LayerRowBuilder {
 
   buildShellHTML() {
     return `
-      <div class="flex flex-col h-full w-full select-none text-zinc-300 font-sans">
+      <div class="flex flex-col h-full min-h-0 w-full select-none text-zinc-300 font-sans">
         <!-- Encabezado Sobrio -->
         <div class="flex items-center justify-between mb-2 shrink-0">
           <span class="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Capas</span>
@@ -53,7 +53,7 @@ export class LayerRowBuilder {
         </div>
 
         <!-- Lista de Capas -->
-        <div id="layerListContainer" class="flex-1 custom-scrollbar min-h-0 bg-transparent"></div>
+        <div id="layerListContainer" class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden custom-scrollbar bg-transparent"></div>
       </div>
     `;
   }

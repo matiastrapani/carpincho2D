@@ -9,7 +9,6 @@ export class InputDispatcher {
   constructor(cadService) {
     this._cadService = cadService;
 
-    // Guardar referencias vinculadas para desenganche limpio
     this._onKeyDown = this.handleGlobalKeydown.bind(this);
     this._onKeyUp = this.handleGlobalKeyup.bind(this);
     this._onWindowBlur = this._handleWindowBlur.bind(this);
@@ -34,13 +33,24 @@ export class InputDispatcher {
   }
 
   get service() {
-    return this._cadService || window.cadService;
+    return this._cadService;
+  }
+
+  get utils() {
+    return this._cadService?.utils || null;
+  }
+
+  _updatePaperView(cadUtils) {
+    const paperLib = cadUtils?.paper || (typeof paper !== 'undefined' ? paper : null);
+    if (paperLib?.view) {
+      paperLib.view.update();
+    }
   }
 
   handleGlobalKeydown(e) {
-    const cadUtils = window.cadUtils;
-    const consoleManager = cadUtils?.consoleManager || window.consoleManager;
-    const toolManager = cadUtils?.toolManager || window.toolManager;
+    const cadUtils = this.utils;
+    const consoleManager = cadUtils?.consoleManager;
+    const toolManager = cadUtils?.toolManager;
     const activeTool = toolManager?.activeTool;
 
     const activeElement = document.activeElement;
@@ -112,7 +122,7 @@ export class InputDispatcher {
         }
         cadUtils?.selectionRenderEngine?.updateEntitiesStroke();
         cadUtils?.selectionRenderEngine?.renderBezierHandles();
-        if (window.paper?.view) window.paper.view.update();
+        this._updatePaperView(cadUtils);
       }
       return;
     }
@@ -127,7 +137,7 @@ export class InputDispatcher {
       this.service?.undo();
       cadUtils?.selectionRenderEngine?.updateEntitiesStroke();
       cadUtils?.selectionRenderEngine?.renderBezierHandles();
-      if (window.paper?.view) window.paper.view.update();
+      this._updatePaperView(cadUtils);
       return;
     }
 
@@ -140,7 +150,7 @@ export class InputDispatcher {
       this.service?.redo();
       cadUtils?.selectionRenderEngine?.updateEntitiesStroke();
       cadUtils?.selectionRenderEngine?.renderBezierHandles();
-      if (window.paper?.view) window.paper.view.update();
+      this._updatePaperView(cadUtils);
       return;
     }
 
@@ -153,8 +163,7 @@ export class InputDispatcher {
 
     if (isCtrlOrCmd && !e.shiftKey && !e.altKey && (e.key.toLowerCase() === 'b' || e.code === 'KeyB')) {
       e.preventDefault();
-      const uiManager = cadUtils?.cadUI || window.cadUI;
-      uiManager?.toggleSidebar?.();
+      cadUtils?.cadUI?.toggleSidebar?.();
       return;
     }
 
@@ -249,7 +258,7 @@ export class InputDispatcher {
   }
 
   handleGlobalKeyup(e) {
-    const cadUtils = window.cadUtils;
+    const cadUtils = this.utils;
 
     if (e.key === 'Alt' || e.keyCode === 18) {
       e.preventDefault();
@@ -272,7 +281,7 @@ export class InputDispatcher {
   _handleWindowBlur() {
     if (this.service && this.service.isSnapSuspendedByAlt) {
       this.service.isSnapSuspendedByAlt = false;
-      const cadUtils = window.cadUtils;
+      const cadUtils = this.utils;
       if (cadUtils && typeof cadUtils.refreshActivePreview === 'function') {
         cadUtils.refreshActivePreview();
       }
@@ -294,7 +303,7 @@ export class InputDispatcher {
 
     if (e.key === consoleKey) {
       e.preventDefault();
-      const consoleManager = cadUtils?.consoleManager || window.consoleManager;
+      const consoleManager = cadUtils?.consoleManager;
       if (consoleManager && typeof consoleManager.toggleFloating === 'function') {
         consoleManager.toggleFloating();
       }

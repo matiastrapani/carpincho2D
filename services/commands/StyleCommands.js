@@ -8,7 +8,7 @@ export class UpdateEntityPropertyCommand {
     this.entities = Array.isArray(entities) ? entities : [entities];
     this.oldState = oldState;
     this.newState = newState;
-    this.utils = cadUtils;
+    this.utils = cadUtils || cadService?.utils || null;
   }
 
   execute() {
@@ -22,7 +22,7 @@ export class UpdateEntityPropertyCommand {
   _applyState(state) {
     if (!this.entities || this.entities.length === 0) return;
 
-    const layerManager = this.utils?.layerManager || this.service?.layerManager || window.cadUtils?.layerManager;
+    const layerManager = this.utils?.layerManager || this.service?.layerManager || this.service?.utils?.layerManager;
     let hasLayerChange = false;
 
     this.entities.forEach((entity, idx) => {
@@ -57,18 +57,14 @@ export class UpdateEntityPropertyCommand {
       layerManager.syncZOrder();
     }
 
-    if (this.utils?.selectionRenderEngine?.updateEntitiesStroke) {
-      this.utils.selectionRenderEngine.updateEntitiesStroke();
-    }
-    if (this.utils?.selectionRenderEngine?.renderBezierHandles) {
-      this.utils.selectionRenderEngine.renderBezierHandles();
-    }
-    if (window.paper?.view) {
-      window.paper.view.update();
-    }
-    if (window.propertyPanelUI) {
-      window.propertyPanelUI.refresh();
-    }
+    this.utils?.selectionRenderEngine?.updateEntitiesStroke?.();
+    this.utils?.selectionRenderEngine?.renderBezierHandles?.();
+
+    const p = this.utils?.paper || (typeof paper !== 'undefined' ? paper : null);
+    p?.view?.update();
+
+    this.utils?.propertyManager?._notify?.();
+    this.utils?.propertyPanelUI?.refresh?.();
   }
 }
 
@@ -78,7 +74,7 @@ export class UpdateDefaultSettingsCommand {
     this.defaults = defaultSettingsRef;
     this.oldState = oldState;
     this.newState = newState;
-    this.utils = cadUtils;
+    this.utils = cadUtils || cadService?.utils || null;
   }
 
   execute() {
@@ -100,15 +96,13 @@ export class UpdateDefaultSettingsCommand {
       }
       this.utils.propertyManager._notify();
     }
-    if (this.utils?.selectionRenderEngine?.updateEntitiesStroke) {
-      this.utils.selectionRenderEngine.updateEntitiesStroke();
-    }
-    const paperInstance = this.utils?.paper || (typeof paper !== 'undefined' ? paper : null);
-    if (paperInstance?.view) {
-      paperInstance.view.update();
-    }
-    if (window.propertyPanelUI && !this.utils?.propertyManager?._listeners?.size) {
-      window.propertyPanelUI.refresh();
+    this.utils?.selectionRenderEngine?.updateEntitiesStroke?.();
+
+    const p = this.utils?.paper || (typeof paper !== 'undefined' ? paper : null);
+    p?.view?.update();
+
+    if (!this.utils?.propertyManager?._listeners?.size) {
+      this.utils?.propertyPanelUI?.refresh?.();
     }
   }
 }
@@ -117,7 +111,7 @@ export class EntityVisibilityLockCommand {
   constructor(cadService, entities, action, cadUtils = null) {
     this.service = cadService;
     this.utils = cadUtils || cadService?.utils || null;
-    this.action = action; // 'hide' | 'unhideAll' | 'lock' | 'unlockAll'
+    this.action = action;
 
     const list = Array.isArray(entities) ? entities : (entities ? [entities] : []);
     this.entries = list.map((entity) => {

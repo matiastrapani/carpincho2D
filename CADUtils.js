@@ -13,11 +13,15 @@ import { SplineTool } from './tools/SplineTool.js';
 import { BezierTool } from './tools/BezierTool.js';
 import { PointTool } from './tools/PointTool.js';
 
+import { DistanceTool } from './tools/DistanceTool.js';
+import { PointCoordsTool } from './tools/PointCoordsTool.js';
+
 import { TrimTool } from './tools/TrimTool.js';
 import { ExtendTool } from './tools/ExtendTool.js';
 import { ToolManager } from './tools/ToolManager.js';
 import { MoveTool } from './tools/MoveTool.js';
 import { DeleteCommand } from './services/commands/cadCommands.js';
+
 import { HUDManager } from './ui/HUDManager.js';
 import { CanvasViewportManager } from './services/CanvasViewportManager.js';
 import { SelectionRenderEngine } from './services/renderers/SelectionRenderEngine.js';
@@ -127,16 +131,19 @@ export class CADUtils {
     this.toolManager.registerTool('spline', new SplineTool(this.service, this));
     this.toolManager.registerTool('bezier', new BezierTool(this.service, this));
 
-    // Puntos y Herramientas de División
+    // Puntos y Herramienta de División
     const pointToolInstance = new PointTool(this.service, this);
     this.toolManager.registerTool('point', pointToolInstance);
-    this.toolManager.registerTool('divide_count', pointToolInstance);
-    this.toolManager.registerTool('divide_dist', pointToolInstance);
+    this.toolManager.registerTool('divide', pointToolInstance);
 
     // Modificación y Edición
     this.toolManager.registerTool('move', new MoveTool(this.service, this));
     this.toolManager.registerTool('trim', new TrimTool(this.service, this));
     this.toolManager.registerTool('extend', new ExtendTool(this.service, this));
+
+    // Consulta y Medición
+    this.toolManager.registerTool('distance', new DistanceTool(this.service, this));
+    this.toolManager.registerTool('point_coords', new PointCoordsTool(this.service, this));
   }
 
   setConsoleManager(consoleManager) {

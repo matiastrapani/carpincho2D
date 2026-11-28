@@ -28,7 +28,7 @@ export class CADIOService {
   }
 
   _logImport(message, { commandTitle = null } = {}) {
-    const cm = this.utils?.consoleManager || window.consoleManager;
+    const cm = this.utils?.consoleManager;
     if (!cm) return;
 
     if (commandTitle) {
@@ -45,7 +45,7 @@ export class CADIOService {
   }
 
   _syncUndoRedoUI() {
-    (this.utils?.cadUI || window.cadUI)?.updateUndoRedoUI?.();
+    this.utils?.cadUI?.updateUndoRedoUI?.();
   }
 
   // --- SELECTOR Y LECTURA UNIFICADA DE ARCHIVOS ---
@@ -67,7 +67,7 @@ export class CADIOService {
     const cleanupInput = (cancelled = false) => {
       if (input.parentNode) input.remove();
       if (cancelled && source === 'console') {
-        const cm = this.utils?.consoleManager || window.consoleManager;
+        const cm = this.utils?.consoleManager;
         if (cm?.hasActiveCompactBlock?.()) {
           cm.logSystem('[IMPORTAR] Cancelado.', { grouped: true });
           cm.endCompactBlock?.();
@@ -343,45 +343,61 @@ export class CADIOService {
     if (!paper || !paper.project) return;
 
     const detachedItems = [];
+    const savedEntityData = [];
+    let svgString = '';
 
-    const hudLayer = paper.project.layers.find(l => l.name === 'hudLayer');
-    if (hudLayer) {
-      hudLayer.remove();
-      detachedItems.push({ item: hudLayer, parent: paper.project, isLayer: true });
-    }
-
-    if (this.utils.gridGroup) {
-      const grid = this.utils.gridGroup;
-      const parent = grid.parent;
-      if (parent) {
-        grid.remove();
-        detachedItems.push({ item: grid, parent: parent, isLayer: false });
+    try {
+      const hudLayer = paper.project.layers.find(l => l.name === 'hudLayer');
+      if (hudLayer) {
+        hudLayer.remove();
+        detachedItems.push({ item: hudLayer, parent: paper.project, isLayer: true });
       }
-    }
 
-    if (this.utils.controlHandlesGroup) {
-      const handles = this.utils.controlHandlesGroup;
-      const parent = handles.parent;
-      if (parent) {
-        handles.remove();
-        detachedItems.push({ item: handles, parent: parent, isLayer: false });
+      if (this.utils.gridGroup) {
+        const grid = this.utils.gridGroup;
+        const parent = grid.parent;
+        if (parent) {
+          grid.remove();
+          detachedItems.push({ item: grid, parent: parent, isLayer: false });
+        }
       }
-    }
 
-    const svgString = paper.project.exportSVG({
-      asString: true,
-      bounds: 'content',
-      matchShapes: true,
-      precision: 4
-    });
-
-    detachedItems.forEach(({ item, parent, isLayer }) => {
-      if (isLayer) {
-        paper.project.addLayer(item);
-      } else if (parent) {
-        parent.addChild(item);
+      if (this.utils.controlHandlesGroup) {
+        const handles = this.utils.controlHandlesGroup;
+        const parent = handles.parent;
+        if (parent) {
+          handles.remove();
+          detachedItems.push({ item: handles, parent: parent, isLayer: false });
+        }
       }
-    });
+
+      // Evitar ciclos en item.data (ej. raster.data.controller -> raster) durante JSON.stringify de exportSVG
+      (this.service?.entities || []).forEach((ent) => {
+        if (ent && ent.data && Object.keys(ent.data).length > 0) {
+          savedEntityData.push({ ent, data: ent.data });
+          ent.data = {};
+        }
+      });
+
+      svgString = paper.project.exportSVG({
+        asString: true,
+        bounds: 'content',
+        matchShapes: true,
+        precision: 4
+      });
+    } finally {
+      savedEntityData.forEach(({ ent, data }) => {
+        ent.data = data;
+      });
+
+      detachedItems.forEach(({ item, parent, isLayer }) => {
+        if (isLayer) {
+          paper.project.addLayer(item);
+        } else if (parent) {
+          parent.addChild(item);
+        }
+      });
+    }
 
     paper.view.update();
 

@@ -65,7 +65,7 @@ export class CanvasViewportManager {
     this.utils.layerManager?.ensureLayerGroups();
 
     this.setupPaperTool();
-    if (window.cadIO?.setupDragAndDrop) window.cadIO.setupDragAndDrop();
+    this.utils?.ioService?.setupDragAndDrop?.();
 
     const viewportEl = document.getElementById('mainViewport');
     if (viewportEl) {
@@ -710,6 +710,15 @@ export class CanvasViewportManager {
         activeTool.confirmTrimBoundaries();
         return;
       }
+    }
+
+    const cm = this.utils.consoleManager;
+    const activeInput = cm?.getActiveInput?.() || cm?.fixedUI?.input;
+    const pendingText = (activeInput?.value || cm?.fixedUI?.input?.value || '').trim();
+    if (pendingText && typeof cm?.handleExecute === 'function') {
+      cm._clearInputs?.();
+      cm.handleExecute(pendingText);
+      return;
     }
 
     if (previousTool === 'select' && this.utils.lastActiveToolMode && this.utils.lastActiveToolMode !== 'select') {

@@ -8,15 +8,20 @@ export class AddLineCommand {
     this.lineEntity = lineEntity;
   }
 
+  _getPaper(utils) {
+    return utils?.paper || (typeof paper !== 'undefined' ? paper : null);
+  }
+
   execute() {
     const utils = this.cadService.utils;
     const layerManager = utils?.layerManager;
+    const p = this._getPaper(utils);
 
     if (layerManager) {
       const targetLayerId = String(this.lineEntity.data?.layerId || layerManager.activeLayerId || '0');
       layerManager.assignEntityToLayer(this.lineEntity, targetLayerId);
     } else if (!this.lineEntity.parent) {
-      (utils?.drawLayer || paper.project.activeLayer).addChild(this.lineEntity);
+      (utils?.drawLayer || p?.project?.activeLayer)?.addChild(this.lineEntity);
     }
 
     if (!this.cadService.entities.includes(this.lineEntity)) {
@@ -24,25 +29,19 @@ export class AddLineCommand {
     }
 
     layerManager?.syncZOrder();
-
-    if (typeof paper !== 'undefined' && paper.view) {
-      paper.view.update();
-    }
+    p?.view?.update();
   }
 
   undo() {
+    const p = this._getPaper(this.cadService.utils);
     const idx = this.cadService.entities.indexOf(this.lineEntity);
     if (idx !== -1) {
       this.cadService.entities.splice(idx, 1);
     }
-    
+
     this.cadService.deselectEntity(this.lineEntity);
-
     this.lineEntity.remove();
-
-    if (typeof paper !== 'undefined' && paper.view) {
-      paper.view.update();
-    }
+    p?.view?.update();
   }
 }
 
@@ -52,17 +51,22 @@ export class AddPointCommand {
     this.pointEntity = pointEntity;
   }
 
+  _getPaper(utils) {
+    return utils?.paper || (typeof paper !== 'undefined' ? paper : null);
+  }
+
   execute() {
     if (!this.pointEntity) return;
 
     const utils = this.service.utils;
     const layerManager = utils?.layerManager;
+    const p = this._getPaper(utils);
 
     if (layerManager) {
       const targetLayerId = String(this.pointEntity.data?.layerId || layerManager.activeLayerId || '0');
       layerManager.assignEntityToLayer(this.pointEntity, targetLayerId);
     } else if (!this.pointEntity.parent) {
-      (utils?.drawLayer || paper.project.activeLayer).addChild(this.pointEntity);
+      (utils?.drawLayer || p?.project?.activeLayer)?.addChild(this.pointEntity);
     }
 
     if (!this.service.entities.includes(this.pointEntity)) {
@@ -71,23 +75,23 @@ export class AddPointCommand {
 
     if (layerManager) {
       layerManager.syncZOrder();
-    } else if (typeof paper !== 'undefined' && paper.view) {
-      paper.view.update();
+    } else {
+      p?.view?.update();
     }
   }
 
   undo() {
     if (!this.pointEntity) return;
 
+    const p = this._getPaper(this.service.utils);
     const idx = this.service.entities.indexOf(this.pointEntity);
     if (idx !== -1) {
       this.service.entities.splice(idx, 1);
     }
 
     this.service.deselectEntity(this.pointEntity);
-
     this.pointEntity.remove();
-    paper.view.update();
+    p?.view?.update();
   }
 }
 
@@ -101,13 +105,18 @@ export class AddEntityCommand {
     return this.entities[0];
   }
 
+  _getPaper(utils) {
+    return utils?.paper || (typeof paper !== 'undefined' ? paper : null);
+  }
+
   execute() {
-    const utils = this.cadService.utils || window.cadUtils;
+    const utils = this.cadService.utils;
     const layerManager = utils?.layerManager;
-    const drawLayer = utils?.drawLayer || paper.project.activeLayer;
+    const p = this._getPaper(utils);
+    const drawLayer = utils?.drawLayer || p?.project?.activeLayer;
     const existingSet = new Set(this.cadService.entities);
 
-    this.entities.forEach(ent => {
+    this.entities.forEach((ent) => {
       if (!existingSet.has(ent)) {
         this.cadService.entities.push(ent);
       }
@@ -115,11 +124,11 @@ export class AddEntityCommand {
       if (layerManager) {
         const targetLayerId = String(ent.data?.layerId || layerManager.activeLayerId || '0');
         layerManager.assignEntityToLayer(ent, targetLayerId);
-      } else if (!ent.parent || ent.layer !== drawLayer) {
+      } else if ((!ent.parent || ent.layer !== drawLayer) && drawLayer) {
         drawLayer.addChild(ent);
       }
 
-      if (ent instanceof paper.Raster || ent.className === 'Raster') {
+      if ((p?.Raster && ent instanceof p.Raster) || ent.className === 'Raster') {
         ent.sendToBack();
         if (utils?.gridGroup) {
           utils.gridGroup.sendToBack();
@@ -133,20 +142,19 @@ export class AddEntityCommand {
       utils.selectionRenderEngine.updateEntitiesStroke();
       utils.selectionRenderEngine.renderBezierHandles();
     }
-    if (typeof paper !== 'undefined' && paper.view) {
-      paper.view.update();
-    }
+    p?.view?.update();
   }
 
   undo() {
-    const utils = this.cadService.utils || window.cadUtils;
+    const utils = this.cadService.utils;
+    const p = this._getPaper(utils);
     const setToRemove = new Set(this.entities);
 
     if (Array.isArray(this.cadService.entities)) {
-      this.cadService.entities = this.cadService.entities.filter(ent => !setToRemove.has(ent));
+      this.cadService.entities = this.cadService.entities.filter((ent) => !setToRemove.has(ent));
     }
 
-    this.entities.forEach(ent => {
+    this.entities.forEach((ent) => {
       this.cadService.deselectEntity(ent);
       if (ent && typeof ent.remove === 'function') {
         ent.remove();
@@ -157,9 +165,7 @@ export class AddEntityCommand {
       utils.selectionRenderEngine.updateEntitiesStroke();
       utils.selectionRenderEngine.renderBezierHandles();
     }
-    if (typeof paper !== 'undefined' && paper.view) {
-      paper.view.update();
-    }
+    p?.view?.update();
   }
 }
 
@@ -171,15 +177,21 @@ export class ImportSVGCommand {
     this.createdLayers = createdLayers || [];
   }
 
+  _getPaper() {
+    return this.utils?.paper || (typeof paper !== 'undefined' ? paper : null);
+  }
+
   execute() {
     const layerManager = this.utils?.layerManager;
+    const p = this._getPaper();
+
     if (layerManager && this.createdLayers.length > 0) {
-      this.createdLayers.forEach(lData => {
+      this.createdLayers.forEach((lData) => {
         if (!layerManager.layers.has(lData.id)) layerManager.createLayer(lData);
       });
     }
 
-    this.entities.forEach(ent => {
+    this.entities.forEach((ent) => {
       if (!this.service.entities.includes(ent)) this.service.entities.push(ent);
       const layerId = String(ent.data?.layerId || '0');
       const layer = layerManager?.layers?.get(layerId);
@@ -193,18 +205,21 @@ export class ImportSVGCommand {
     });
 
     layerManager?.syncZOrder();
+    layerManager?._notify?.();
+    this.utils?.layerPanelUI?.refresh?.();
 
-    if (window.layerPanelUI && typeof window.layerPanelUI.refresh === 'function') window.layerPanelUI.refresh();
     if (this.utils) {
       this.utils.selectionRenderEngine.updateEntitiesStroke();
       this.utils.selectionRenderEngine.renderBezierHandles();
-      if (window.paper?.view) window.paper.view.update();
+      p?.view?.update();
     }
   }
 
   undo() {
     const layerManager = this.utils?.layerManager;
-    this.entities.forEach(ent => {
+    const p = this._getPaper();
+
+    this.entities.forEach((ent) => {
       if (typeof this.service.deselectEntity === 'function') this.service.deselectEntity(ent);
       ent.remove();
       const idx = this.service.entities.indexOf(ent);
@@ -212,7 +227,7 @@ export class ImportSVGCommand {
     });
 
     if (layerManager && this.createdLayers.length > 0) {
-      this.createdLayers.forEach(lData => {
+      this.createdLayers.forEach((lData) => {
         const layerId = String(lData.id);
         const layer = layerManager.layers.get(layerId);
         if (layer) {
@@ -225,11 +240,13 @@ export class ImportSVGCommand {
       }
     }
 
-    if (window.layerPanelUI && typeof window.layerPanelUI.refresh === 'function') window.layerPanelUI.refresh();
+    layerManager?._notify?.();
+    this.utils?.layerPanelUI?.refresh?.();
+
     if (this.utils?.selectionRenderEngine) {
       this.utils.selectionRenderEngine.updateEntitiesStroke();
       this.utils.selectionRenderEngine.renderBezierHandles();
-      if (window.paper?.view) window.paper.view.update();
+      p?.view?.update();
     }
   }
 }

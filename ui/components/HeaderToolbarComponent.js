@@ -18,11 +18,11 @@ export class HeaderToolbarComponent {
         <span class="iconify text-lg" data-icon="lucide:file"></span>
       </button>
 
-      <button id="btnHeaderOpen" class="cad-button cad-button-square h-8 w-8 tooltip-bottom" data-tooltip="Abrir dibujo">
+      <button id="btnHeaderOpen" disabled class="cad-button cad-button-square h-8 w-8 tooltip-bottom" data-tooltip="Abrir dibujo">
         <span class="iconify text-lg translate-y-[1.5px]" data-icon="lucide:folder-open"></span>
       </button>
 
-      <button id="btnHeaderSave" class="cad-button cad-button-square h-8 w-8 tooltip-bottom" data-tooltip="Guardar dibujo">
+      <button id="btnHeaderSave" disabled class="cad-button cad-button-square h-8 w-8 tooltip-bottom" data-tooltip="Guardar dibujo">
         <span class="iconify text-lg translate-y-[1px]" data-icon="lucide:save"></span>
       </button>
 

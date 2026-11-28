@@ -6,6 +6,7 @@ import { CommandHistory } from './CommandHistory.js';
 import { OsnapEngine } from './engines/OsnapEngine.js';
 import { GeometryEngine } from './engines/GeometryEngine.js';
 import { SelectionManager } from './SelectionManager.js';
+import { DeleteCommand } from './commands/TransformCommands.js';
 import { CAD_THEME } from '../config/cadTheme.js';
 import { CAD_CATALOG } from '../config/cadCatalog.js';
 
@@ -349,11 +350,25 @@ export class CADService {
   }
 
   clearCanvas(renderBezierFn) {
-    this.entities.forEach(ent => ent.remove());
-    this.entities = [];
-    this.selectedEntities = [];
-    this.selectedSegments = [];
-    if (renderBezierFn) renderBezierFn();
+    if (this.entities.length === 0) {
+      if (renderBezierFn) renderBezierFn();
+      return;
+    }
+
+    const cmd = new DeleteCommand(this, {
+      type: 'entities',
+      entities: [...this.entities]
+    });
+    this.executeCommand(cmd);
+
+    if (renderBezierFn) {
+      renderBezierFn();
+    } else {
+      const renderEngine = this.selectionRenderEngine || this.utils?.selectionRenderEngine;
+      renderEngine?.updateEntitiesStroke?.();
+      renderEngine?.renderBezierHandles?.();
+      this._getPaper()?.view?.update();
+    }
   }
 
   resetDocument() {

@@ -54,7 +54,7 @@ export class CADUIManager {
       startX: 0,
       startWidth: 0,
       verticalToolbar: null,
-      toolColumns: 1
+      toolColumns: 3
     };
 
     this._sidebarResizeState = {
@@ -132,97 +132,143 @@ export class CADUIManager {
       { id: 'btnPan', tool: 'pan' },
       { id: 'btnSelect', tool: 'select' },
       { id: 'btnMove', tool: 'move' },
+      { id: 'btnCopy', tool: 'copy' },
+      { id: 'btnRotate', tool: 'rotate' },
+      { id: 'btnOffset', tool: 'offset' },
       { id: 'btnTrim', tool: 'trim' },
+      { id: 'btnSplit', tool: 'split' },
       { id: 'btnExtend', tool: 'extend' },
-      { id: 'btn-circle-tool', tool: 'circle' }
+      { id: 'btnConnect', tool: 'connect' },
+      { id: 'btnJoin', tool: 'join' },
+      { id: 'btnExplode', tool: 'explode' },
+      { id: 'btnGroup', tool: 'group' },
+      { id: 'btnUngroup', tool: 'ungroup' },
+      { id: 'btnList', tool: 'list' }
     ];
 
     simpleTools.forEach(({ id, tool }) => {
       const el = document.getElementById(id);
-      if (el) {
-        // Clic izquierdo activa la herramienta y cierra flyouts
-        el.addEventListener('click', () => {
-          this.closeAllFlyouts();
-          if (typeof this.cadUtils.setTool === 'function') {
-            this.cadUtils.setTool(tool);
-          }
-        });
+      if (!el) return;
 
-        // Clic derecho en botón simple: evita menú del SO y cierra cualquier flyout abierto
-        el.addEventListener('contextmenu', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          this.closeAllFlyouts();
-        });
-      }
-    });
-  }
-
-  // 2. Control Inteligente de Flyouts Desplegables (Clic rápido vs Mantener Presionado)
-  bindFlyouts() {
-    const flyoutGroups = [
-      { btnId: 'btnPointGroup', menuId: 'pointFlyoutMenu', iconId: 'currentPointIcon' },
-      { btnId: 'btnLineGroup', menuId: 'lineFlyoutMenu', iconId: 'currentLineIcon' },
-      { btnId: 'btnCurveGroup', menuId: 'curveFlyoutMenu', iconId: 'currentCurveIcon' },
-      { btnId: 'btnTrimGroup', menuId: 'modifyFlyoutMenu', iconId: 'currentModifyIcon' }
-    ];
-
-    const LONG_PRESS_MS = 250;
-
-    flyoutGroups.forEach(({ btnId, menuId, iconId }) => {
-      const btn = document.getElementById(btnId);
-      const menu = document.getElementById(menuId);
-      const mainIcon = document.getElementById(iconId);
-
-      if (!btn || !menu) return;
-
-      let pressTimer = null;
-      let isLongPress = false;
-
-      // Desplegar menú con Clic Derecho
-      btn.addEventListener('contextmenu', (e) => {
+      const handleActivate = (e) => {
         e.preventDefault();
         e.stopPropagation();
         this.closeAllFlyouts();
+
+        // Si está deshabilitado, repite el comportamiento inactivo del clic izquierdo
+        if (el.disabled || el.classList.contains('disabled')) return;
+
+        if (typeof this.cadUtils.setTool === 'function') {
+          this.cadUtils.setTool(tool);
+        }
+      };
+
+      // Clic izquierdo
+      el.addEventListener('click', handleActivate);
+
+      // Clic derecho en botón simple (activo o deshabilitado):
+      // bloquea el menú del SO y cierra flyouts igual que el clic izquierdo en disabled
+      el.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.closeAllFlyouts();
+      });
+    });
+  }
+
+  // 2. Control Inteligente de Flyouts Desplegables (Auto-descubrimiento + vista previa en bloqueados)
+  bindFlyouts() {
+    const LONG_PRESS_MS = 250;
+    const flyoutButtons = document.querySelectorAll('#toolGridContainer .has-flyout');
+
+    const positionMenu = (btn, menu) => {
+      const rect = btn.getBoundingClientRect();
+      const toolbar = document.getElementById('verticalToolbar');
+      const isRightSide =
+        toolbar?.classList.contains('dock-right') ||
+        toolbar?.classList.contains('dock-panel-left');
+
+      // Medir altura real antes de mostrar para evitar recorte inferior
+      menu.style.visibility = 'hidden';
+      menu.classList.add('show');
+      const menuHeight = menu.offsetHeight || 220;
+      menu.classList.remove('show');
+      menu.style.visibility = '';
+
+      const maxTop = Math.max(8, window.innerHeight - menuHeight - 8);
+      menu.style.position = 'fixed';
+      menu.style.top = `${Math.min(rect.top, maxTop)}px`;
+
+      if (isRightSide) {
+        menu.style.left = 'auto';
+        menu.style.right = `${window.innerWidth - rect.left + 4}px`;
+      } else {
+        menu.style.right = 'auto';
+        menu.style.left = `${rect.right + 4}px`;
+      }
+    };
+
+    flyoutButtons.forEach((btn) => {
+      const menu = btn.parentElement?.querySelector('.flyout-menu');
+      const mainIcon = btn.querySelector('.iconify');
+      if (!menu) return;
+
+      let pressTimer = null;
+      let isLongPress = false;
+      const isBtnDisabled = () => btn.disabled || btn.classList.contains('disabled');
+
+      const openThisMenu = () => {
+        this.closeAllFlyouts();
+        positionMenu(btn, menu);
         menu.classList.add('show');
+      };
+
+      // Clic derecho siempre despliega (incluso si está bloqueado para inspección)
+      btn.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openThisMenu();
       });
 
-      // Presionar el botón principal
       btn.addEventListener('mousedown', (e) => {
         if (e.button !== 0) return;
         isLongPress = false;
-
         pressTimer = setTimeout(() => {
           isLongPress = true;
-          this.closeAllFlyouts();
-          menu.classList.add('show');
+          openThisMenu();
         }, LONG_PRESS_MS);
       });
 
-      // Soltar el botón principal
       btn.addEventListener('mouseup', (e) => {
         if (e.button !== 0) return;
         clearTimeout(pressTimer);
 
-        // Si fue un clic rápido (sin mantener presionado):
         if (!isLongPress) {
+          // Si el botón está bloqueado, clic rápido abre el flyout para previsualizar
+          if (isBtnDisabled()) {
+            const wasOpen = menu.classList.contains('show');
+            this.closeAllFlyouts();
+            if (!wasOpen) openThisMenu();
+            return;
+          }
+
           const defaultTool = btn.getAttribute('data-default-tool');
           if (defaultTool && typeof this.cadUtils.setTool === 'function') {
             this.cadUtils.setTool(defaultTool);
           }
-          // Cerrar el desplegable tras seleccionar la herramienta
           this.closeAllFlyouts();
         }
       });
 
       btn.addEventListener('mouseleave', () => clearTimeout(pressTimer));
 
-      const items = menu.querySelectorAll('.flyout-item');
-      items.forEach(item => {
+      menu.querySelectorAll('.flyout-item').forEach((item) => {
         item.addEventListener('click', (e) => {
           e.stopPropagation();
           e.preventDefault();
           clearTimeout(pressTimer);
+
+          if (item.classList.contains('disabled')) return;
 
           const selectedTool = item.getAttribute('data-tool');
           const itemIcon = item.querySelector('.iconify, i, span');
@@ -246,7 +292,6 @@ export class CADUIManager {
       });
     });
 
-    // Cerrar desplegables al hacer clic en el lienzo o fuera de la barra
     document.addEventListener('mousedown', this._onDocumentMouseDown, true);
     document.addEventListener('contextmenu', this._onDocumentMouseDown, true);
   }
@@ -323,7 +368,11 @@ export class CADUIManager {
 
   // 5. Arrastre, acople (docking) y redimensionamiento multi-columna de la barra
   bindToolbarDockAndResize() {
-    const verticalToolbar = document.getElementById('verticalToolbar');
+    // Bloquea el menú contextual nativo del navegador en toda la barra (incluso sobre botones disabled)
+    verticalToolbar.addEventListener('contextmenu', this._onToolbarContextMenu, true);
+    document.querySelectorAll('.flyout-menu').forEach((menu) => {
+      menu.addEventListener('contextmenu', this._onToolbarContextMenu, true);
+    });
     const dragHandle = document.getElementById('toolbarDragHandle');
     const toolbarWidthResizer = document.getElementById('toolbarWidthResizer');
 
@@ -515,7 +564,7 @@ export class CADUIManager {
       const file = e.target.files?.[0];
       if (!file) return;
 
-      const ioService = this.cadUtils?.ioService || window.cadIO;
+      const ioService = this.cadUtils?.ioService;
       if (ioService && typeof ioService.importFile === 'function') {
         ioService.importFile(file, null, { source: 'ui' });
         return;
@@ -560,7 +609,7 @@ export class CADUIManager {
     if (btnUndo) {
       btnUndo.addEventListener('click', (e) => {
         e.preventDefault();
-        const cm = this.cadUtils?.consoleManager || window.consoleManager;
+        const cm = this.cadUtils?.consoleManager;
         if (cm && typeof cm.triggerUndo === 'function') {
           cm.triggerUndo();
           return;
@@ -580,7 +629,7 @@ export class CADUIManager {
     if (btnRedo) {
       btnRedo.addEventListener('click', (e) => {
         e.preventDefault();
-        const cm = this.cadUtils?.consoleManager || window.consoleManager;
+        const cm = this.cadUtils?.consoleManager;
         if (cm && typeof cm.triggerRedo === 'function') {
           cm.triggerRedo();
           return;
@@ -600,7 +649,7 @@ export class CADUIManager {
     if (btnExport) {
       btnExport.addEventListener('click', (e) => {
         e.preventDefault();
-        const ioService = this.cadUtils?.ioService || window.cadIO;
+        const ioService = this.cadUtils?.ioService;
         if (ioService && typeof ioService.exportSVG === 'function') {
           ioService.exportSVG('sketch.svg');
         }
@@ -611,7 +660,7 @@ export class CADUIManager {
       if (!btnEl) return;
       btnEl.addEventListener('mousedown', (e) => {
         if (e.button !== 2 || !hasTargetsFn()) return;
-        const headerToolbar = this.cadUtils?.headerToolbar || window.headerToolbar;
+        const headerToolbar = this.cadUtils?.headerToolbar;
         if (typeof headerToolbar?.flashButtonIcon !== 'function') return;
 
         const release = headerToolbar.flashButtonIcon(btnId, activeIcon, 220);
@@ -705,7 +754,7 @@ export class CADUIManager {
     if (btnUndo) btnUndo.disabled = !canUndo;
     if (btnRedo) btnRedo.disabled = !canRedo;
 
-    const headerToolbar = this.cadUtils?.headerToolbar || window.headerToolbar;
+    const headerToolbar = this.cadUtils?.headerToolbar;
     const layerManager = this.cadUtils?.layerManager;
     if (headerToolbar && layerManager) {
       headerToolbar.updateTooltips({
@@ -885,8 +934,11 @@ export class CADUIManager {
 
   cleanup() {
     if (this._dragState.verticalToolbar && this._onToolbarContextMenu) {
-      this._dragState.verticalToolbar.removeEventListener('contextmenu', this._onToolbarContextMenu);
+      this._dragState.verticalToolbar.removeEventListener('contextmenu', this._onToolbarContextMenu, true);
     }
+    document.querySelectorAll('.flyout-menu').forEach((menu) => {
+      menu.removeEventListener('contextmenu', this._onToolbarContextMenu, true);
+    });
 
     document.removeEventListener('keydown', this._onGlobalKeyDown);
     document.removeEventListener('mousedown', this._onDocumentMouseDown);

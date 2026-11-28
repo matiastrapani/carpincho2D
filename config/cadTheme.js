@@ -1,3 +1,5 @@
+const CANVAS_BG = '#10141D'; //#10141D
+
 export const CAD_THEME = {
   fonts: {
     primary: "'Inter', system-ui, -apple-system, sans-serif"
@@ -5,7 +7,7 @@ export const CAD_THEME = {
 
   // Fondo general del área de trabajo y ejes cartesianos
   canvas: {
-    backgroundColor: '#10141D', //#10141D
+    backgroundColor: CANVAS_BG,
     axisXColor: 'rgba(181, 217, 255, 0.2)', // #b5d9ff con opacidad 0.2
     axisYColor: 'rgba(181, 217, 255, 0.2)',
     axisWidthPx: 1.5
@@ -30,7 +32,7 @@ export const CAD_THEME = {
     selectedRadiusPx: 4.0,      
     strokeWidthPx: 1.0,         
     selectedStrokeWidthPx: 2.0, 
-    defaultFillColor: '#10141D', 
+    defaultFillColor: CANVAS_BG, 
     defaultStrokeColor: '#88ff00'
   },
   selection: {
@@ -39,7 +41,7 @@ export const CAD_THEME = {
       widthMultiplier: 1.5
     },
     node: {
-      fillColor: '#10141D',       
+      fillColor: CANVAS_BG,       
       strokeColor: '#88ff00',     
       selectedRadiusPx: 4.0,      
       normalRadiusPx: 3.5,        
@@ -61,13 +63,13 @@ export const CAD_THEME = {
     anchorStrokeWidthNormalPx: 1.0,   
     anchorStrokeWidthSelectedPx: 1.5, 
     anchorStrokeWidthHoverPx: 1.5,    
-    anchorFillNormal: '#10141D',      
-    anchorFillSelected: '#10141D',    
+    anchorFillNormal: CANVAS_BG,      
+    anchorFillSelected: CANVAS_BG,    
     anchorStrokeSelected: '#88ff00',  
     bezierHandleSizePx: 6.0,            
     bezierHandleStrokeWidthPx: 1.0,   
     bezierHandleStrokeWidthHoverPx: 1.5, 
-    bezierHandleFill: '#10141D',
+    bezierHandleFill: CANVAS_BG,
     bezierHandleStrokeSelected: '#88ff00',
     bezierArmStrokeWidthPx: 0.5,
     bezierArmStrokeSelected: '#88ff00'
@@ -124,9 +126,9 @@ export const CAD_THEME = {
     bgActiveChip: '#32323c',
     borderSubtle: '#2f2f38',
     textBase: '#94a3b8',
-    textMuted: '#71717a',
-    textDisabled: '#54545f',
-    textBright: '#e4e4e7',
+    textMuted: '#aaaaaa',
+    textDisabled: '#666666', //#3c3c44
+    textBright: '#ffffff',
     accent: '#008800',
     resizerAccent: '#44AA00',
     consoleSessionBorder: '#44AA00'

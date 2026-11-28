@@ -34,7 +34,7 @@ export const CAD_CATALOG = {
       id: 'point',
       displayName: 'Punto',
       aliases: ['PUNTO', 'PT', 'P'],
-      ui: { buttonId: 'btnPointGroup', iconId: 'currentPointIcon', iconName: 'custom:dot' },
+      ui: { buttonId: 'btnPointGroup', iconId: 'currentPointIcon', iconName: 'custom:punto' },
       prompts: {
         start: 'Especifique ubicación del punto',
         next: 'Especifique siguiente ubicación del punto'
@@ -46,43 +46,64 @@ export const CAD_CATALOG = {
         finished: 'Inserción de puntos finalizada.'
       }
     },
-    divide_count: {
-      id: 'divide_count',
+    divide: {
+      id: 'divide',
       displayName: 'Dividir',
-      aliases: ['DIVIDIR', 'DIV'],
-      ui: { buttonId: 'btnPointGroup', iconId: 'currentPointIcon', iconName: 'custom:divide' },
+      aliases: ['DIVIDIR', 'DIV', 'DIVIDIRDIST', 'GRADUAR'],
+      ui: { buttonId: 'btnPointGroup', iconId: 'currentPointIcon', iconName: 'custom:dividir' },
       prompts: {
-        select: 'Seleccione entidades a dividir y presione Enter / click derecho',
-        selectedCount: (count) => `Objetivos seleccionados: ${count}. Presione Enter / click derecho para continuar`,
-        selectedSummary: (count) => `Objetivos seleccionados: ${count}.`,
-        input: `Especifique el número de segmentos`
-      },
-      logs: {
-        invalidCount: 'El número de segmentos debe ser mayor o igual a 2.'
-      }
-    },
-    divide_dist: {
-      id: 'divide_dist',
-      displayName: 'Dividir por distancia',
-      aliases: ['DIVIDIRDIST', 'GRADUAR', 'MEDIR'],
-      ui: { buttonId: 'btnPointGroup', iconId: 'currentPointIcon', iconName: 'custom:dividelength' },
-      prompts: {
-        select: 'Seleccione entidades a graduar y presione Enter / clic derecho',
+        select: 'Seleccione entidades a dividir y presione Enter / clic derecho',
         selectedCount: (count) => `Objetivos seleccionados: ${count}. Presione Enter / clic derecho para continuar`,
         selectedSummary: (count) => `Objetivos seleccionados: ${count}.`,
-        input: `Especifique la distancia de división`,
+        inputCount: 'Especifique el número de segmentos',
+        inputDistance: 'Especifique la distancia de división',
         startPoint: 'Haga clic en una entidad para cambiar su punto de inicio, o presione Enter / clic derecho para ejecutar',
-        startPointUpdated: 'Punto de inicio actualizado. Seleccione otra entidad o presione Enter / click derecho para ejecutar'
+        startPointUpdated: 'Punto de inicio actualizado. Seleccione otra entidad o presione Enter / clic derecho para ejecutar'
+      },
+      options: {
+        modeCount: { key: 'M', label: 'Modo=Cantidad' },
+        modeDistance: { key: 'M', label: 'Modo=Distancia' }
       },
       logs: {
+        modeChanged: ({ modeLabel }) => `Modo de división: ${modeLabel}`,
+        invalidCount: 'El número de segmentos debe ser mayor o igual a 2.',
         invalidDistance: 'La distancia de división debe ser mayor que 0.'
+      }
+    },
+    distance: {
+      id: 'distance',
+      displayName: 'Distancia',
+      aliases: ['DISTANCIA', 'DIST', 'MEDIR'],
+      ui: { buttonId: 'btnDistance', iconId: 'currentMeasureIcon', iconName: 'custom:medir' },
+      prompts: {
+        start: 'Especifique primer punto',
+        end: 'Especifique segundo punto'
+      },
+      logs: {
+        measured: ({ distance, dx, dy, angle }) =>
+          `Distancia = ${distance}, ΔX = ${dx}, ΔY = ${dy}, Ángulo = ${angle}°`,
+        samePoint: 'El segundo punto coincide con el punto inicial.',
+        invalidCoords: 'Sintaxis de coordenadas inválida. Use X,Y, @dx,dy o @dist<ang.'
+      }
+    },
+    point_coords: {
+      id: 'point_coords',
+      displayName: 'Posición de punto',
+      aliases: ['ID', 'PUNTOID', 'COORDENADAS'],
+      ui: { buttonId: 'btnDistance', iconId: 'currentMeasureIcon', iconName: 'custom:puntoid' },
+      prompts: {
+        pick: 'Especifique el punto a consultar'
+      },
+      logs: {
+        measured: ({ x, y }) => `X = ${x}, Y = ${y}`,
+        invalidCoords: 'Sintaxis de coordenadas inválida. Use X,Y, @dx,dy o @dist<ang.'
       }
     },
     line: {
       id: 'line',
       displayName: 'Línea',
       aliases: ['LINEA', 'L'],
-      ui: { buttonId: 'btnLineGroup', iconId: 'currentLineIcon', iconName: 'custom:line' },
+      ui: { buttonId: 'btnLineGroup', iconId: 'currentLineIcon', iconName: 'custom:linea' },
       prompts: {
         start: 'Especifique punto de inicio',
         next: 'Especifique el siguiente punto'
@@ -108,7 +129,7 @@ export const CAD_CATALOG = {
       id: 'polyline',
       displayName: 'Polilínea',
       aliases: ['POLILINEA', 'PL'],
-      ui: { buttonId: 'btnLineGroup', iconId: 'currentLineIcon', iconName: 'custom:polyline' },
+      ui: { buttonId: 'btnLineGroup', iconId: 'currentLineIcon', iconName: 'custom:polilinea' },
       prompts: {
         start: 'Punto de inicio',
         next: 'Especifique el siguiente punto'
@@ -136,7 +157,7 @@ export const CAD_CATALOG = {
       id: 'line_tangent',
       displayName: 'Línea tangente',
       aliases: ['LINEATANGENTE', 'LTG'],
-      ui: { buttonId: 'btnLineGroup', iconId: 'currentLineIcon', iconName: 'custom:tangentline' },
+      ui: { buttonId: 'btnLineGroup', iconId: 'currentLineIcon', iconName: 'custom:tangentedesde' },
       prompts: {
         pick: 'Seleccione la entidad curva para tangencia inicial',
         end: 'Especifique punto final de la línea tangente'
@@ -375,15 +396,29 @@ export function getCommandCatalogEntry(commandId) {
 export function resolveCatalogEntry(rawText) {
   const key = normalizeCommandKey(rawText);
   if (!key) return null;
+  const compactKey = key.replace(/\s+/g, '');
+
+  const matchesEntry = (id, entry) => {
+    const normId = normalizeCommandKey(id);
+    const normDisplay = normalizeCommandKey(entry.displayName);
+    const compactDisplay = normDisplay.replace(/\s+/g, '');
+    return (
+      normId === key ||
+      normDisplay === key ||
+      compactDisplay === compactKey ||
+      entry.aliases?.includes(key) ||
+      entry.aliases?.includes(compactKey)
+    );
+  };
 
   for (const [id, entry] of Object.entries(CAD_CATALOG.commands)) {
-    if (normalizeCommandKey(id) === key || entry.aliases?.includes(key)) {
+    if (matchesEntry(id, entry)) {
       return { kind: 'command', id, entry };
     }
   }
 
   for (const [id, entry] of Object.entries(CAD_CATALOG.tools)) {
-    if (normalizeCommandKey(id) === key || entry.aliases?.includes(key)) {
+    if (matchesEntry(id, entry)) {
       return { kind: 'tool', id, entry };
     }
   }

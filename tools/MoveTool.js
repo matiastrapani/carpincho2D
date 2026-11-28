@@ -78,7 +78,7 @@ export class MoveTool extends BaseTool {
   _refreshView() {
     this.utils.selectionRenderEngine.updateEntitiesStroke();
     this.utils.selectionRenderEngine.renderBezierHandles();
-    const paperInst = this.paper();
+    const paperInst = this.paper;
     if (paperInst?.view) {
       paperInst.view.update();
     }
